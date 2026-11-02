@@ -8,6 +8,7 @@ public static class RouteMatcher
 {
     public static object Diagnose(PlannedPathData? path, Vector3 truck, ETS2LA.Game.SDK.Semaphore[] semaphores)
     {
+        if (path != null) path = RouteSnapshot.Capture(path);
         static double? Finite(double value) => double.IsFinite(value) ? value : null;
         bool ready = path != null && !path.HasError && path.TotalLength > 0;
         float tf = ready ? path!.GetFactorForPoint(truck) : float.NaN;
@@ -79,18 +80,24 @@ public static class RouteMatcher
 
     public static RouteTrace Sample(PlannedPathData path)
     {
+        path = RouteSnapshot.Capture(path);
         var points=new List<Vector3>();
         // Global PathLib.Interpolate excludes endpoints and returns null within a
         // one-metre boundary tolerance. Sample each item directly instead.
-        foreach(var item in path.PlannedPath) {
+        for(int itemIndex=0;itemIndex<path.PlannedPath.Count;itemIndex++) {
+            var item=path.PlannedPath[itemIndex];
             int count=Math.Clamp((int)Math.Ceiling(item.GetLength()),2,6000);
             for(int i=0;i<=count;i++) {
                 float t=Math.Clamp((float)i/count,.00001f,.99999f);
                 if(item.item is ETS2LA.Game.Data.ParsedRoadList && item.direction==ETS2LA.Game.Data.Direction.Backward)t=1-t;
                 var point=item.Interpolate(t,0,false);
                 if(!point.HasValue)throw new InvalidOperationException("Routenlücke bei der Maut-Anfahrt");
-                if(i==0 && points.Count>0 && Vector3.Distance(points[^1],point.Value.Position)>2)
-                    throw new InvalidOperationException("Nicht verbundene Maut-Anfahrt");
+                if(i==0 && points.Count>0 && Vector3.Distance(points[^1],point.Value.Position)>2) {
+                    var previous=path.PlannedPath[itemIndex-1];
+                    var gap=Vector3.Distance(points[^1],point.Value.Position);
+                    throw new InvalidOperationException(FormattableString.Invariant(
+                        $"Nicht verbundene Maut-Anfahrt: Übergang {itemIndex-1}->{itemIndex}, {gap:F2} m; {previous.item.GetType().Name}/{previous.direction}/Spur {previous.laneIndex} -> {item.item.GetType().Name}/{item.direction}/Spur {item.laneIndex}"));
+                }
                 points.Add(point.Value.Position);
             }
         }

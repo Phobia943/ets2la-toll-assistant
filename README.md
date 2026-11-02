@@ -18,7 +18,7 @@ Die Erweiterung erkennt Höhenfreiheit und Zahlart **nicht automatisch**. Eine o
 
 ## Entwicklungsstand
 
-Quellstand **0.2.3**, erste öffentliche Fassung. Anfahrt, Spurwahl, langsame Durchfahrt und Rückgabe an den Controller wurden an einer ausgewählten Mautstelle praktisch geprüft. Die normale Straßenlenkung wurde nach einem Neustart ebenfalls erfolgreich geprüft.
+Quellstand **0.2.4 in Erprobung**. Anfahrt, Spurwahl, langsame Durchfahrt und Rückgabe an den Controller wurden mit einer früheren Version an einer ausgewählten Mautstelle praktisch geprüft. Die normale Straßenlenkung wurde mit 0.2.3 nach einem Neustart ebenfalls erfolgreich geprüft. Version 0.2.4 isoliert die Routenmessung vom veränderlichen Spurwechselzustand der Lenkroute; sie wurde bislang nur lokal automatisiert geprüft.
 
 **Offen bleibt ein gemeldeter Lenkfehler direkt nach der Mautausfahrt.** Die Version enthält Korrekturen für veraltete Schrankenverfolgung und zusätzliche Routendiagnosen. Eine erneute vollständige Fahrt durch die betroffene Ausfahrt steht aus; der Fehler gilt noch nicht als abschließend behoben.
 
