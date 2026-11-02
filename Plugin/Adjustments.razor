@@ -1,0 +1,67 @@
+@page "/plugins/adjustments/local.mautassistent"
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+@implements IDisposable
+
+<div class="flex flex-col m-5 ml-8 gap-4" style="max-width:850px">
+    <h1 style="font-size:24px">Mautassistent</h1>
+    <p>@(TollPlugin.Current?.Status ?? "Plugin noch nicht geladen")</p>
+    <p>@TollPlugin.Current?.Details</p>
+    <p>@TollPlugin.Current?.DataStatus</p>
+    <p>@TollPlugin.Current?.RouteStatus</p>
+    @if (TollPlugin.Current?.LaneChoices is { Length: >0 } choices) {
+        <label>Lkw-taugliche Spur
+            <select style="border:1px solid #777;border-radius:5px;padding:6px" @bind="lane" @bind:after="LaneChanged">
+                <option value="-1">Spur auswählen</option>
+                @foreach(var choice in choices) {<option value="@choice.GateId">@choice.Label</option>}
+            </select>
+        </label>
+        <label>Zahlart dieser Spur
+            <select style="border:1px solid #777;border-radius:5px;padding:6px" @bind="payment">
+                <option value="@TollPayment.Unknown">Noch nicht sicher erkannt</option>
+                <option value="@TollPayment.Automatic">Automatische Abrechnung, keine Bestätigung nötig</option>
+                <option value="@TollPayment.Manual">Manuell bezahlen / Ticket bestätigen</option>
+            </select>
+        </label>
+        <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="ConfirmLane">Lkw-Freigabe und Zahlart dieser Spur speichern</button>
+    }
+    <p>Bevorzugt bestätigte Lkw-Spuren mit automatischer Abrechnung. Ohne bestätigte automatische Spur endet die Fahrassistenz mit Hinweiston. Dann selbst bis zur Zahlungsaufforderung fahren. Die Zuordnung gilt nur für diese Mautanlage und Fahrtrichtung.</p>
+    <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="Preview">Route im Stand prüfen (ohne Gas und Lenkung)</button>
+    <p>Startet ausgeschaltet. Im Stand vorbereiten, dann F8 zum Fahren und F9 zur manuellen Übernahme. Spurwahl und Halteabstand müssen für die jeweilige Mautstelle und den Lkw geprüft werden.</p>
+    <label>Anfahrt (km/h) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="5" max="30" @bind="approach" /></label>
+    <label>Durchfahrt (km/h) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="3" max="15" @bind="passage" /></label>
+    <label>Halteabstand zum Lkw-Messpunkt (m) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="4" max="15" @bind="offset" /></label>
+    <p>Der Messpunkt ist nicht die Stoßstange. Der passende Wert muss mit deinem Lkw geprüft werden.</p>
+    <label>Warten nach vollständig geöffneter Schranke (s) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="1" max="10" step="0.5" @bind="delay" /></label>
+    <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="Apply">Einstellungen speichern</button>
+    <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="Observe">Nur beobachten</button>
+    <button style="padding:10px;border:1px solid #b58a6f;border-radius:6px" @onclick="Activate">Mautassistenz vorbereiten</button>
+    <p>@message</p>
+    <p>Zum Einschalten: Lkw steht, F9 hat die Fahrassistenz ausgeschaltet, ACC ist im Plugin-Manager eingeschaltet. Danach startet F8; F9 gibt die Steuerung zurück.</p>
+    <p>Bei fehlenden Daten während aktiver Begrenzung wird die Fahrassistenz ausgeschaltet. Dann selbst lenken und bremsen. Kein automatisches Bezahlen und keine Schrankenmanipulation.</p>
+    <p>Diagnose: @TollPlugin.Current?.DiagnosticPath</p>
+</div>
+@code {
+    double approach=20, passage=10, offset=8, delay=2;
+    string message="";
+    int lane=-1;
+    TollPayment payment=TollPayment.Unknown;
+    readonly CancellationTokenSource stop = new();
+    protected override void OnInitialized() {
+        var o=TollPlugin.Current?.Options;
+        lane=TollPlugin.Current?.SelectedLane ?? -1;
+        if(o != null) { approach=o.ApproachSpeedKph; passage=o.PassageSpeedKph; offset=o.StopOffsetMetres; delay=o.OpenDelaySeconds; }
+        _=Refresh();
+    }
+    async Task Refresh() {
+        try { using var timer=new PeriodicTimer(TimeSpan.FromSeconds(1)); while(await timer.WaitForNextTickAsync(stop.Token)) await InvokeAsync(StateHasChanged); }
+        catch(OperationCanceledException) { }
+    }
+    void Apply() => message=TollPlugin.Current?.Configure(new TollOptions { ApproachSpeedKph=approach, PassageSpeedKph=passage, StopOffsetMetres=offset, OpenDelaySeconds=delay }) ?? "Plugin fehlt";
+    void Observe() => message=TollPlugin.Current?.SetActive(false) ?? "Plugin fehlt";
+    void Preview() => message=TollPlugin.Current?.PreviewRoute() ?? "Plugin fehlt";
+    void ConfirmLane() => message=TollPlugin.Current?.ConfirmLane(lane,payment) ?? "Plugin fehlt";
+    void LaneChanged() => payment=TollPayment.Unknown;
+    void Activate() => message=TollPlugin.Current?.SetActive(true) ?? "Plugin fehlt";
+    public void Dispose() { stop.Cancel(); stop.Dispose(); }
+}

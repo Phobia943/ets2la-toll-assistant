@@ -1,0 +1,16 @@
+name: Core tests
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  core-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Run independent controller tests
+        run: dotnet run --project CoreTests -c Release

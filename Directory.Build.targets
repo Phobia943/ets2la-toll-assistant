@@ -1,0 +1,7 @@
+<Project>
+  <Target Name="ValidateEtsRoot" BeforeTargets="ResolveAssemblyReferences" Condition="'$(MSBuildProjectName)' != 'CoreTests'">
+    <Error Condition="'$(EtsRoot)' == ''" Text="Set the EtsRoot environment variable to your ETS2LA installation directory." />
+    <Error Condition="!Exists('$(EtsRoot)/ETS2LA.Game.dll')" Text="EtsRoot must contain ETS2LA.Game.dll." />
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)References/PathLib.dll')" Text="Run Prepare-References.ps1 before building the plugin or integration tests." />
+  </Target>
+</Project>
