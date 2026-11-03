@@ -53,8 +53,11 @@ public static class RouteIntegration
         var prefs=new PreferenceStore(filename);var router=new TollRouter(prefs);
         router.Discover(data,truck,sdk);
         assert(router.Choices.Single(c=>c.GateId==12).Label.StartsWith("2."),"Gate 12 must be second from right");
-        assert(!router.Apply(data,truck,out _),"Truck clearance alone must not imply automatic payment");
+        assert(router.Apply(data,truck,out _) && router.StopBoundary.HasValue,"Unknown lane must request a planned stop, not a payment clearance");
+        assert(item.prefabPath.GetSemaphores().Single().Semaphore.SemaphoreId==4,"Unknown lane must not rewrite host route into another booth");
+        assert(router.UpdateStopDistance(data,truck,0)<5,"Stop must precede the first branch, not the gate");
         router.Confirm(12,TollPayment.Automatic);
+        assert(router.StopBoundary==null,"Explicit automatic truck lane releases the planned stop");
         assert(router.Apply(data,truck,out var error)&&error==null,"Route must apply");
         assert(item.prefabPath.GetSemaphores().Single().Semaphore.SemaphoreId==12,"Host route not updated");
         var gate=RouteMatcher.Select(data,truck,sdk,null);
@@ -69,14 +72,45 @@ public static class RouteIntegration
         // A new plaza must not silently inherit the known plaza's height clearance.
         parsed.Prefab.Uid=999;var unknown=new TollRouter(reloaded);
         unknown.Discover(data,truck,sdk);
-        assert(!unknown.Apply(data,truck,out error)&&error!=null,"Unknown plaza must require confirmation");
+        assert(unknown.Apply(data,truck,out error)&&error==null&&unknown.StopBoundary.HasValue,"Unknown plaza must stop before entry, not inherit clearance");
         unknown.Confirm(12,TollPayment.Manual);
-        assert(!unknown.Apply(data,truck,out _),"Manual booth must not use the automatic stop offset");
+        assert(unknown.Apply(data,truck,out _)&&unknown.StopBoundary.HasValue,"Manual booth must retain approach stop, not use automatic payment offset");
         unknown.Confirm(12,TollPayment.Automatic);
         assert(unknown.Apply(data,truck,out error)&&error==null,"Explicit confirmation must enable selected route");
         reloaded.Save(new TollOptions{ApproachSpeedKph=15},reloaded.Gates);
         var again=new PreferenceStore(filename);again.Load();assert(again.Options.ApproachSpeedKph==15,"Settings not restored");
         assert(again.Payments[PaymentPolicy.Key(unknown.CurrentKey!,12)]==TollPayment.Automatic,"Payment type not restored");
         File.Delete(filename);
+
+        // Full plugin path: an unknown toll at motorway speed requests ACC
+        // deceleration while retaining valid steering, without the fault channel.
+        curves[0].StartPosition=new(0,0,-400);curves[0].Length=420;
+        source.Length=source.Curves.Sum(c=>c.Length);item.prefabPath=source;
+        var state=(ETS2LA.State.ApplicationState)RuntimeHelpers.GetUninitializedObject(typeof(ETS2LA.State.ApplicationState));
+        state.DrivingMode=ETS2LA.State.DrivingMode.FullSelfDriving;
+        var output=new List<ETS2LA.Game.Output.ControlEvent>();var notices=new List<string>();
+        var plugin=new TollPlugin(()=>state,(title,_)=>notices.Add(title),output.Add);
+        plugin._IsRunning=true;
+        const System.Reflection.BindingFlags hidden=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+        void Set(string name,object value)=>typeof(TollPlugin).GetField(name,hidden)!.SetValue(plugin,value);
+        object? Call(string name,params object?[] values)=>typeof(TollPlugin).GetMethod(name,hidden)!.Invoke(plugin,values);
+        var telemetry=new ETS2LA.Game.Telemetry.GameTelemetryData {sdkActive=true,time=1};
+        telemetry.truckFloat.speed=25;telemetry.truckPlacement.coordinate=new(0,0,-250);
+        telemetry.truckPlacement.rotation=new(.5,0,0);
+        Call("OnTelemetry",telemetry);
+        Call("OnGates",new ETS2LA.Game.SDK.SemaphoreData {semaphores=sdk});
+        Set("active",true);state.EnableAssists=true;
+        Call("OnPath",data);
+        assert(plugin.Active&&state.EnableAssists&&!plugin.FaultBraking&&output.Count==0,"Unknown toll must retain steering and avoid emergency output");
+        var acceleration=(float)Call("Evaluate")!;
+        assert(acceleration<-.5f&&acceleration>-2.5f,"ACC must receive a bounded planned deceleration");
+        Call("OnPath",data);
+        assert(notices.Count==1,"One takeover warning, not a warning every frame");
+        state.EnableAssists=false;
+        Call("OnCancel",null,new ETS2LA.Controls.ControlChangeEventArgs(false,null!));
+        assert(float.IsNaN((float)Call("Evaluate")!),"F9 releases planned braking immediately");
+        state.EnableAssists=true;
+        Call("OnPath",new PlannedPathData {HasError=true,ErrorMessage="No suitable road",PlannedPath=[]});
+        assert(plugin.FaultBraking&&!state.EnableAssists&&output[^1].Variables.abackward==-1,"Real tracking loss during planned halt must still brake immediately");
     }
 }

@@ -25,7 +25,7 @@
         </label>
         <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="ConfirmLane">Lkw-Freigabe und Zahlart dieser Spur speichern</button>
     }
-    <p>Bevorzugt bestätigte Lkw-Spuren mit automatischer Abrechnung. Ohne bestätigte automatische Spur endet die Fahrassistenz mit Hinweiston. Dann selbst bis zur Zahlungsaufforderung fahren. Die Zuordnung gilt nur für diese Mautanlage und Fahrtrichtung.</p>
+    <p>Bevorzugt bestätigte Lkw-Spuren mit automatischer Abrechnung. Ohne Freigabe wird bei gültiger Zufahrt ein Halt vor der Spuraufteilung geplant. F9 gibt die Steuerung zur manuellen Spurwahl zurück. Reicht der Anhalteweg nicht oder geht die Route verloren, greift weiterhin die Fehlerbremsung. Die Zuordnung gilt nur für diese Mautanlage und Fahrtrichtung.</p>
     <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="Preview">Route im Stand prüfen (ohne Gas und Lenkung)</button>
     <p>Bereitet sich im Stand automatisch vor, sobald Spiel, Pathfinding und Tempomat bereit sind. Die Fahrt startet erst mit F8; F9 gibt die Steuerung zurück. Spurwahl und Halteabstand müssen für die jeweilige Mautstelle und den Lkw geprüft werden.</p>
     <label>Anfahrt (km/h) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="5" max="30" @bind="approach" /></label>

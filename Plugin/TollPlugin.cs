@@ -19,7 +19,7 @@ public sealed class TollPlugin : Plugin
 {
     public static TollPlugin? Current { get; private set; }
     public override PluginInformation Info => new() {
-        Id = "local.mautassistent", Name = "Mautassistent", Version = "0.2.11",
+        Id = "local.mautassistent", Name = "Mautassistent", Version = "0.2.12",
         Description = "Langsame Mautdurchfahrt. Bereitet sich im Stand automatisch vor; Fahrt startet erst mit F8.",
         AuthorName = "Lokale Anpassung", Dependencies = ["tumppi066.pathlib"],
         PluginPageButtonName = "Einstellungen"
@@ -73,6 +73,7 @@ public sealed class TollPlugin : Plugin
     public int SelectedLane => router.SelectedGate ?? -1;
     string? routeFault;
     object? lastFault;
+    string? warnedStopKey;
     bool preview;
     double previewAt;
     string previewStatus="Noch keine Routenprobe";
@@ -156,6 +157,7 @@ public sealed class TollPlugin : Plugin
         if(e.NewValue is not false)return;
         lock(sync) {
             faultBrake.Release();trackingGuard.Reset();safetyTrace=null;safetyStarted=null;
+            router.CancelPlannedStop();warnedStopKey=null;
             if(!active) {
                 automaticPreparation.Request();
                 preparationReason="Übernahme bestätigt. Automatische Vorbereitung wartet auf Stillstand und verbundene Module.";
@@ -216,6 +218,18 @@ public sealed class TollPlugin : Plugin
             try {router.Apply(data,position,out routeFault);}
             catch(Exception ex){routeFault="Maut-Spurwahl: "+ex.Message;}
             if(routeFault!=null) Disarm(routeFault);
+            if(active && State.EnableAssists && !preview && router.StopBoundary.HasValue) {
+                try {
+                    if(State.DrivingMode==DrivingMode.LaneAssistOnly)
+                        throw new InvalidOperationException("Unbestätigte Mautspur: Ohne Tempomat ist kein geplanter Halt möglich. Bitte übernehmen.");
+                    decision=ApproachStop.Evaluate(speed,router.UpdateStopDistance(data,position,speed)!.Value);
+                    evaluatedAt=clock.Elapsed.TotalSeconds;decisionArmed=true;
+                    if(warnedStopKey!=router.StopKey) {
+                        warnedStopKey=router.StopKey;
+                        notify("Mautspur noch nicht bestätigt", "Der Lkw bremst auf der Zufahrt zum Halt ab. F9 drücken und die geeignete Spur selbst wählen oder im Stand bestätigen.");
+                    }
+                } catch(Exception ex) {Disarm(ex.Message);}
+            }
             if(active&&State.EnableAssists&&!preview&&sdk&&!paused) {
                 try {
                     var trace=RouteMatcher.SampleForTracking(data,position,speed);
@@ -310,7 +324,7 @@ public sealed class TollPlugin : Plugin
     {
         lock(sync)
         {
-            if (!value) { automaticPreparation.Cancel(); active = false; State.EnableAssists=false; faultBrake.Release(); trackingGuard.Reset(); safetyTrace=null;safetyStarted=null; preparationReason="Beobachtungsmodus. F9 gibt die automatische Vorbereitung wieder frei."; bridge.Detach(); startup.Reset(); controller.Reset(); tracked = null; passage.Reset(); return "Manuelle Übernahme, Fehlerbremsung gelöst. Automatische Vorbereitung pausiert; mit F9 wieder freigeben."; }
+            if (!value) { router.CancelPlannedStop();warnedStopKey=null; automaticPreparation.Cancel(); active = false; State.EnableAssists=false; faultBrake.Release(); trackingGuard.Reset(); safetyTrace=null;safetyStarted=null; preparationReason="Beobachtungsmodus. F9 gibt die automatische Vorbereitung wieder frei."; bridge.Detach(); startup.Reset(); controller.Reset(); tracked = null; passage.Reset(); return "Manuelle Übernahme, Fehlerbremsung gelöst. Automatische Vorbereitung pausiert; mit F9 wieder freigeben."; }
             var blocked=PreparationBlock(clock.Elapsed.TotalSeconds);
             if(blocked!=null)return blocked;
             var acc = readAcc();
@@ -375,6 +389,10 @@ public sealed class TollPlugin : Plugin
                 Disarm(routeFault ?? (!Fresh(now) ? DataStatus : decision.Phase));
                 return faultBrake.Latched?-5f:float.NaN;
             }
+            if(router.StopBoundary.HasValue) {
+                try {return ApproachStop.Evaluate(speed,router.UpdateStopDistance(path!,position,speed)!.Value).MaxAcceleration;}
+                catch(Exception ex) {Disarm(ex.Message);return -5f;}
+            }
             return decision.MaxAcceleration;
         }
     }
@@ -412,6 +430,8 @@ public sealed class TollPlugin : Plugin
                 }
                 candidate = gate;
                 decision = controller.Step(new(now, speed, allow, Fresh(now), gate));
+                if(allow && Fresh(now) && router.StopBoundary.HasValue)
+                    decision=ApproachStop.Evaluate(speed,router.UpdateStopDistance(path!,position,speed)!.Value);
                 tracked = decision.GateKey;
                 if(tracked==null)passage.Reset();
                 evaluatedAt = now;
@@ -432,7 +452,8 @@ public sealed class TollPlugin : Plugin
                     Directory.CreateDirectory(Path.GetDirectoryName(DiagnosticPath)!);
                     if (sdk && lastMapWrite < 0) { lastMapWrite=now; try { MapDiagnostics.Write(position,Path.GetDirectoryName(DiagnosticPath)!); } catch(Exception ex) { Logger.Warn("Maut-Kartenprüfung: " + ex.Message); } }
                     File.WriteAllText(DiagnosticPath, JsonSerializer.Serialize(new {
-                        version="0.2.11", utc=DateTimeOffset.UtcNow, active, fresh=Fresh(now), speedKph=speed*3.6,
+                        version="0.2.12", utc=DateTimeOffset.UtcNow, active, fresh=Fresh(now), speedKph=speed*3.6,
+                        plannedStop=router.StopBoundary.HasValue,stopDistance=router.StopDistance,
                         automaticPreparationPending=automaticPreparation.Requested,
                         startBlocked=!active&&!preview,preparationReason,selectedLane=router.SelectedGate,plaza=router.CurrentKey,
                         faultBraking=faultBrake.Latched,headingTurns,

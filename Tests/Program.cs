@@ -23,6 +23,31 @@ void Run()
     var results=new List<string>();
     void Check(string name, Action test) { try {test(); results.Add("PASS "+name);} catch(Exception ex) {results.Add("FAIL "+name+": "+ex); } }
     void Assert(bool v,string message="Assertion failed") {if(!v)throw new Exception(message);}
+    Check("Unknown toll approach decelerates by available distance without emergency output",()=>{
+        var d=ApproachStop.Evaluate(90/3.6,300);
+        Assert(d.MaxAcceleration<-.9f && d.MaxAcceleration>-1.3f);
+        Assert(ApproachStop.Evaluate(90/3.6,200).MaxAcceleration<d.MaxAcceleration);
+        Assert(ApproachStop.Evaluate(0,100).MaxAcceleration<0,"Unknown lane must never launch from standstill");
+        Assert(!d.Phase.Contains("manuell übernehmen"),"Planned halt must not enter fatal tracking path");
+    });
+    Check("Planned approach stops before the branch and stays stopped",()=>{
+        double speed=25,distance=300;
+        for(int i=0;i<1200;i++) {
+            var d=ApproachStop.Evaluate(speed,distance);
+            double next=Math.Max(0,speed+d.MaxAcceleration*.05);
+            distance-=(speed+next)*.025;speed=next;
+            Assert(distance>0,"Crossed stop line");
+        }
+        Assert(speed<.1 && distance<30,"Must reach a controlled standstill before the branch");
+        Assert(ApproachStop.Evaluate(speed,distance).MaxAcceleration<0,"Hold must persist");
+    });
+    Check("Too little approach distance or invalid geometry cannot relax the emergency stop",()=>{
+        foreach(var scenario in new[]{(25d,60d),(2d,-1.1d),(double.NaN,200d),(0d,double.NaN)}) {
+            bool rejected=false;
+            try {ApproachStop.Evaluate(scenario.Item1,scenario.Item2);}catch(InvalidOperationException){rejected=true;}
+            Assert(rejected);
+        }
+    });
     #if INTEGRATION
     Check("Short item seams do not create false opposite road headings",()=>DirectionSeamIntegration.Run(Assert));
     Check("Automatic preparation attaches only at standstill and preserves fault takeover",()=>AutomaticPreparationIntegration.Run(Assert));

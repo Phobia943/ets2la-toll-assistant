@@ -12,6 +12,10 @@ public sealed class TollRouter
     public LaneChoice[] Choices {get;private set;}=[];
     public string? CurrentKey {get;private set;}
     public int? SelectedGate {get;private set;}
+    public Vector3? StopBoundary {get;private set;}
+    public string? StopKey {get;private set;}
+    public double? StopDistance {get;private set;}
+    public void CancelPlannedStop() {StopBoundary=null;StopKey=null;StopDistance=null;}
     public TollPayment PaymentFor(int gate)=>CurrentKey!=null&&preferences.Payments.TryGetValue(PaymentPolicy.Key(CurrentKey,gate),out var mode)?mode:TollPayment.Unknown;
     readonly PreferenceStore preferences;
     public TollRouter(PreferenceStore preferences) {this.preferences=preferences;}
@@ -32,8 +36,10 @@ public sealed class TollRouter
             if(routeGates.Length==0)continue;
             var first=routeGates[0];var world=first.GetWorldOrientedPoint().Position;
             var forward=Vector3.Normalize(first.GetCurveEndWorldCoordinates().Position-first.GetCurveStartWorldCoordinates().Position);
-            if(Vector3.Dot(world-truck,forward)<-10 || Vector3.Distance(world,truck)>300)continue;
+            if(Vector3.Dot(world-truck,forward)<-10 || Vector3.Distance(world,truck)>1000)continue;
             var key=Key(p);
+            // Do not replace a pending stop with a newly planned/different plaza.
+            if(StopBoundary.HasValue && key!=StopKey)return;
             if(CurrentKey==key)return;
             var right=Vector3.Cross(forward,Vector3.UnitY);
             var lanes=new List<(int gate,float lateral,bool reachable)>();
@@ -68,6 +74,37 @@ public sealed class TollRouter
         var values=new Dictionary<string,int>(preferences.Gates){[CurrentKey]=gate};
         var payments=new Dictionary<string,TollPayment>(preferences.Payments){[PaymentPolicy.Key(CurrentKey,gate)]=payment};
         preferences.Save(preferences.Options,values,payments);SelectedGate=gate;replacements.Clear();SelectAutomatic();
+        if(SelectedGate.HasValue)CancelPlannedStop();
+    }
+
+    public double? UpdateStopDistance(PlannedPathData data,Vector3 truck,double speed)
+    {
+        if(StopBoundary is not Vector3 boundary)return null;
+        var trace=RouteMatcher.SampleForTracking(data,truck,speed);
+        var target=trace.Project(boundary);var current=trace.Project(truck);
+        if(target.Offset>1 || current.Offset>3 || (trace.EndsAtGap && target.Along>=trace.Length-.01))
+            throw new InvalidOperationException("Haltegrenze der Mautzufahrt nicht mehr sicher verfolgbar.");
+        StopDistance=target.Along-current.Along-ApproachStop.BufferMetres;
+        return StopDistance;
+    }
+
+    static Vector3 CommonApproachEnd(PrefabPath source)
+    {
+        source=PrefabRefinement.OriginalFor(source);
+        // Stop before any choice, restriction or semaphore. Only a unique,
+        // unrestricted chain can be followed without a confirmed toll lane.
+        var prefix=new List<NavCurve>();
+        foreach(var curve in source.Curves) {
+            if(curve.AllowedVehicles is not (AllowedVehicles.AllVehicles or AllowedVehicles.LargeVehicles) || curve.SemaphoreId>=0)break;
+            prefix.Add(curve);
+            if(curve.NextLines.Count!=1)break;
+            int routeIndex=source.Curves.IndexOf(curve);
+            if(routeIndex+1>=source.Curves.Count || !curve.NextLines.Contains(source.Prefab.Descriptor!.NavCurves.IndexOf(source.Curves[routeIndex+1])))break;
+        }
+        var copy=(PrefabPath)clone.Invoke(source,null)!;
+        if(prefix.Count==0)return source.Interpolate(.00001f,0)!.Value.Position;
+        copy.Curves=prefix;copy.Length=prefix.Sum(c=>c.Length);
+        return copy.Interpolate(.99999f,0)!.Value.Position;
     }
 
     public static PrefabPath? ViaGate(PrefabPath source,int gate)
@@ -93,7 +130,12 @@ public sealed class TollRouter
             var item=data.PlannedPath[itemIndex];
             var current=item.prefabPath;
             if(current==null || Key(current)!=CurrentKey)continue;
-            if(!SelectedGate.HasValue) {error="Keine bestätigte automatische Lkw-Mautspur. Bitte selbst lenken und bis zur Zahlungsaufforderung fahren; die Assistenz nutzt hier keinen pauschalen 8-m-Zahlhaltepunkt.";return false;}
+            if(!SelectedGate.HasValue) {
+                StopBoundary ??= CommonApproachEnd(current);StopKey ??= CurrentKey;
+                item.allowedToLaneChange=false;
+                Status="Unbestätigte Mautspur: geplanter Halt vor der Aufteilung; F9 zur Übernahme";
+                return true;
+            }
             // The gate must be reachable from the existing entry lane and exit. Never
             // invent a lateral jump at a road boundary or use the opposite carriageway.
             if(!replacements.TryGetValue(current,out var replacement))
