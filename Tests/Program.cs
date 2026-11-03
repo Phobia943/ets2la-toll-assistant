@@ -73,6 +73,22 @@ void Run()
             Assert(PaymentPolicy.ChooseAutomatic("R",new[]{12},12,prefs.Payments)==null);
         } finally {File.Delete(file);}
     });
+    Check("Persistent settings migration preserves confirmed lanes and never overwrites an existing store",()=>{
+        var legacyFile=Path.Combine(AppContext.BaseDirectory,"migration-old-settings.json");
+        var newFile=Path.Combine(AppContext.BaseDirectory,"migration-new-settings.json");
+        try {
+            var legacy=new PreferenceStore(legacyFile);
+            legacy.Save(new TollOptions{ApproachSpeedKph=18},new(){["synthetic"]=12},new(){[PaymentPolicy.Key("synthetic",12)]=TollPayment.Automatic});
+            var persistent=new PreferenceStore(newFile);persistent.MigrateFrom(legacyFile);persistent.Load();
+            Assert(persistent.Options.ApproachSpeedKph==18 && persistent.Gates["synthetic"]==12);
+            Assert(persistent.Payments[PaymentPolicy.Key("synthetic",12)]==TollPayment.Automatic && File.Exists(legacyFile));
+            File.WriteAllText(legacyFile,"invalid");persistent.MigrateFrom(legacyFile);persistent.Load();
+            Assert(persistent.Gates["synthetic"]==12,"Existing preferences take precedence over a legacy copy");
+            File.Delete(newFile);bool rejected=false;
+            try {persistent.MigrateFrom(legacyFile);}catch(System.Text.Json.JsonException){rejected=true;}
+            Assert(rejected&&!File.Exists(newFile),"Never persist an invalid legacy preference file");
+        } finally {File.Delete(legacyFile);File.Delete(newFile);}
+    });
     TollInput Input(double t, double speed=0, double distance=8, BarrierState state=BarrierState.Closed, string key="A", bool enabled=true, bool fresh=true) => new(t,speed,enabled,fresh,new(key,distance,state));
     Check("Passed gate can close behind the truck without ordering another stop",()=>{
         var c=new TollController(new());
@@ -234,7 +250,8 @@ void Run()
         Assert(s.Check(true,false,4.4)==StartupPermission.Hold);
     });
     #if INTEGRATION
-    Check("Official ACC 2.1.0 type accepts bridge; attach/detach preserves native constraints",()=>{
+    Check("Verified ACC type accepts bridge; attach/detach preserves native constraints",()=>{
+        Assert(AccBridge.SupportsVersion("2.1.0")&&AccBridge.SupportsVersion("2.1.1")&&!AccBridge.SupportsVersion("2.2.0"),"Reject unverified ACC versions");
         var a=AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(references,"AdaptiveCruiseControl.dll"));
         var baseType=a.GetType("AdaptiveCruiseControl.Constraints.Constraint",true)!;
         var accType=a.GetType("AdaptiveCruiseControl.AdaptiveCruiseControlPlugin",true)!;

@@ -6,6 +6,13 @@ public sealed class PreferenceStore(string filename)
     public Dictionary<string,int> Gates {get;private set;}=[];
     public TollOptions Options {get;private set;}=new();
     public Dictionary<string,TollPayment> Payments {get;private set;}=[];
+    public void MigrateFrom(string legacyFilename)
+    {
+        if(File.Exists(filename)||!File.Exists(legacyFilename))return;
+        var legacy=new PreferenceStore(legacyFilename);
+        legacy.Load(); // Validate before creating a persistent copy; keep original.
+        Save(legacy.Options,legacy.Gates,legacy.Payments);
+    }
     public void Load()
     {
         if(!File.Exists(filename))return;

@@ -20,13 +20,13 @@ Die Erweiterung erkennt Höhenfreiheit und Zahlart **nicht automatisch**. Eine o
 
 ## Entwicklungsstand
 
-Quellstand **0.2.8 in Erprobung**. Anfahrt, Spurwahl, langsame Durchfahrt und Rückgabe an den Controller wurden mit einer früheren Version an einer ausgewählten Mautstelle praktisch geprüft. Die normale Straßenlenkung wurde mit 0.2.3 nach einem Neustart ebenfalls erfolgreich geprüft. Version 0.2.4 isolierte die Routenmessung vom veränderlichen Spurwechselzustand der Lenkroute.
+Quellstand **0.2.9 in Erprobung**. Anfahrt, Spurwahl, langsame Durchfahrt und Rückgabe an den Controller wurden mit einer früheren Version an einer ausgewählten Mautstelle praktisch geprüft. Die normale Straßenlenkung wurde mit 0.2.3 nach einem Neustart ebenfalls erfolgreich geprüft. Version 0.2.4 isolierte die Routenmessung vom veränderlichen Spurwechselzustand der Lenkroute.
 
 Bei der weiteren Fahrt mit 0.2.4 trat ein nativer Routenfehler auf. Danach konnte F8 die Fahrassistenz ohne aktive Mautbegrenzung erneut starten; eine zu niedrige Spur wurde gemeldet. Version 0.2.5 verlangt bei eingeschaltetem Mautassistenten eine erfolgreiche Vorbereitung, bevor Fahrassistenz eingeschaltet bleiben darf. Nach einer Störung zuerst manuell übernehmen und im Stand erneut vorbereiten. Ein normaler Stopp mit F9 löscht die Vorbereitung nicht. Die Rückweisung wird in Daten-Callbacks und im Plugin-Tick geprüft; sie ist keine atomare Sperre sämtlicher Ausgabethreads des Hostprogramms. Bei deaktiviertem Plugin kann diese Prüfung nicht wirken. Die Korrektur ist automatisiert geprüft, eine erneute vollständige Mautfahrt steht aus.
 
 **Version 0.2.6 korrigiert die Übergabe an die Anschluss-Spur hinter dem Mauttor.** Die bestätigte Mautspur wird mit einer eindeutig anschließenden Spur derselben Straßenseite verbunden; die Korrektur erreicht auch die intern weiterverwendete Hostroute. Zusätzlich wird die native Positionsprojektion auf gekrümmten Mautspuren genauer. Knoten, Richtung und Geometrie müssen übereinstimmen; eine fehlende Anschlussstraße wird nicht ersetzt. Bei unklarer oder verspäteter Übergabe ist manuelle Übernahme erforderlich.
 
-34 vollständige lokale Prüfungen und 26 unabhängige Logikprüfungen bestehen. Die fehlende Spurerkennung an der konkret gemeldeten Ausfahrt ist **noch nicht im Fahrtest bestätigt behoben**. Die gespeicherten Daten enthalten deren Anschlussstraßen nicht. Ein künstlicher Kurvenfall reproduziert einen Projektionsfehler; an der gespeicherten Mautgeometrie war er zu klein, um den Vorfall allein zu erklären. Eine vollständige Mautfahrt bleibt deshalb erforderlich.
+35 vollständige lokale Prüfungen und 27 unabhängige Logikprüfungen bestehen. Die fehlende Spurerkennung an der konkret gemeldeten Ausfahrt ist **noch nicht im Fahrtest bestätigt behoben**. Die gespeicherten Daten enthalten deren Anschlussstraßen nicht. Ein künstlicher Kurvenfall reproduziert einen Projektionsfehler; an der gespeicherten Mautgeometrie war er zu klein, um den Vorfall allein zu erklären. Eine vollständige Mautfahrt bleibt deshalb erforderlich.
 
 **Version 0.2.7 fordert bei einem erkannten Trackingfehler starkes Bremsen an und schaltet die Lenkassistenz aus.** Die Bremsanforderung läuft unabhängig vom ACC weiter. Sie bleibt bis zur manuellen Übernahme mit F9 aktiv; dabei selbst die Bremse halten. Eine wiedergefundene Route oder F8 lösen die Bremsung nicht. Nach der Übernahme muss im Stand neu vorbereitet werden. Ohne eingeschaltetes, vorbereitetes Plugin wirkt diese Überwachung nicht.
 
@@ -44,8 +44,8 @@ Geprüfte lokale Kombination:
 
 | Komponente | Version |
 | --- | --- |
-| ETS2LA | 2026.10.5231 |
-| Adaptive Cruise Control | 2.1.0 |
+| ETS2LA | 2026.11.5251 |
+| Adaptive Cruise Control | 2.1.1 |
 | PathLib | 1.2.8 |
 | PIDLib | 1.0.4 |
 | .NET SDK | 10.0 |
@@ -68,6 +68,8 @@ dotnet build Plugin/MautAssistent.csproj -c Release
 Das Ergebnis liegt unter `Plugin/bin/Release/net10.0/MautAssistent.dll`.
 
 ## Installation und Bedienung
+
+ETS2LA-Updates können den kompletten Anwendungsordner einschließlich manuell installierter Plugins ersetzen. Bewahre die gebaute DLL außerhalb dieses Ordners auf und prüfe nach einem Update die Bibliotheksversionen, bevor du sie bei geschlossenem ETS2LA wieder installierst. Ab 0.2.9 liegen die Maut-Einstellungen dauerhaft unter `%LOCALAPPDATA%\ETS2LA-Mautassistent\settings.json`. Vorhandene gültige Einstellungen aus dem früheren Ordner `MautAssistent` werden einmalig übernommen; bereits gelöschte Dateien lassen sich dadurch nicht zurückholen.
 
 1. Lkw sicher abstellen, Fahrassistenz ausschalten und ETS2LA schließen. Eine vorhandene Version von `MautAssistent.dll` sichern.
 2. Die gebaute DLL in den Ordner `Plugins` der ETS2LA-Installation kopieren und ETS2LA neu starten. Keine andere Kopie desselben Plugins parallel installieren.

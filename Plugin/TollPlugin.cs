@@ -19,7 +19,7 @@ public sealed class TollPlugin : Plugin
 {
     public static TollPlugin? Current { get; private set; }
     public override PluginInformation Info => new() {
-        Id = "local.mautassistent", Name = "Mautassistent", Version = "0.2.8",
+        Id = "local.mautassistent", Name = "Mautassistent", Version = "0.2.9",
         Description = "Langsame Mautdurchfahrt und Wartezeit nach Schrankenöffnung. Startet immer nur beobachtend.",
         AuthorName = "Lokale Anpassung", Dependencies = ["tumppi066.pathlib"],
         PluginPageButtonName = "Einstellungen"
@@ -32,7 +32,7 @@ public sealed class TollPlugin : Plugin
     readonly PassageMemory passage=new();
     string lastPathError="";
     object? routeTransition;
-    readonly PreferenceStore preferences = new(Path.Combine(AppContext.BaseDirectory,"MautAssistent","settings.json"));
+    readonly PreferenceStore preferences = new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"ETS2LA-Mautassistent","settings.json"));
     readonly TollRouter router;
     readonly Func<ApplicationState> readState;
     readonly Action<string,string> notify;
@@ -107,7 +107,10 @@ public sealed class TollPlugin : Plugin
 
     public override void Init() {
         Current = this;
-        try {preferences.Load(); options=preferences.Options;controller=new(options);}
+        try {
+            preferences.MigrateFrom(Path.Combine(AppContext.BaseDirectory,"MautAssistent","settings.json"));
+            preferences.Load(); options=preferences.Options;controller=new(options);
+        }
         catch(Exception ex) {Logger.Warn("Maut-Einstellungen konnten nicht geladen werden: "+ex.Message);}
     }
     public override void OnEnable()
@@ -282,7 +285,7 @@ public sealed class TollPlugin : Plugin
             if (!SensorsFresh(clock.Elapsed.TotalSeconds) || clock.Elapsed.TotalSeconds-pathAt >= 1) return "Es fehlen frische Spiel-, Routen- oder Schrankendaten.";
             if (Math.Abs(speed) > .1 || State.EnableAssists) return "Aktivieren ist nur im Stand mit ausgeschalteter Fahrassistenz möglich.";
             var acc = FindAcc();
-            if (acc == null) return "Adaptive Cruise Control 2.1.0 muss eingeschaltet sein.";
+            if (acc == null) return "Eine geprüfte Adaptive-Cruise-Control-Version (2.1.0 oder 2.1.1) muss eingeschaltet sein.";
             try { bridge.Attach(acc, Evaluate, () => Status); }
             catch(Exception ex) { return "ACC-Verbindung fehlgeschlagen: " + ex.Message; }
             if (bridge.Constraint == null) return "ACC wird noch initialisiert. Bitte erneut versuchen.";
@@ -293,7 +296,7 @@ public sealed class TollPlugin : Plugin
         }
     }
     static IPlugin? FindAcc() => PluginBackend.Current?.PluginHandler?.LoadedPlugins.FirstOrDefault(p =>
-        p.Info.Id == "tumppi066.adaptivecruisecontrol" && p.Info.Version == "2.1.0" && p._IsRunning);
+        p.Info.Id == "tumppi066.adaptivecruisecontrol" && AccBridge.SupportsVersion(p.Info.Version) && p._IsRunning);
 
     void Disarm(string reason)
     {
@@ -397,7 +400,7 @@ public sealed class TollPlugin : Plugin
                     Directory.CreateDirectory(Path.GetDirectoryName(DiagnosticPath)!);
                     if (sdk && lastMapWrite < 0) { lastMapWrite=now; try { MapDiagnostics.Write(position,Path.GetDirectoryName(DiagnosticPath)!); } catch(Exception ex) { Logger.Warn("Maut-Kartenprüfung: " + ex.Message); } }
                     File.WriteAllText(DiagnosticPath, JsonSerializer.Serialize(new {
-                        version="0.2.8", utc=DateTimeOffset.UtcNow, active, fresh=Fresh(now), speedKph=speed*3.6,
+                        version="0.2.9", utc=DateTimeOffset.UtcNow, active, fresh=Fresh(now), speedKph=speed*3.6,
                         startBlocked=!active&&!preview,preparationReason,selectedLane=router.SelectedGate,plaza=router.CurrentKey,
                         faultBraking=faultBrake.Latched,headingTurns,
                         pendingRouteGap=safetyTrace?.EndReason,

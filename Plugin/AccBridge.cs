@@ -5,12 +5,13 @@ using System.Reflection.Emit;
 namespace MautAssistent;
 
 /// <summary>
-/// ACC 2.1.0 compatibility adapter. Plugin assemblies have isolated load contexts,
+/// ACC 2.1.0 / 2.1.1 compatibility adapter. Plugin assemblies have isolated load contexts,
 /// so the small subclass must derive from the *loaded* ACC constraint type.
 /// No patches to DLLs, private fields, output channels or desired speed.
 /// </summary>
 public sealed class AccBridge
 {
+    public static bool SupportsVersion(string? version) => version is "2.1.0" or "2.1.1";
     public const string ConstraintName = "Mautassistent (experimentell)";
     public object? Constraint { get; private set; }
     object? owner;

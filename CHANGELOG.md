@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.2.9 – Wiederherstellung nach ETS2LA-Update
+
+- Mit ETS2LA 2026.11.5251 und ACC 2.1.1 neu gebaut und geprüft. ACC 2.1.1 wird nach Prüfung der Begrenzungs- und Pedalschnittstelle ausdrücklich unterstützt; andere ungeprüfte Versionen bleiben ausgeschlossen.
+- Das Update hatte die Plugin-Verzeichnisse im Installationsordner neu erstellt. Der Mautassistent muss nach solchen Updates aus einer externen Sicherung wieder installiert werden. Die Standardmodule und Bibliotheken werden separat über ETS2LA installiert.
+- Einstellungen liegen künftig unter `%LOCALAPPDATA%\ETS2LA-Mautassistent\settings.json`, außerhalb des ersetzten Anwendungsordners. Vorhandene gültige Einstellungen am alten Ort werden einmalig kopiert. Bestehende Einstellungen am neuen Ort werden niemals durch die alte Kopie überschrieben.
+- Keine rekonstruierten oder ungeprüften Mautspurfreigaben. Falls ein Update die alte Einstellungsdatei bereits gelöscht hat, können daraus keine Freigaben wiederhergestellt werden.
+- 35 vollständige lokale Prüfungen gegen die neue Installation und 27 unabhängige Logikprüfungen bestehen. Die Ausgabeimplementierung der neuen ETS2LA-Version wurde mit dem zuvor geprüften Stand verglichen; F9- und Bremswirkung im aktualisierten laufenden Spiel müssen noch bestätigt werden.
+
 ## 0.2.8 – entfernte Planungslücken gezielt behandeln
 
 - Behebt eine überstrenge Prüfung der gesamten geplanten Strecke: Bei sauberer aktueller Spur können entfernte, noch nicht verbundene Routenabschnitte zunächst offen bleiben. Anlass war ein Stopp bei 52,8 km/h mit nur 1,5 cm aktuellem Spurabstand aufgrund eines späteren 4,5-m-Übergangs. Dessen genaue Entfernung war in der alten Diagnose nicht enthalten.

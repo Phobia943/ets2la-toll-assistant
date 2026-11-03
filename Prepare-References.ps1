@@ -5,11 +5,11 @@ $referenceDir = Join-Path $PSScriptRoot 'References'
 $required = @(
     @{ Relative='Libraries\tumppi066.pathlib\PathLib.dll'; Hash='156EA9783D61758031F89561F8B1F793331CEE3625673C5BB16F45B2A0F6E7B7' },
     @{ Relative='Libraries\tumppi066.pidlib\PIDLib.dll'; Hash='06BBA8430B2D6F3A88E2DCCC203EF19091604DAC11B46A58364B906F57604187' },
-    @{ Relative='Plugins\tumppi066.adaptivecruisecontrol\AdaptiveCruiseControl.dll'; Hash='A2C6DE279A2881AFDA40E5F4C336AEB7068E8F04ACD069DA06F6C36FAB4818B4' }
+    @{ Relative='Plugins\tumppi066.adaptivecruisecontrol\AdaptiveCruiseControl.dll'; Hash=@('A2C6DE279A2881AFDA40E5F4C336AEB7068E8F04ACD069DA06F6C36FAB4818B4','52DE460350B224918AD86792FE60B9631BF43CB64159E1516EEF5046F6CBD282') }
 )
 foreach ($dependency in $required) {
     $sourceFile = Join-Path $EtsRoot $dependency.Relative
-    if ((Get-FileHash -LiteralPath $sourceFile -Algorithm SHA256).Hash -ne $dependency.Hash) {
+    if ((Get-FileHash -LiteralPath $sourceFile -Algorithm SHA256).Hash -notin @($dependency.Hash)) {
         throw "Andere Plugin-Version: $sourceFile. Kompatibilitaet zuerst pruefen."
     }
 }
