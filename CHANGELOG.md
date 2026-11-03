@@ -6,7 +6,7 @@
 - Die Vorbereitung schaltet keine Fahrassistenz ein und erzeugt keine Fahrzeugausgabe. Erst F8 startet die Fahrt. Bekannte Routenfehler, pausierte oder veraltete Daten, Fahrt und eine aktive Fehlerbremsung verhindern die automatische Vorbereitung.
 - Ein Fehler unterbricht auch die automatische Vorbereitung. F9 bleibt zur ausdrücklichen manuellen Übernahme und zum Lösen der Fehlerbremsung erforderlich. Nach F9 und erneutem Stillstand erfolgt die Vorbereitung ohne zusätzlichen Klick. Normales Ausschalten mit F9 behält eine bestehende Vorbereitung bei.
 - „Nur beobachten“ pausiert die Automatik ausdrücklich; F9 gibt sie wieder frei. Die Routenprobe bleibt von automatischer Vorbereitung getrennt, solange sie läuft. Oberfläche und Status erklären Bereitschaft bzw. fehlende Voraussetzungen.
-- 39 vollständige lokale Prüfungen und 30 unabhängige Logikprüfungen bestehen. Neue Tests prüfen Zeitfenster, Wiederholrate, Start ohne Gas/Lenkung, reale ACC-Anbindung ohne doppelte Begrenzung, verspätete Initialisierung, alte Daten, Pause, Fahrt, Fehlerbremsung und F9. Die neue Startfolge ist noch in der laufenden Anwendung zu bestätigen.
+- 39 vollständige lokale Prüfungen und 30 unabhängige Logikprüfungen bestehen. Neue Tests prüfen Zeitfenster, Wiederholrate, Start ohne Gas/Lenkung, reale ACC-Anbindung ohne doppelte Begrenzung, verspätete Initialisierung, alte Daten, Pause, Fahrt, Fehlerbremsung und F9. Die neue Startfolge wurde danach in der laufenden Anwendung bestätigt: Während des Rollens blieb F8 gesperrt; nach dem Anhalten erfolgte die Vorbereitung ohne Schaltflächenklick. Die Fahrassistenz blieb aus.
 
 ## 0.2.9 – Wiederherstellung nach ETS2LA-Update
 
