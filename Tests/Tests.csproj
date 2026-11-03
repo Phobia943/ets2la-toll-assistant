@@ -3,6 +3,7 @@
  <ItemGroup><ProjectReference Include="..\Plugin\MautAssistent.csproj" /></ItemGroup>
  <ItemGroup>
   <Reference Include="$(EtsRoot)\ETS2LA.State.dll" Private="false" />
+  <Reference Include="$(EtsRoot)\ETS2LA.Controls.dll" Private="false" />
   <Reference Include="$(EtsRoot)\ETS2LA.Shared.dll" Private="false" />
   <Reference Include="$(EtsRoot)\ETS2LA.Game.dll" Private="false" />
   <Reference Include="$(EtsRoot)\TruckLib.dll" Private="false" />

@@ -31,6 +31,7 @@ public static class PreparationIntegration
         state.EnableAssists=true;
         Call(plugin,"Disarm","Test: Routenplanung fehlgeschlagen");
         assert(!plugin.Active&&!state.EnableAssists,"Fault must hand back control");
+        plugin.SetActive(false); // Explicit manual takeover releases the fault brake.
         foreach(var mode in Enum.GetValues<DrivingMode>()) {
             state.DrivingMode=mode;
             state.EnableAssists=true;

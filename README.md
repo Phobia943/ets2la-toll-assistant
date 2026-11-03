@@ -13,21 +13,26 @@ Die Erweiterung ergänzt Pathfinding, Lane Assist und Adaptive Cruise Control. S
 - Speicherung der Spur und Zahlart pro Mautanlage, Einfahrt und Ausfahrt.
 - Start im Beobachtungsmodus; aktive Begrenzung muss im Stand vorbereitet werden.
 - Startversuche ohne Vorbereitung werden bei eingeschaltetem Plugin zurückgewiesen, auch nach einer Störung. F9 bleibt für die manuelle Übernahme verfügbar.
-- Rückgabe der Steuerung beim Ausschalten der Assistenz oder bei ungültigen Daten.
+- Fehlerbremsung bei Trackingverlust; Gegenrichtungsprüfung während der Lenkassistenz, auch außerhalb von Mautstellen.
+- F9 gibt die Steuerung zurück und löst eine aktive Fehlerbremsung ausdrücklich zur manuellen Übernahme.
 
 Die Erweiterung erkennt Höhenfreiheit und Zahlart **nicht automatisch**. Eine offene Schranke oder die Kartenkennzeichnung „AllVehicles“ reicht dafür nicht aus. Ohne bestätigte automatische Lkw-Spur endet die Assistenz mit einem Übernahmehinweis. Manuelle Zahlstellen müssen selbst angefahren und bedient werden. Es werden keine Zahlungstasten gedrückt oder Gebühren verändert.
 
 ## Entwicklungsstand
 
-Quellstand **0.2.6 in Erprobung**. Anfahrt, Spurwahl, langsame Durchfahrt und Rückgabe an den Controller wurden mit einer früheren Version an einer ausgewählten Mautstelle praktisch geprüft. Die normale Straßenlenkung wurde mit 0.2.3 nach einem Neustart ebenfalls erfolgreich geprüft. Version 0.2.4 isolierte die Routenmessung vom veränderlichen Spurwechselzustand der Lenkroute.
+Quellstand **0.2.7 in Erprobung**. Anfahrt, Spurwahl, langsame Durchfahrt und Rückgabe an den Controller wurden mit einer früheren Version an einer ausgewählten Mautstelle praktisch geprüft. Die normale Straßenlenkung wurde mit 0.2.3 nach einem Neustart ebenfalls erfolgreich geprüft. Version 0.2.4 isolierte die Routenmessung vom veränderlichen Spurwechselzustand der Lenkroute.
 
 Bei der weiteren Fahrt mit 0.2.4 trat ein nativer Routenfehler auf. Danach konnte F8 die Fahrassistenz ohne aktive Mautbegrenzung erneut starten; eine zu niedrige Spur wurde gemeldet. Version 0.2.5 verlangt bei eingeschaltetem Mautassistenten eine erfolgreiche Vorbereitung, bevor Fahrassistenz eingeschaltet bleiben darf. Nach einer Störung zuerst manuell übernehmen und im Stand erneut vorbereiten. Ein normaler Stopp mit F9 löscht die Vorbereitung nicht. Die Rückweisung wird in Daten-Callbacks und im Plugin-Tick geprüft; sie ist keine atomare Sperre sämtlicher Ausgabethreads des Hostprogramms. Bei deaktiviertem Plugin kann diese Prüfung nicht wirken. Die Korrektur ist automatisiert geprüft, eine erneute vollständige Mautfahrt steht aus.
 
 **Version 0.2.6 korrigiert die Übergabe an die Anschluss-Spur hinter dem Mauttor.** Die bestätigte Mautspur wird mit einer eindeutig anschließenden Spur derselben Straßenseite verbunden; die Korrektur erreicht auch die intern weiterverwendete Hostroute. Zusätzlich wird die native Positionsprojektion auf gekrümmten Mautspuren genauer. Knoten, Richtung und Geometrie müssen übereinstimmen; eine fehlende Anschlussstraße wird nicht ersetzt. Bei unklarer oder verspäteter Übergabe ist manuelle Übernahme erforderlich.
 
-29 lokale Prüfungen bestehen. Die fehlende Spurerkennung an der konkret gemeldeten Ausfahrt ist **noch nicht im Fahrtest bestätigt behoben**. Die gespeicherten Daten enthalten deren Anschlussstraßen nicht. Ein künstlicher Kurvenfall reproduziert einen Projektionsfehler; an der gespeicherten Mautgeometrie war er zu klein, um den Vorfall allein zu erklären. Eine vollständige Mautfahrt bleibt deshalb erforderlich.
+32 vollständige lokale Prüfungen und 25 unabhängige Logikprüfungen bestehen. Die fehlende Spurerkennung an der konkret gemeldeten Ausfahrt ist **noch nicht im Fahrtest bestätigt behoben**. Die gespeicherten Daten enthalten deren Anschlussstraßen nicht. Ein künstlicher Kurvenfall reproduziert einen Projektionsfehler; an der gespeicherten Mautgeometrie war er zu klein, um den Vorfall allein zu erklären. Eine vollständige Mautfahrt bleibt deshalb erforderlich.
 
-Der Halteabstand von 8 m bezieht sich auf den Telemetriepunkt des Lkw, nicht auf die Stoßstange. Er ist kein geprüfter Haltepunkt für manuelles Bezahlen. Gefälle, unterschiedliche Fahrzeuge und Beladungen sind nicht umfassend validiert. Bei Datenverlust bedeutet die Abschaltung manuelle Übernahme, keine garantierte Bremsung bis zum Stillstand.
+**Version 0.2.7 fordert bei einem erkannten Trackingfehler starkes Bremsen an und schaltet die Lenkassistenz aus.** Die Bremsanforderung läuft unabhängig vom ACC weiter. Sie bleibt bis zur manuellen Übernahme mit F9 aktiv; dabei selbst die Bremse halten. Eine wiedergefundene Route oder F8 lösen die Bremsung nicht. Nach der Übernahme muss im Stand neu vorbereitet werden. Ohne eingeschaltetes, vorbereitetes Plugin wirkt diese Überwachung nicht.
+
+Gemeldete Routenfehler werden direkt beim Empfang behandelt. Der Watchdog reagiert auf mindestens 0,5 s alte Telemetrie bzw. mindestens 1 s alte zuvor verfolgte Routen. Beim Erststart sind bis zu 2 s für die Routenberechnung vorgesehen. Bei Lenkassistenz werden ein Spurabstand über 3 m, mehr als 90° entgegen der lokalen Fahrtrichtung, Rückwärtsfahrt sowie eine gegenläufig neu berechnete Route abgefangen. Die Prüfung ist keine allgemeine Erkennung aller Verkehrszeichen oder Fahrbahnverbote.
+
+Der Halteabstand von 8 m bezieht sich auf den Telemetriepunkt des Lkw, nicht auf die Stoßstange. Er ist kein geprüfter Haltepunkt für manuelles Bezahlen. Gefälle, unterschiedliche Fahrzeuge und Beladungen sind nicht umfassend validiert. Die Fehlerbremsung und der tatsächliche Bremsweg sind noch nicht praktisch geprüft; eine ausgefallene App oder Spielanbindung kann keine verlässliche Bremsausgabe garantieren.
 
 ## Voraussetzungen
 
@@ -76,14 +81,14 @@ Die Tasten werden in ETS2LA unter **Settings → Controls** zugeordnet; das Plug
 | Taste | ETS2LA-Zuordnung | Verhalten |
 | --- | --- | --- |
 | F8 | Increase/RES | Assistenz einschalten / Tempo erhöhen |
-| F9 | Cancel/MODE | Aktive Assistenz ausschalten; im ausgeschalteten Zustand Modus wechseln |
+| F9 | Cancel/MODE | Assistenz ausschalten / Fehlerbremsung zur manuellen Übernahme lösen; im ausgeschalteten Zustand außerdem Modus wechseln |
 | F10 | Decrease/SET | Tempo verringern / setzen |
 | F11 | Next/OK | Weiter / bestätigen |
 | F12 | frei | Keine Belegung erforderlich |
 
 Zuerst im Stand prüfen, ob F9 die Steuerung zuverlässig an den Controller zurückgibt. Ein Overlay ist nicht erforderlich.
 
-„Nur beobachten“ schaltet die Fahrassistenz aus. F8 ist danach erst nach erneuter Vorbereitung möglich. Für eine reine Routenprobe bleibt die separate Schaltfläche verfügbar; dabei müssen die Ausgabemodule ausgeschaltet sein.
+„Manuell übernehmen / Fehlerbremsung lösen“ schaltet die Fahrassistenz aus und löst die Fehlerbremsung. F8 ist danach erst nach erneuter Vorbereitung möglich. Für eine reine Routenprobe bleibt die separate Schaltfläche verfügbar; dabei müssen die Ausgabemodule ausgeschaltet sein.
 
 ## Tests
 

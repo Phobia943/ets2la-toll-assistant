@@ -27,4 +27,13 @@ public sealed class RouteTrace
         }
         return new(along,Math.Sqrt(best));
     }
+    public Vector3 DirectionAt(double along)
+    {
+        for(int i=1;i<points.Length;i++) {
+            var delta=points[i]-points[i-1];delta.Y=0;
+            if(delta.LengthSquared()<.000001f)continue;
+            if(distances[i]>=along || i==points.Length-1)return Vector3.Normalize(delta);
+        }
+        return Vector3.Zero;
+    }
 }

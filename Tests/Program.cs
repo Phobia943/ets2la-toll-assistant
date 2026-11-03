@@ -24,12 +24,32 @@ void Run()
     void Check(string name, Action test) { try {test(); results.Add("PASS "+name);} catch(Exception ex) {results.Add("FAIL "+name+": "+ex); } }
     void Assert(bool v,string message="Assertion failed") {if(!v)throw new Exception(message);}
     #if INTEGRATION
+    Check("Tracking faults brake independently of ACC; F9 releases and F8 cannot restart",()=>FaultBrakeIntegration.Run(Assert));
     Check("Toll exit hands over to the connected road lane, not merely a target lane",()=>ExitHandoffIntegration.Run(Assert));
     Check("Curved toll exit remains tracked by the native path projection",()=>ExitProjectionIntegration.Run(Assert));
     Check("Unprepared or faulted F8 cannot silently resume through tick, route, telemetry or ACC",()=>PreparationIntegration.Run(Assert));
     Check("Route measurements isolate PathLib lane-change mutations from native planning",()=>SnapshotIntegration.Run(Assert));
     Check("Synthetic prefab integration: route, right-to-left lanes, tracking, persistence, unknown plaza guard",()=>RouteIntegration.Run(Assert));
     #endif
+    Check("Tracking guard rejects opposite headings and reversed replacement routes",()=>{
+        var north=new RouteTrace(new System.Numerics.Vector3[]{new(0,0,20),new(0,0,-100)});
+        var south=new RouteTrace(new System.Numerics.Vector3[]{new(0,0,-100),new(0,0,20)});
+        var guard=new TrackingGuard();
+        Assert(guard.Check(north,System.Numerics.Vector3.Zero,0,10)==null);
+        Assert(guard.Check(north,System.Numerics.Vector3.Zero,.5,10)!=null,"Opposite heading must not be folded onto same road axis");
+        Assert(guard.Check(south,System.Numerics.Vector3.Zero,.5,10)!=null,"A replan must not silently reverse accepted travel direction");
+        guard.Reset();Assert(guard.Check(south,System.Numerics.Vector3.Zero,.5,10)==null,"Manual takeover may start a new journey");
+        Assert(guard.Check(south,new(4,0,0),.5,10)!=null,"Lost lateral tracking must stop even with no gate nearby");
+        Assert(guard.Check(south,System.Numerics.Vector3.Zero,.5,-2)!=null,"Reverse gear must not drive under autopilot");
+        Assert(guard.Check(south,System.Numerics.Vector3.Zero,double.NaN,10)!=null);
+    });
+    Check("Tracking direction follows bends instead of comparing only with initial compass heading",()=>{
+        var route=new RouteTrace(new System.Numerics.Vector3[]{new(0,0,20),new(0,0,0),new(20,0,0),new(20,0,20)});
+        var guard=new TrackingGuard();
+        Assert(guard.Check(route,new(0,0,10),0,5)==null);
+        Assert(guard.Check(route,new(10,0,0),.75,5)==null);
+        Assert(guard.Check(route,new(20,0,10),.5,5)==null);
+    });
     Check("Automatic payment preference excludes manual, unknown and unreachable lanes",()=>{
         var payment=new Dictionary<string,TollPayment>{[PaymentPolicy.Key("R",4)]=TollPayment.Manual,
             [PaymentPolicy.Key("R",12)]=TollPayment.Automatic};

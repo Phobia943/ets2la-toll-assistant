@@ -1,5 +1,14 @@
 # Änderungen
 
+## 0.2.7 – Fehlerbremsung und Richtungsprüfung, Fahrtest ausstehend
+
+- Routenfehler während eingeschalteter, vorbereiteter Assistenz fordern unmittelbar im Routen-Callback starkes Bremsen an und schalten die Lenkassistenz aus. Ein eigener Pedalkanal bleibt auch bei ausgeschaltetem ACC wirksam. Zuvor endete mit dem Ausschalten der Assistenz auch die ACC-Bremsausgabe.
+- Bremsanforderung bleibt bis F9 oder ausdrücklicher manueller Übernahme bestehen, auch bei wieder verfügbarer Route und im Stand. F8 löst die Bremse nicht und kann ohne erneute Vorbereitung keine Fahrt fortsetzen.
+- Überwachung im Tick, Telemetrie-Callback und ACC-Aufruf: fehlende Telemetrie ab 0,5 s; verlorene zuvor verfolgte Route ab 1 s. Beim Erststart bleiben bis zu 2 s für den Aufbau einer Route. Gemeldete Routenfehler warten diese Fristen nicht ab.
+- Prüft den Abstand zur Route und bei Lenkassistenz die gerichtete lokale Fahrspur statt einer um 180° gefalteten Straßenachse. Gegenläufige Lkw-Ausrichtung, Rückwärtsfahrt und die Umkehr einer zuvor akzeptierten Route führen zur Fehlerbremsung, auch außerhalb einer Mautstelle.
+- Eigener Ausgabekanal mit Gewicht 100 und 0,2-s-Ablauffrist. Bremsen erfolgt über die vorhandene öffentliche Ausgabe-API. Eine ausdrückliche neutrale Lenkausgabe verhindert, dass nach Ablauf des abgeschalteten Lane-Assist-Kanals dessen letzter Lenkwert im Ausgabespeicher stehen bleibt. F9, manuelle Übernahme und Plugin-Abschaltung senden neutrale Pedale und Lenkung; bloßes Ablaufen eines Kanals genügt nicht in jeder Ausgabekonfiguration.
+- 32 vollständige lokale Prüfungen und 25 unabhängige Logikprüfungen bestanden. Tests nutzen isolierten Hostzustand und die installierte Kanalschnittstelle ohne Fahrzeugausgabe. Tatsächlicher Bremsweg, Ausgabeverbindung und der konkrete Vorfall sind noch nicht im Fahrtest bestätigt. Keine garantierte Notbremsfunktion bei ausgefallener App oder Spielanbindung.
+
 ## 0.2.6 – Ausfahrtkorrektur, Fahrtest ausstehend
 
 - Verbindet die bestätigte Mautspur mit der geometrisch anschließenden Spur der bereits geplanten Straße. Ein korrekter Zielspurindex allein genügt nicht, wenn die Straße noch auf einer anderen Eingangsspur beginnt.
