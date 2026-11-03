@@ -1,5 +1,14 @@
 # Änderungen
 
+## 0.2.6 – Ausfahrtkorrektur, Fahrtest ausstehend
+
+- Verbindet die bestätigte Mautspur mit der geometrisch anschließenden Spur der bereits geplanten Straße. Ein korrekter Zielspurindex allein genügt nicht, wenn die Straße noch auf einer anderen Eingangsspur beginnt.
+- Prüft gemeinsamen Routenknoten, Fahrtrichtung, Abstand und Eindeutigkeit. Kein Wechsel auf die Gegenseite, keine erfundene Anschlussstraße und keine nachträgliche Korrektur, wenn der Lkw bereits auf der anderen Spur fährt. Unklare Übergaben führen zur manuellen Übernahme.
+- Ändert den von Pathfinding intern weiterverwendeten Planungseintrag und setzt dessen Spurwechselzustand über die öffentliche PathLib-Schnittstelle zurück. Die zugrunde liegenden Kartendaten bleiben unverändert.
+- Unterteilt ausgewählte Mautkurven für die native Positionsprojektion. Ein synthetischer Kurvenfall erzeugte zuvor mehr als 2,2 m scheinbare Abweichung trotz korrekter Position. Die gespeicherte Mautgeometrie zeigte diesen starken Fehler nicht; dies ist kein Nachweis der Ursache des gemeldeten Vorfalls.
+- Exakte Segmentlängensummen vermeiden Rundungslücken an den Kurvenendpunkten. Rückwärts durchlaufene einzelne Straßen werden auch in der Diagnose korrekt abgetastet.
+- 29 lokale Prüfungen bestehen, darunter Anschluss-Spuren in beiden Richtungen, einzelne und gruppierte Straßen, native Folgeabfragen, Gegenfahrbahn-Ausschluss und mehrdeutige Übergänge. Fahrtest auf Wunsch verschoben; die betroffene Ausfahrt ist noch nicht praktisch bestätigt.
+
 ## 0.2.5 – in Erprobung
 
 - Schließt den Wiederanlauf ohne Mautbegrenzung nach einer Störung: Bei eingeschaltetem Plugin werden Startversuche ohne erfolgreiche Vorbereitung zurückgewiesen und erklärt.

@@ -26,6 +26,7 @@ public sealed class TollRouter
         foreach(var item in data.PlannedPath) {
             var p=item.prefabPath;
             if(p==null)continue;
+            p=PrefabRefinement.OriginalFor(p);
             var routeGates=p.GetSemaphores().Where(s=>sdkGates.Any(g=>g.type==ETS2LA.Game.SDK.SemaphoreType.GATE &&
                 g.id==s.Semaphore.SemaphoreId && Vector3.Distance(g.GetWorldCoordinates(),s.GetWorldOrientedPoint().Position)<1)).ToArray();
             if(routeGates.Length==0)continue;
@@ -71,6 +72,7 @@ public sealed class TollRouter
 
     public static PrefabPath? ViaGate(PrefabPath source,int gate)
     {
+        source=PrefabRefinement.OriginalFor(source);
         var all=source.Prefab.Descriptor?.NavCurves;
         if(all==null || source.Curves.Count==0)return null;
         var graph=all.Select((c,i)=>new CurveLink(i,c.NextLines.ToArray(),c.Length,
@@ -80,14 +82,15 @@ public sealed class TollRouter
         if(ids==null)return null;
         var result=(PrefabPath)clone.Invoke(source,null)!;
         result.Curves=ids.Select(i=>all[i]).ToList();result.Length=result.Curves.Sum(c=>c.Length);
-        return result;
+        return PrefabRefinement.Refine(result);
     }
     public bool Apply(PlannedPathData data,Vector3 truck,out string? error)
     {
         error=null;
         if(data.HasError)return false;
-        foreach(var item in data.PlannedPath)
+        for(int itemIndex=0;itemIndex<data.PlannedPath.Count;itemIndex++)
         {
+            var item=data.PlannedPath[itemIndex];
             var current=item.prefabPath;
             if(current==null || Key(current)!=CurrentKey)continue;
             if(!SelectedGate.HasValue) {error="Keine bestätigte automatische Lkw-Mautspur. Bitte selbst lenken und bis zur Zahlungsaufforderung fahren; die Assistenz nutzt hier keinen pauschalen 8-m-Zahlhaltepunkt.";return false;}
@@ -114,6 +117,7 @@ public sealed class TollRouter
                 item.otherPrefabPaths=[replacement];
                 item.allowedToLaneChange=false;
             }
+            if(!ExitHandoff.Align(data,itemIndex,truck,out error))return false;
             Status="Bestätigte Lkw-Spur: "+Choices.FirstOrDefault(c=>c.GateId==SelectedGate)?.Label;
         }
         return true;

@@ -8,6 +8,7 @@
   <Reference Include="$(EtsRoot)\TruckLib.dll" Private="false" />
   <Reference Include="$(EtsRoot)\TruckLib.Core.dll" Private="false" />
   <Reference Include="$(EtsRoot)\TruckLib.Models.dll" Private="false" />
+  <Reference Include="$(EtsRoot)\RBush.dll" Private="false" />
   <Reference Include="PathLib"><HintPath>..\References\PathLib.dll</HintPath><Private>false</Private></Reference>
  </ItemGroup>
 </Project>

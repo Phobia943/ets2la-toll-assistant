@@ -89,7 +89,7 @@ public static class RouteMatcher
             int count=Math.Clamp((int)Math.Ceiling(item.GetLength()),2,6000);
             for(int i=0;i<=count;i++) {
                 float t=Math.Clamp((float)i/count,.00001f,.99999f);
-                if(item.item is ETS2LA.Game.Data.ParsedRoadList && item.direction==ETS2LA.Game.Data.Direction.Backward)t=1-t;
+                if(item.item is ETS2LA.Game.Data.ParsedRoadList or ETS2LA.Game.Data.ParsedRoad && item.direction==ETS2LA.Game.Data.Direction.Backward)t=1-t;
                 var point=item.Interpolate(t,0,false);
                 if(!point.HasValue)throw new InvalidOperationException("Routenlücke bei der Maut-Anfahrt");
                 if(i==0 && points.Count>0 && Vector3.Distance(points[^1],point.Value.Position)>2) {
