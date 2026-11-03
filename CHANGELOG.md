@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.2.10 – automatische Vorbereitung im Stand
+
+- Nach dem Einschalten bereitet sich der Mautassistent automatisch vor, sobald der Lkw mindestens eine Sekunde durchgehend steht, die Fahrassistenz ausgeschaltet ist und frische Spiel-, Schranken- und Pathfinding-Daten ankommen. Die bereits vorhandene Prüfung der ACC-Version und ihrer drei nativen Begrenzungen bleibt erhalten. Fehlende oder noch initialisierende Module werden mit begrenzter Wiederholrate erneut geprüft.
+- Die Vorbereitung schaltet keine Fahrassistenz ein und erzeugt keine Fahrzeugausgabe. Erst F8 startet die Fahrt. Bekannte Routenfehler, pausierte oder veraltete Daten, Fahrt und eine aktive Fehlerbremsung verhindern die automatische Vorbereitung.
+- Ein Fehler unterbricht auch die automatische Vorbereitung. F9 bleibt zur ausdrücklichen manuellen Übernahme und zum Lösen der Fehlerbremsung erforderlich. Nach F9 und erneutem Stillstand erfolgt die Vorbereitung ohne zusätzlichen Klick. Normales Ausschalten mit F9 behält eine bestehende Vorbereitung bei.
+- „Nur beobachten“ pausiert die Automatik ausdrücklich; F9 gibt sie wieder frei. Die Routenprobe bleibt von automatischer Vorbereitung getrennt, solange sie läuft. Oberfläche und Status erklären Bereitschaft bzw. fehlende Voraussetzungen.
+- 39 vollständige lokale Prüfungen und 30 unabhängige Logikprüfungen bestehen. Neue Tests prüfen Zeitfenster, Wiederholrate, Start ohne Gas/Lenkung, reale ACC-Anbindung ohne doppelte Begrenzung, verspätete Initialisierung, alte Daten, Pause, Fahrt, Fehlerbremsung und F9. Die neue Startfolge ist noch in der laufenden Anwendung zu bestätigen.
+
 ## 0.2.9 – Wiederherstellung nach ETS2LA-Update
 
 - Mit ETS2LA 2026.11.5251 und ACC 2.1.1 neu gebaut und geprüft. ACC 2.1.1 wird nach Prüfung der Begrenzungs- und Pedalschnittstelle ausdrücklich unterstützt; andere ungeprüfte Versionen bleiben ausgeschlossen.

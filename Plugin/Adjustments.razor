@@ -27,18 +27,18 @@
     }
     <p>Bevorzugt bestätigte Lkw-Spuren mit automatischer Abrechnung. Ohne bestätigte automatische Spur endet die Fahrassistenz mit Hinweiston. Dann selbst bis zur Zahlungsaufforderung fahren. Die Zuordnung gilt nur für diese Mautanlage und Fahrtrichtung.</p>
     <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="Preview">Route im Stand prüfen (ohne Gas und Lenkung)</button>
-    <p>Startet ausgeschaltet. Im Stand vorbereiten, dann F8 zum Fahren und F9 zur manuellen Übernahme. Spurwahl und Halteabstand müssen für die jeweilige Mautstelle und den Lkw geprüft werden.</p>
+    <p>Bereitet sich im Stand automatisch vor, sobald Spiel, Pathfinding und Tempomat bereit sind. Die Fahrt startet erst mit F8; F9 gibt die Steuerung zurück. Spurwahl und Halteabstand müssen für die jeweilige Mautstelle und den Lkw geprüft werden.</p>
     <label>Anfahrt (km/h) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="5" max="30" @bind="approach" /></label>
     <label>Durchfahrt (km/h) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="3" max="15" @bind="passage" /></label>
     <label>Halteabstand zum Lkw-Messpunkt (m) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="4" max="15" @bind="offset" /></label>
     <p>Der Messpunkt ist nicht die Stoßstange. Der passende Wert muss mit deinem Lkw geprüft werden.</p>
     <label>Warten nach vollständig geöffneter Schranke (s) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="1" max="10" step="0.5" @bind="delay" /></label>
     <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="Apply">Einstellungen speichern</button>
-    <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="Observe">Manuell übernehmen / Fehlerbremsung lösen</button>
-    <button style="padding:10px;border:1px solid #b58a6f;border-radius:6px" @onclick="Activate">Mautassistenz vorbereiten</button>
+    <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="Observe">Nur beobachten / Fehlerbremsung lösen</button>
+    <button style="padding:10px;border:1px solid #b58a6f;border-radius:6px" @onclick="Activate">Vorbereitung jetzt prüfen (optional)</button>
     <p>@message</p>
-    <p>Zum Einschalten: Lkw steht, F9 hat die Fahrassistenz ausgeschaltet, ACC ist im Plugin-Manager eingeschaltet. Danach startet F8; F9 gibt die Steuerung zurück.</p>
-    <p>Solange dieses Plugin eingeschaltet ist, wird F8 ohne vorbereiteten Mautassistenten zurückgewiesen. Nach einer Störung zuerst selbst übernehmen und anhalten, dann hier erneut vorbereiten. Ein normaler Stopp mit F9 erfordert keine erneute Vorbereitung.</p>
+    <p>Zum Einschalten: Fahrassistenz auslassen, im Stand auf „Bereit“ warten, dann F8. Nach dem ETS2LA-Start ist kein Klick auf eine Vorbereitungsschaltfläche nötig.</p>
+    <p>Bei fehlenden Daten oder während der Fahrt erfolgt keine neue Vorbereitung. Nach einer Störung zuerst mit F9 übernehmen und anhalten; danach wird automatisch erneut vorbereitet. Ein normaler Stopp mit F9 bleibt startbereit. „Nur beobachten“ pausiert die automatische Vorbereitung bis F9 oder bis zur manuellen Vorbereitung.</p>
     <p>Bei Trackingverlust oder falscher Fahrtrichtung wird die Lenkassistenz ausgeschaltet und starkes Bremsen angefordert. Die Fehlerbremsung bleibt bis zur manuellen Übernahme mit F9 aktiv, auch im Stand. Dann selbst die Bremse halten. F8 kann die Fehlerbremsung nicht lösen. Kein automatisches Bezahlen und keine Schrankenmanipulation.</p>
     <p>Diagnose: @TollPlugin.Current?.DiagnosticPath</p>
 </div>

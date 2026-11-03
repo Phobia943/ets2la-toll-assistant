@@ -24,6 +24,7 @@ void Run()
     void Check(string name, Action test) { try {test(); results.Add("PASS "+name);} catch(Exception ex) {results.Add("FAIL "+name+": "+ex); } }
     void Assert(bool v,string message="Assertion failed") {if(!v)throw new Exception(message);}
     #if INTEGRATION
+    Check("Automatic preparation attaches only at standstill and preserves fault takeover",()=>AutomaticPreparationIntegration.Run(Assert));
     Check("Distant planning gaps do not trip current tracking; nearby gaps still brake",()=>FutureGapIntegration.Run(Assert));
     Check("Tracking faults brake independently of ACC; F9 releases and F8 cannot restart",()=>FaultBrakeIntegration.Run(Assert));
     Check("Toll exit hands over to the connected road lane, not merely a target lane",()=>ExitHandoffIntegration.Run(Assert));
@@ -32,6 +33,22 @@ void Run()
     Check("Route measurements isolate PathLib lane-change mutations from native planning",()=>SnapshotIntegration.Run(Assert));
     Check("Synthetic prefab integration: route, right-to-left lanes, tracking, persistence, unknown plaza guard",()=>RouteIntegration.Run(Assert));
     #endif
+    Check("Automatic preparation waits for a full second of uninterrupted readiness",()=>{
+        var auto=new AutomaticPreparation();
+        Assert(!auto.ShouldAttempt(0,true));Assert(!auto.ShouldAttempt(.9,true));
+        Assert(!auto.ShouldAttempt(1,false));Assert(!auto.ShouldAttempt(2,true));
+        Assert(!auto.ShouldAttempt(2.9,true));Assert(auto.ShouldAttempt(3,true));
+    });
+    Check("Automatic preparation retries at most once per second until ready",()=>{
+        var auto=new AutomaticPreparation();auto.ShouldAttempt(0,true);
+        Assert(auto.ShouldAttempt(1,true));Assert(!auto.ShouldAttempt(1.5,true));
+        Assert(auto.ShouldAttempt(2,true));Assert(!auto.ShouldAttempt(double.NaN,true));
+    });
+    Check("Automatic preparation remains cancelled until explicitly requested",()=>{
+        var auto=new AutomaticPreparation();auto.ShouldAttempt(0,true);auto.Cancel();
+        Assert(!auto.Requested&&!auto.ShouldAttempt(100,true));auto.Request();
+        Assert(!auto.ShouldAttempt(101,true));Assert(auto.ShouldAttempt(102,true));
+    });
     Check("Planning horizon grows with speed and retains a minimum reserve",()=>{
         Assert(TrackingGuard.RequiredLookahead(0)==25);
         Assert(TrackingGuard.RequiredLookahead(53/3.6)>80);
