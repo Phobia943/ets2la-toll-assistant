@@ -89,10 +89,11 @@ public static class RouteMatcher
     {
         path = RouteSnapshot.Capture(path);
         var points=new List<Vector3>();
+        var connectorEnds=new List<int>();
         RouteTrace Gap(string reason)
         {
             if(truck.HasValue&&points.Count>=2) {
-                var prefix=new RouteTrace(points) {EndsAtGap=true,EndReason=reason};
+                var prefix=new RouteTrace(points,connectorEnds) {EndsAtGap=true,EndReason=reason};
                 var projected=prefix.Project(truck.Value);
                 double ahead=prefix.Length-projected.Along;
                 if(projected.Offset<=3 && ahead>requiredAhead)return prefix;
@@ -116,9 +117,10 @@ public static class RouteMatcher
                     return Gap(FormattableString.Invariant(
                         $"Nicht verbundene Route: Übergang {itemIndex-1}->{itemIndex}, {gap:F2} m; {previous.item.GetType().Name}/{previous.direction}/Spur {previous.laneIndex} -> {item.item.GetType().Name}/{item.direction}/Spur {item.laneIndex}"));
                 }
+                if(i==0&&points.Count>0)connectorEnds.Add(points.Count);
                 points.Add(point.Value.Position);
             }
         }
-        return new(points);
+        return new(points,connectorEnds);
     }
 }

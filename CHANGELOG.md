@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.2.11 – Richtungsprüfung an kurzen Abschnittsübergängen
+
+- Anlass: Gegenrichtungsbremsung bei rund 56,6 km/h, laut Fahrer auf gerader Straße in korrekter Fahrtrichtung. Die gespeicherte native Projektion liegt an einer Abschnittsgrenze; die folgenden Routenproben zeigen eine gültige Spur. Die damaligen Richtungsvektoren fehlen, deshalb ist die konkrete Ursache nicht abschließend nachgewiesen.
+- Reproduzierbarer Fehler: Zwei vorwärts verlaufende Straßen können durch einen kurzen, geometrisch rückwärts zeigenden Versatz verbunden sein. Bisher konnte genau dieser künstliche Übergang die Gegenrichtungsprüfung auslösen, obwohl beide Fahrsegmente richtig orientiert waren.
+- Markiert ausschließlich die bereits erlaubten Verbindungen bis 2 m zwischen separat abgetasteten Planungseinträgen. Die Verbindungen bleiben für Abstand und Weglänge erhalten; für die Richtung gilt das folgende echte Fahrsegment. Reale rückwärts laufende Fahrsegmente, Gegenrichtung des Lkw, gegenläufige Neuplanung und größere nahe Lücken bleiben geschützt. Keine Erhöhung des erlaubten Winkels oder Spurabstands.
+- Richtungsfehler speichern jetzt Lkw-Richtung, Skalarprodukt, betroffene Routenpunkte und Übergangsmarkierungen. Routenproben enthalten denselben örtlichen Kontext. Diese Diagnose bleibt lokal und ist nicht im Repository enthalten.
+- 42 vollständige lokale Prüfungen und 32 unabhängige Logikprüfungen bestanden. Reproduktion über echte PathLib-Straßenobjekte sowie Tests für erhaltene Gegenrichtungs- und Lückenprüfung. Bestätigung des konkreten Vorfalls während der Fahrt steht aus.
+
 ## 0.2.10 – automatische Vorbereitung im Stand
 
 - Nach dem Einschalten bereitet sich der Mautassistent automatisch vor, sobald der Lkw mindestens eine Sekunde durchgehend steht, die Fahrassistenz ausgeschaltet ist und frische Spiel-, Schranken- und Pathfinding-Daten ankommen. Die bereits vorhandene Prüfung der ACC-Version und ihrer drei nativen Begrenzungen bleibt erhalten. Fehlende oder noch initialisierende Module werden mit begrenzter Wiederholrate erneut geprüft.

@@ -19,7 +19,7 @@ public sealed class TollPlugin : Plugin
 {
     public static TollPlugin? Current { get; private set; }
     public override PluginInformation Info => new() {
-        Id = "local.mautassistent", Name = "Mautassistent", Version = "0.2.10",
+        Id = "local.mautassistent", Name = "Mautassistent", Version = "0.2.11",
         Description = "Langsame Mautdurchfahrt. Bereitet sich im Stand automatisch vor; Fahrt startet erst mit F8.",
         AuthorName = "Lokale Anpassung", Dependencies = ["tumppi066.pathlib"],
         PluginPageButtonName = "Einstellungen"
@@ -230,6 +230,7 @@ public sealed class TollPlugin : Plugin
                     var report=new {utc=DateTimeOffset.UtcNow,routeFault,selected,router.Status,
                         geometry=RouteMatcher.Diagnose(data,position,gates),
                         sampledTruckProjection=RouteMatcher.SampleForTracking(data,position,speed).Project(position),
+                        tracking=RouteMatcher.SampleForTracking(data,position,speed).Diagnose(position),headingTurns,
                         items=data.PlannedPath.Select(i=>new{kind=i.item.GetType().Name,length=i.GetLength(),
                             prefab=i.prefabPath?.Prefab.Prefab.Uid.ToString(),
                             curves=i.prefabPath?.Curves.Select(c=>new {id=i.prefabPath.Prefab.Descriptor!.NavCurves.IndexOf(c),gate=c.SemaphoreId}),
@@ -341,7 +342,7 @@ public sealed class TollPlugin : Plugin
         // the actual fault with the generic "Assists are disabled" message.
         lastFault=new {utc=DateTimeOffset.UtcNow, reason, speedKph=speed*3.6,
             phase=decision.Phase, tracked, candidate, pathError=path?.ErrorMessage,
-            geometry};
+            geometry,tracking=trackingGuard.LastDirectionFailure};
         try {File.WriteAllText(Path.Combine(Path.GetDirectoryName(DiagnosticPath)!,"last-fault.json"),
             JsonSerializer.Serialize(lastFault,new JsonSerializerOptions{WriteIndented=true}));} catch(IOException){} catch(UnauthorizedAccessException){}
         Logger.Warn("Mautassistent: "+reason+" Fahrassistenz ausgeschaltet; bitte manuell übernehmen.");
@@ -431,7 +432,7 @@ public sealed class TollPlugin : Plugin
                     Directory.CreateDirectory(Path.GetDirectoryName(DiagnosticPath)!);
                     if (sdk && lastMapWrite < 0) { lastMapWrite=now; try { MapDiagnostics.Write(position,Path.GetDirectoryName(DiagnosticPath)!); } catch(Exception ex) { Logger.Warn("Maut-Kartenprüfung: " + ex.Message); } }
                     File.WriteAllText(DiagnosticPath, JsonSerializer.Serialize(new {
-                        version="0.2.10", utc=DateTimeOffset.UtcNow, active, fresh=Fresh(now), speedKph=speed*3.6,
+                        version="0.2.11", utc=DateTimeOffset.UtcNow, active, fresh=Fresh(now), speedKph=speed*3.6,
                         automaticPreparationPending=automaticPreparation.Requested,
                         startBlocked=!active&&!preview,preparationReason,selectedLane=router.SelectedGate,plaza=router.CurrentKey,
                         faultBraking=faultBrake.Latched,headingTurns,

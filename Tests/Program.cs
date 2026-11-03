@@ -24,6 +24,7 @@ void Run()
     void Check(string name, Action test) { try {test(); results.Add("PASS "+name);} catch(Exception ex) {results.Add("FAIL "+name+": "+ex); } }
     void Assert(bool v,string message="Assertion failed") {if(!v)throw new Exception(message);}
     #if INTEGRATION
+    Check("Short item seams do not create false opposite road headings",()=>DirectionSeamIntegration.Run(Assert));
     Check("Automatic preparation attaches only at standstill and preserves fault takeover",()=>AutomaticPreparationIntegration.Run(Assert));
     Check("Distant planning gaps do not trip current tracking; nearby gaps still brake",()=>FutureGapIntegration.Run(Assert));
     Check("Tracking faults brake independently of ACC; F9 releases and F8 cannot restart",()=>FaultBrakeIntegration.Run(Assert));
@@ -48,6 +49,22 @@ void Run()
         var auto=new AutomaticPreparation();auto.ShouldAttempt(0,true);auto.Cancel();
         Assert(!auto.Requested&&!auto.ShouldAttempt(100,true));auto.Request();
         Assert(!auto.ShouldAttempt(101,true));Assert(auto.ShouldAttempt(102,true));
+    });
+    Check("Only marked short item connectors are excluded from road direction",()=>{
+        var points=new System.Numerics.Vector3[]{new(0,0,10),new(0,0,0),new(.2f,0,1),new(.2f,0,-10)};
+        var truck=new System.Numerics.Vector3(.1f,0,.5f);
+        var actual=new RouteTrace(points);var seam=new RouteTrace(points,new[]{2});
+        Assert(new TrackingGuard().Check(actual,truck,0,15)!=null,"Real reversed segment must still stop");
+        var guard=new TrackingGuard();Assert(guard.Check(seam,truck,0,15)==null);
+        Assert(guard.Check(seam,truck,.5,15)!=null,"Counter-direction remains protected");
+        Assert(guard.LastDirectionFailure!=null);
+    });
+    Check("Connector metadata cannot hide large gaps or erase all driving directions",()=>{
+        bool rejected=false;
+        try {new RouteTrace(new System.Numerics.Vector3[]{new(0,0,0),new(0,0,3)},new[]{1});}catch(ArgumentException){rejected=true;}
+        Assert(rejected);
+        var connectorsOnly=new RouteTrace(new System.Numerics.Vector3[]{new(0,0,0),new(0,0,1)},new[]{1});
+        Assert(new TrackingGuard().Check(connectorsOnly,System.Numerics.Vector3.Zero,.5,0)!=null);
     });
     Check("Planning horizon grows with speed and retains a minimum reserve",()=>{
         Assert(TrackingGuard.RequiredLookahead(0)==25);
