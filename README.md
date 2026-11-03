@@ -12,13 +12,16 @@ Die Erweiterung ergänzt Pathfinding, Lane Assist und Adaptive Cruise Control. S
 - Durchfahrt mit höchstens 10 km/h bis 30 m hinter der Schranke.
 - Speicherung der Spur und Zahlart pro Mautanlage, Einfahrt und Ausfahrt.
 - Start im Beobachtungsmodus; aktive Begrenzung muss im Stand vorbereitet werden.
+- Startversuche ohne Vorbereitung werden bei eingeschaltetem Plugin zurückgewiesen, auch nach einer Störung. F9 bleibt für die manuelle Übernahme verfügbar.
 - Rückgabe der Steuerung beim Ausschalten der Assistenz oder bei ungültigen Daten.
 
 Die Erweiterung erkennt Höhenfreiheit und Zahlart **nicht automatisch**. Eine offene Schranke oder die Kartenkennzeichnung „AllVehicles“ reicht dafür nicht aus. Ohne bestätigte automatische Lkw-Spur endet die Assistenz mit einem Übernahmehinweis. Manuelle Zahlstellen müssen selbst angefahren und bedient werden. Es werden keine Zahlungstasten gedrückt oder Gebühren verändert.
 
 ## Entwicklungsstand
 
-Quellstand **0.2.4 in Erprobung**. Anfahrt, Spurwahl, langsame Durchfahrt und Rückgabe an den Controller wurden mit einer früheren Version an einer ausgewählten Mautstelle praktisch geprüft. Die normale Straßenlenkung wurde mit 0.2.3 nach einem Neustart ebenfalls erfolgreich geprüft. Version 0.2.4 isoliert die Routenmessung vom veränderlichen Spurwechselzustand der Lenkroute; sie wurde bislang nur lokal automatisiert geprüft.
+Quellstand **0.2.5 in Erprobung**. Anfahrt, Spurwahl, langsame Durchfahrt und Rückgabe an den Controller wurden mit einer früheren Version an einer ausgewählten Mautstelle praktisch geprüft. Die normale Straßenlenkung wurde mit 0.2.3 nach einem Neustart ebenfalls erfolgreich geprüft. Version 0.2.4 isolierte die Routenmessung vom veränderlichen Spurwechselzustand der Lenkroute.
+
+Bei der weiteren Fahrt mit 0.2.4 trat ein nativer Routenfehler auf. Danach konnte F8 die Fahrassistenz ohne aktive Mautbegrenzung erneut starten; eine zu niedrige Spur wurde gemeldet. Version 0.2.5 verlangt bei eingeschaltetem Mautassistenten eine erfolgreiche Vorbereitung, bevor Fahrassistenz eingeschaltet bleiben darf. Nach einer Störung zuerst manuell übernehmen und im Stand erneut vorbereiten. Ein normaler Stopp mit F9 löscht die Vorbereitung nicht. Die Rückweisung wird in Daten-Callbacks und im Plugin-Tick geprüft; sie ist keine atomare Sperre sämtlicher Ausgabethreads des Hostprogramms. Bei deaktiviertem Plugin kann diese Prüfung nicht wirken. Die Korrektur ist automatisiert geprüft, eine erneute vollständige Mautfahrt steht aus.
 
 **Offen bleibt ein gemeldeter Lenkfehler direkt nach der Mautausfahrt.** Die Version enthält Korrekturen für veraltete Schrankenverfolgung und zusätzliche Routendiagnosen. Eine erneute vollständige Fahrt durch die betroffene Ausfahrt steht aus; der Fehler gilt noch nicht als abschließend behoben.
 
@@ -77,6 +80,8 @@ Die Tasten werden in ETS2LA unter **Settings → Controls** zugeordnet; das Plug
 | F12 | frei | Keine Belegung erforderlich |
 
 Zuerst im Stand prüfen, ob F9 die Steuerung zuverlässig an den Controller zurückgibt. Ein Overlay ist nicht erforderlich.
+
+„Nur beobachten“ schaltet die Fahrassistenz aus. F8 ist danach erst nach erneuter Vorbereitung möglich. Für eine reine Routenprobe bleibt die separate Schaltfläche verfügbar; dabei müssen die Ausgabemodule ausgeschaltet sein.
 
 ## Tests
 

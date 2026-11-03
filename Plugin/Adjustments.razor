@@ -34,10 +34,11 @@
     <p>Der Messpunkt ist nicht die Stoßstange. Der passende Wert muss mit deinem Lkw geprüft werden.</p>
     <label>Warten nach vollständig geöffneter Schranke (s) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="1" max="10" step="0.5" @bind="delay" /></label>
     <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="Apply">Einstellungen speichern</button>
-    <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="Observe">Nur beobachten</button>
+    <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="Observe">Fahrassistenz aus / nur beobachten</button>
     <button style="padding:10px;border:1px solid #b58a6f;border-radius:6px" @onclick="Activate">Mautassistenz vorbereiten</button>
     <p>@message</p>
     <p>Zum Einschalten: Lkw steht, F9 hat die Fahrassistenz ausgeschaltet, ACC ist im Plugin-Manager eingeschaltet. Danach startet F8; F9 gibt die Steuerung zurück.</p>
+    <p>Solange dieses Plugin eingeschaltet ist, wird F8 ohne vorbereiteten Mautassistenten zurückgewiesen. Nach einer Störung zuerst selbst übernehmen und anhalten, dann hier erneut vorbereiten. Ein normaler Stopp mit F9 erfordert keine erneute Vorbereitung.</p>
     <p>Bei fehlenden Daten während aktiver Begrenzung wird die Fahrassistenz ausgeschaltet. Dann selbst lenken und bremsen. Kein automatisches Bezahlen und keine Schrankenmanipulation.</p>
     <p>Diagnose: @TollPlugin.Current?.DiagnosticPath</p>
 </div>
