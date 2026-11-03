@@ -7,6 +7,10 @@ public sealed class TrackingGuard
     RouteTrace? accepted;
     public bool HasRoute => accepted!=null;
     public void Reset() => accepted=null;
+    // Planning reserve: one second response, 2 m/s² deceleration, 15 m margin.
+    // It is a geometry horizon, not a promise about the vehicle's braking distance.
+    public static double RequiredLookahead(double speed) => double.IsFinite(speed)
+        ? Math.Max(25,15+Math.Abs(speed)+speed*speed/4) : double.PositiveInfinity;
     public static Vector3 TruckForward(double headingTurns) =>
         new((float)-Math.Sin(headingTurns*2*Math.PI),0,(float)-Math.Cos(headingTurns*2*Math.PI));
 
@@ -15,6 +19,8 @@ public sealed class TrackingGuard
         if(!double.IsFinite(headingTurns)||!double.IsFinite(speed))return "Ungültige Fahrtrichtungsdaten.";
         var projection=route.Project(position);
         if(!double.IsFinite(projection.Offset)||projection.Offset>3)return "Routenverfolgung verloren: Lkw außerhalb der geplanten Spur.";
+        if(route.EndsAtGap && route.Length-projection.Along<=RequiredLookahead(speed))
+            return "Planungslücke innerhalb der Anhaltereserve: "+route.EndReason;
         if(checkDirection) {
             var direction=route.DirectionAt(projection.Along);
             if(direction==Vector3.Zero)return "Fahrtrichtung der Route fehlt.";

@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.2.8 – entfernte Planungslücken gezielt behandeln
+
+- Behebt eine überstrenge Prüfung der gesamten geplanten Strecke: Bei sauberer aktueller Spur können entfernte, noch nicht verbundene Routenabschnitte zunächst offen bleiben. Anlass war ein Stopp bei 52,8 km/h mit nur 1,5 cm aktuellem Spurabstand aufgrund eines späteren 4,5-m-Übergangs. Dessen genaue Entfernung war in der alten Diagnose nicht enthalten.
+- Verwendet ausschließlich den zusammenhängenden Routenanfang bis zur ersten Lücke. Es wird keine Verbindung über die Lücke erfunden. Schranken hinter diesem Ende werden nicht auf den letzten gültigen Punkt projiziert.
+- Sobald die offene Verbindung innerhalb der geschwindigkeitsabhängigen Planungsreserve liegt, bleibt die Fehlerbremsung aktiv. Reserve: mindestens 25 m, sonst 15 m plus eine Sekunde Fahrweg plus v²/(2×2 m/s²). Das ist eine Planungsannahme, kein zugesicherter Bremsweg.
+- Derselbe Abstand wird bei Routenempfang, laufender Positionsprüfung und Schrankensuche verwendet. Echte Spurabweichung, Gegenrichtung und Datenverlust bleiben unverändert geschützt.
+- Diagnose nennt nun auch die offene Verbindung, verbleibende zusammenhängende Strecke und erforderliche Reserve. 34 vollständige lokale Prüfungen und 26 unabhängige Logikprüfungen; Fahrtest dieser Anpassung ausstehend.
+
 ## 0.2.7 – Fehlerbremsung und Richtungsprüfung, Fahrtest ausstehend
 
 - Routenfehler während eingeschalteter, vorbereiteter Assistenz fordern unmittelbar im Routen-Callback starkes Bremsen an und schalten die Lenkassistenz aus. Ein eigener Pedalkanal bleibt auch bei ausgeschaltetem ACC wirksam. Zuvor endete mit dem Ausschalten der Assistenz auch die ACC-Bremsausgabe.

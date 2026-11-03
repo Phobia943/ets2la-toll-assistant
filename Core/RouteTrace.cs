@@ -6,6 +6,9 @@ public sealed class RouteTrace
 {
     readonly Vector3[] points;
     readonly double[] distances;
+    public double Length => distances[^1];
+    public bool EndsAtGap { get; init; }
+    public string? EndReason { get; init; }
     public RouteTrace(IEnumerable<Vector3> source)
     {
         points=source.ToArray(); distances=new double[points.Length];

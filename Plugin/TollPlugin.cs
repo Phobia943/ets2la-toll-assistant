@@ -19,7 +19,7 @@ public sealed class TollPlugin : Plugin
 {
     public static TollPlugin? Current { get; private set; }
     public override PluginInformation Info => new() {
-        Id = "local.mautassistent", Name = "Mautassistent", Version = "0.2.7",
+        Id = "local.mautassistent", Name = "Mautassistent", Version = "0.2.8",
         Description = "Langsame Mautdurchfahrt und Wartezeit nach Schrankenöffnung. Startet immer nur beobachtend.",
         AuthorName = "Lokale Anpassung", Dependencies = ["tumppi066.pathlib"],
         PluginPageButtonName = "Einstellungen"
@@ -208,7 +208,7 @@ public sealed class TollPlugin : Plugin
             if(routeFault!=null) Disarm(routeFault);
             if(active&&State.EnableAssists&&!preview&&sdk&&!paused) {
                 try {
-                    var trace=RouteMatcher.Sample(data);
+                    var trace=RouteMatcher.SampleForTracking(data,position,speed);
                     var fault=trackingGuard.Check(trace,position,headingTurns,speed,State.DrivingMode!=DrivingMode.AdaptiveCruiseControlOnly);
                     if(fault!=null)Disarm(fault);else safetyTrace=trace;
                 } catch(Exception ex) {Disarm("Routenverfolgung nicht möglich: "+ex.Message);}
@@ -219,7 +219,7 @@ public sealed class TollPlugin : Plugin
                     previewStatus=routeFault ?? (selected!=null?$"Routenprobe: Schranke {selected.Key}, {selected.Distance:F1} m":"Routenprobe: Route vorhanden, keine zugeordnete Mautschranke");
                     var report=new {utc=DateTimeOffset.UtcNow,routeFault,selected,router.Status,
                         geometry=RouteMatcher.Diagnose(data,position,gates),
-                        sampledTruckProjection=RouteMatcher.Sample(data).Project(position),
+                        sampledTruckProjection=RouteMatcher.SampleForTracking(data,position,speed).Project(position),
                         items=data.PlannedPath.Select(i=>new{kind=i.item.GetType().Name,length=i.GetLength(),
                             prefab=i.prefabPath?.Prefab.Prefab.Uid.ToString(),
                             curves=i.prefabPath?.Curves.Select(c=>new {id=i.prefabPath.Prefab.Descriptor!.NavCurves.IndexOf(c),gate=c.SemaphoreId}),
@@ -360,7 +360,7 @@ public sealed class TollPlugin : Plugin
                 bool allow = state.EnableAssists && (!active || state.DrivingMode != DrivingMode.LaneAssistOnly);
                 if (!state.EnableAssists) {startup.Reset();passage.Reset();controller.Reset();tracked=null;}
                 RouteTrace? sampled=null;
-                Gate? gate = Fresh(now) && path != null ? RouteMatcher.Select(path, position, gates, tracked,out sampled) : null;
+                Gate? gate = Fresh(now) && path != null ? RouteMatcher.Select(path, position, gates, tracked,out sampled,speed) : null;
                 if(gate==null && tracked!=null && Fresh(now)) {
                     var live=gates.FirstOrDefault(g=>g.type==SemaphoreType.GATE && RouteMatcher.Key(g)==tracked);
                     if(live!=null)gate=passage.AfterCrossing(tracked,position,live.GetWorldCoordinates(),
@@ -369,7 +369,7 @@ public sealed class TollPlugin : Plugin
                     // An observer must be able to reacquire a new gate. An active
                     // constraint must instead retain the lost target and disarm.
                     if(gate==null && !active) {controller.Reset();tracked=null;passage.Reset();
-                        gate=RouteMatcher.Select(path!,position,gates,null,out sampled);}
+                        gate=RouteMatcher.Select(path!,position,gates,null,out sampled,speed);}
                 }
                 if(gate!=null && sampled!=null) {
                     var live=gates.FirstOrDefault(g=>g.type==SemaphoreType.GATE && RouteMatcher.Key(g)==gate.Key);
@@ -397,9 +397,12 @@ public sealed class TollPlugin : Plugin
                     Directory.CreateDirectory(Path.GetDirectoryName(DiagnosticPath)!);
                     if (sdk && lastMapWrite < 0) { lastMapWrite=now; try { MapDiagnostics.Write(position,Path.GetDirectoryName(DiagnosticPath)!); } catch(Exception ex) { Logger.Warn("Maut-Kartenprüfung: " + ex.Message); } }
                     File.WriteAllText(DiagnosticPath, JsonSerializer.Serialize(new {
-                        version="0.2.7", utc=DateTimeOffset.UtcNow, active, fresh=Fresh(now), speedKph=speed*3.6,
+                        version="0.2.8", utc=DateTimeOffset.UtcNow, active, fresh=Fresh(now), speedKph=speed*3.6,
                         startBlocked=!active&&!preview,preparationReason,selectedLane=router.SelectedGate,plaza=router.CurrentKey,
                         faultBraking=faultBrake.Latched,headingTurns,
+                        pendingRouteGap=safetyTrace?.EndReason,
+                        connectedMetresAhead=safetyTrace!=null?safetyTrace.Length-safetyTrace.Project(position).Along:(double?)null,
+                        requiredLookahead=TrackingGuard.RequiredLookahead(speed),
                         phase=decision.Phase, targetSpeedKph=decision.TargetSpeed*3.6, gate=tracked, candidate, dataStatus=DataStatus,
                         telemetryAge=now-telemetryAt, gatesAge=now-gatesAt, pathAge=now-pathAt, gameTimeAge=now-gameTimeChangedAt,
                         sdk, paused, pathError=path?.ErrorMessage,

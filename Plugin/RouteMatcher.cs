@@ -46,11 +46,11 @@ public static class RouteMatcher
     public static Gate? Select(PlannedPathData path, Vector3 truck, ETS2LA.Game.SDK.Semaphore[] semaphores, string? tracked)
         =>Select(path,truck,semaphores,tracked,out _);
 
-    public static Gate? Select(PlannedPathData path, Vector3 truck, ETS2LA.Game.SDK.Semaphore[] semaphores, string? tracked,out RouteTrace? sampled)
+    public static Gate? Select(PlannedPathData path, Vector3 truck, ETS2LA.Game.SDK.Semaphore[] semaphores, string? tracked,out RouteTrace? sampled,double speed=0)
     {
         sampled=null;
         if (path.HasError || !float.IsFinite(path.TotalLength) || path.TotalLength < 1) return null;
-        var trace=Sample(path);
+        var trace=SampleForTracking(path,truck,speed);
         sampled=trace;
         var truckProjection=trace.Project(truck);
         if(truckProjection.Offset>3) return null;
@@ -63,6 +63,9 @@ public static class RouteMatcher
             if (tracked != null && key != tracked) continue;
             var position = gate.GetWorldCoordinates();
             var projected = trace.Project(position);
+            // A distant unresolved connection is not bridged. Do not assign a
+            // gate beyond it to the last point of the valid prefix.
+            if(trace.EndsAtGap && projected.Along>=trace.Length-.01)continue;
             float offset = (float)projected.Offset;
             // Barrier SDK coordinates locate the roadside post, not the lane centre.
             // Permit the wider offset only with a route semaphore ID + world-position match,
@@ -78,10 +81,25 @@ public static class RouteMatcher
         return GateSelection.Select(candidates, tracked);
     }
 
-    public static RouteTrace Sample(PlannedPathData path)
+    public static RouteTrace Sample(PlannedPathData path) => Sample(path,null,0);
+    public static RouteTrace SampleForTracking(PlannedPathData path,Vector3 truck,double speed)
+        => Sample(path,truck,TrackingGuard.RequiredLookahead(speed));
+
+    static RouteTrace Sample(PlannedPathData path,Vector3? truck,double requiredAhead)
     {
         path = RouteSnapshot.Capture(path);
         var points=new List<Vector3>();
+        RouteTrace Gap(string reason)
+        {
+            if(truck.HasValue&&points.Count>=2) {
+                var prefix=new RouteTrace(points) {EndsAtGap=true,EndReason=reason};
+                var projected=prefix.Project(truck.Value);
+                double ahead=prefix.Length-projected.Along;
+                if(projected.Offset<=3 && ahead>requiredAhead)return prefix;
+                reason+=FormattableString.Invariant($"; noch {ahead:F1} m, Anhaltereserve {requiredAhead:F1} m");
+            }
+            throw new InvalidOperationException(reason);
+        }
         // Global PathLib.Interpolate excludes endpoints and returns null within a
         // one-metre boundary tolerance. Sample each item directly instead.
         for(int itemIndex=0;itemIndex<path.PlannedPath.Count;itemIndex++) {
@@ -91,12 +109,12 @@ public static class RouteMatcher
                 float t=Math.Clamp((float)i/count,.00001f,.99999f);
                 if(item.item is ETS2LA.Game.Data.ParsedRoadList or ETS2LA.Game.Data.ParsedRoad && item.direction==ETS2LA.Game.Data.Direction.Backward)t=1-t;
                 var point=item.Interpolate(t,0,false);
-                if(!point.HasValue)throw new InvalidOperationException("Routenlücke bei der Maut-Anfahrt");
+                if(!point.HasValue)return Gap("Routenpunkt fehlt");
                 if(i==0 && points.Count>0 && Vector3.Distance(points[^1],point.Value.Position)>2) {
                     var previous=path.PlannedPath[itemIndex-1];
                     var gap=Vector3.Distance(points[^1],point.Value.Position);
-                    throw new InvalidOperationException(FormattableString.Invariant(
-                        $"Nicht verbundene Maut-Anfahrt: Übergang {itemIndex-1}->{itemIndex}, {gap:F2} m; {previous.item.GetType().Name}/{previous.direction}/Spur {previous.laneIndex} -> {item.item.GetType().Name}/{item.direction}/Spur {item.laneIndex}"));
+                    return Gap(FormattableString.Invariant(
+                        $"Nicht verbundene Route: Übergang {itemIndex-1}->{itemIndex}, {gap:F2} m; {previous.item.GetType().Name}/{previous.direction}/Spur {previous.laneIndex} -> {item.item.GetType().Name}/{item.direction}/Spur {item.laneIndex}"));
                 }
                 points.Add(point.Value.Position);
             }

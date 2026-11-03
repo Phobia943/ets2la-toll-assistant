@@ -24,6 +24,7 @@ void Run()
     void Check(string name, Action test) { try {test(); results.Add("PASS "+name);} catch(Exception ex) {results.Add("FAIL "+name+": "+ex); } }
     void Assert(bool v,string message="Assertion failed") {if(!v)throw new Exception(message);}
     #if INTEGRATION
+    Check("Distant planning gaps do not trip current tracking; nearby gaps still brake",()=>FutureGapIntegration.Run(Assert));
     Check("Tracking faults brake independently of ACC; F9 releases and F8 cannot restart",()=>FaultBrakeIntegration.Run(Assert));
     Check("Toll exit hands over to the connected road lane, not merely a target lane",()=>ExitHandoffIntegration.Run(Assert));
     Check("Curved toll exit remains tracked by the native path projection",()=>ExitProjectionIntegration.Run(Assert));
@@ -31,6 +32,12 @@ void Run()
     Check("Route measurements isolate PathLib lane-change mutations from native planning",()=>SnapshotIntegration.Run(Assert));
     Check("Synthetic prefab integration: route, right-to-left lanes, tracking, persistence, unknown plaza guard",()=>RouteIntegration.Run(Assert));
     #endif
+    Check("Planning horizon grows with speed and retains a minimum reserve",()=>{
+        Assert(TrackingGuard.RequiredLookahead(0)==25);
+        Assert(TrackingGuard.RequiredLookahead(53/3.6)>80);
+        Assert(TrackingGuard.RequiredLookahead(90/3.6)>190);
+        Assert(double.IsPositiveInfinity(TrackingGuard.RequiredLookahead(double.NaN)));
+    });
     Check("Tracking guard rejects opposite headings and reversed replacement routes",()=>{
         var north=new RouteTrace(new System.Numerics.Vector3[]{new(0,0,20),new(0,0,-100)});
         var south=new RouteTrace(new System.Numerics.Vector3[]{new(0,0,-100),new(0,0,20)});
