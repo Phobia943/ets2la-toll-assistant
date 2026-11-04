@@ -82,6 +82,26 @@ public static class RouteIntegration
         assert(again.Payments[PaymentPolicy.Key(unknown.CurrentKey!,12)]==TollPayment.Automatic,"Payment type not restored");
         File.Delete(filename);
 
+        // Pay-point markers are positioned before the semaphore in some models.
+        var marks = TollModelEvidence.Match(descriptor,
+            [(new(-6,0,69),TollPayment.Automatic), (new(6,0,69),TollPayment.Manual),
+             (new(-3,0,69),TollPayment.Automatic)]);
+        assert(marks.Count==2 && marks[12]==TollPayment.Automatic && marks[14]==TollPayment.Manual,
+            "Resolve point to its own lane and reject a marker between lanes");
+        var byModel = new TollRouter(new PreferenceStore(filename), _ => marks);
+        item.prefabPath=source;
+        byModel.Discover(data,truck,sdk);
+        assert(byModel.SelectedGate==12 && byModel.Apply(data,truck,out _) && !byModel.StopBoundary.HasValue,
+            "Choose explicit AutoPASS without a plaza confirmation");
+        curves[5].AllowedVehicles=AllowedVehicles.SmallVehicles;
+        var truckOnly = new TollRouter(new PreferenceStore(filename), _ => marks);
+        item.prefabPath=source;
+        truckOnly.Discover(data,truck,sdk);
+        assert(truckOnly.SelectedGate==14 && truckOnly.Apply(data,truck,out _),
+            "A manual truck lane beats an automatic lane with a car-only approach");
+        curves[5].AllowedVehicles=AllowedVehicles.AllVehicles;
+        item.prefabPath=source;
+
         // Full plugin path: an unknown toll at motorway speed requests ACC
         // deceleration while retaining valid steering, without the fault channel.
         curves[0].StartPosition=new(0,0,-400);curves[0].Length=420;

@@ -19,7 +19,7 @@ public sealed class TollPlugin : Plugin
 {
     public static TollPlugin? Current { get; private set; }
     public override PluginInformation Info => new() {
-        Id = "local.mautassistent", Name = "Mautassistent", Version = "0.2.14",
+        Id = "local.mautassistent", Name = "Mautassistent", Version = "0.2.15",
         Description = "Langsame Mautdurchfahrt. Bereitet sich im Stand automatisch vor; Fahrt startet erst mit F8.",
         AuthorName = "Lokale Anpassung", Dependencies = ["tumppi066.pathlib"],
         PluginPageButtonName = "Einstellungen"
@@ -50,9 +50,11 @@ public sealed class TollPlugin : Plugin
     double headingTurns;
     ApplicationState State => readState();
     public TollPlugin() : this(() => ApplicationState.Current, Notify,
-        output=>Events.Current.Publish(GameOutput.Current.EventString,output)) { }
-    internal TollPlugin(Func<ApplicationState> readState, Action<string,string> notify,Action<ControlEvent>? output=null,Func<IPlugin?>? readAcc=null) {
-        this.readState=readState;this.readAcc=readAcc??FindAcc;this.notify=notify;router=new(preferences);faultBrake=new(output??(_=>{}));
+        output=>Events.Current.Publish(GameOutput.Current.EventString,output),
+        readPayments: new TollModelEvidence(() => ApplicationState.Current.RunningGame?.GetFileSystem()).Read) { }
+    internal TollPlugin(Func<ApplicationState> readState, Action<string,string> notify,Action<ControlEvent>? output=null,Func<IPlugin?>? readAcc=null,
+        Func<ETS2LA.Game.Data.ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments=null) {
+        this.readState=readState;this.readAcc=readAcc??FindAcc;this.notify=notify;router=new(preferences,readPayments);faultBrake=new(output??(_=>{}));
     }
     string preparationReason="Automatische Vorbereitung wartet auf Stillstand und verbundene Module.";
     double lastStartWarning=double.NegativeInfinity;
@@ -334,11 +336,22 @@ public sealed class TollPlugin : Plugin
         lastPathError=data.HasError?data.ErrorMessage??"":"";
         routeFault=null;
         if(!data.HasError) {
-            try {router.Discover(data,position,gates);}
+            try {
+                int? previousGate=router.SelectedGate;
+                string? previousPlaza=router.CurrentKey;
+                router.Discover(data,position,gates,speed);
+                if (previousGate != router.SelectedGate || previousPlaza != router.CurrentKey)
+                {
+                    controller.Reset();passage.Reset();tracked=null;candidate=null;
+                    if (active && State.EnableAssists && !preview && router.SelectedGate is int gate &&
+                        router.PaymentFor(gate)==TollPayment.Manual)
+                        notify("Lkw-Mautspur gewählt", "Hier ist eine manuelle Zahlung nötig. Die Assistenz hält vor der Schranke. Wenn der Zahlpunkt noch nicht erreichbar ist, mit F9 übernehmen.");
+                }
+            }
             catch(Exception ex) {routeFault="Mautspuren konnten nicht geprüft werden: "+ex.Message;if(active)Disarm(routeFault);}
         }
         if((active || preview) && !data.HasError) {
-            try {router.Apply(data,position,out routeFault);}
+            try {router.Apply(data,position,out routeFault,speed);}
             catch(Exception ex){routeFault="Maut-Spurwahl: "+ex.Message;}
             if(routeFault!=null) Disarm(routeFault);
             if(active && State.EnableAssists && !preview && router.StopBoundary.HasValue) {
@@ -549,9 +562,13 @@ public sealed class TollPlugin : Plugin
                     if(live!=null)passage.Capture(gate.Key,live.GetWorldCoordinates(),sampled);
                 }
                 candidate = gate;
-                decision = controller.Step(new(now, speed, allow, Fresh(now), gate));
+                bool manual = router.SelectedGate is int selected && router.PaymentFor(selected)==TollPayment.Manual &&
+                    gates.Any(g=>g.id==selected && gate?.Key==RouteMatcher.Key(g));
+                decision = controller.Step(new(now, speed, allow, Fresh(now), gate, manual));
                 if(allow && Fresh(now) && router.StopBoundary.HasValue)
                     decision=ApproachStop.Evaluate(speed,router.UpdateStopDistance(path!,position,speed)!.Value);
+                else if (allow && sampled != null && path != null)
+                    decision=router.LimitShortChange(path,sampled,position,speed,decision);
                 tracked = decision.GateKey;
                 if(tracked==null)passage.Reset();
                 evaluatedAt = now;
@@ -573,12 +590,13 @@ public sealed class TollPlugin : Plugin
                     Directory.CreateDirectory(Path.GetDirectoryName(DiagnosticPath)!);
                     if (sdk && lastMapWrite < 0) { lastMapWrite=now; try { MapDiagnostics.Write(position,Path.GetDirectoryName(DiagnosticPath)!); } catch(Exception ex) { Logger.Warn("Maut-Kartenprüfung: " + ex.Message); } }
                     File.WriteAllText(DiagnosticPath, JsonSerializer.Serialize(new {
-                        version="0.2.14", utc=DateTimeOffset.UtcNow, active, fresh=Fresh(now), speedKph=speed*3.6,
+                        version="0.2.15", utc=DateTimeOffset.UtcNow, active, fresh=Fresh(now), speedKph=speed*3.6,
                         connectorAttempted, connectorPending, connectorSeeded,
                         driveAction=driveAction.ToString(),
                         plannedStop=router.StopBoundary.HasValue,stopDistance=router.StopDistance,
                         automaticPreparationPending=automaticPreparation.Requested,
                         startBlocked=!active&&!preview,preparationReason,selectedLane=router.SelectedGate,plaza=router.CurrentKey,
+                        selectedPayment=router.SelectedGate is int gateId ? router.PaymentFor(gateId).ToString() : null,
                         faultBraking=faultBrake.Latched,headingTurns,
                         pendingRouteGap=safetyTrace?.EndReason,
                         connectedMetresAhead=safetyTrace!=null?safetyTrace.Length-safetyTrace.Project(position).Along:(double?)null,

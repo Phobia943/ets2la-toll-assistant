@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
-  <PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><AssemblyName>MautAssistent</AssemblyName><Version>0.2.14</Version></PropertyGroup>
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><AssemblyName>MautAssistent</AssemblyName><Version>0.2.15</Version></PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <Reference Include="$(EtsRoot)\ETS2LA.Shared.dll" Private="false" />
@@ -12,6 +12,7 @@
     <Reference Include="$(EtsRoot)\TruckLib.dll" Private="false" />
     <Reference Include="$(EtsRoot)\TruckLib.Core.dll" Private="false" />
     <Reference Include="$(EtsRoot)\TruckLib.Models.dll" Private="false" />
+    <Reference Include="$(EtsRoot)\TruckLib.Sii.dll" Private="false" />
     <Reference Include="PathLib"><HintPath>..\References\PathLib.dll</HintPath><Private>false</Private></Reference>
     <Compile Include="..\Core\*.cs" Link="Core\%(Filename)%(Extension)" />
   </ItemGroup>

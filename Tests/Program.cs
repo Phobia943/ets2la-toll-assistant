@@ -64,7 +64,8 @@ void Run()
         var d=ApproachStop.Evaluate(90/3.6,300);
         Assert(d.MaxAcceleration<-.9f && d.MaxAcceleration>-1.3f);
         Assert(ApproachStop.Evaluate(90/3.6,200).MaxAcceleration<d.MaxAcceleration);
-        Assert(ApproachStop.Evaluate(0,100).MaxAcceleration<0,"Unknown lane must never launch from standstill");
+        Assert(ApproachStop.Evaluate(0,277).MaxAcceleration>0,"A verified approach may continue far before the stop boundary");
+        Assert(ApproachStop.Evaluate(0,3).MaxAcceleration<0,"Unknown lane must hold at the stop boundary");
         Assert(!d.RequiresTakeover,"Planned halt must not enter fatal tracking path");
     });
     Check("Planned approach stops before the branch and stays stopped",()=>{

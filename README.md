@@ -7,7 +7,7 @@ Die Erweiterung ergänzt Pathfinding, Lane Assist und Adaptive Cruise Control. S
 ## Funktionen
 
 - Anfahrt standardmäßig mit höchstens 20 km/h; Überwachung mindestens 200 m vor der zugeordneten Schranke.
-- Bevorzugung einer ausdrücklich bestätigten, erreichbaren Lkw-Spur mit automatischer Abrechnung.
+- Automatische Wahl einer erreichbaren Lkw-Spur mit bevorzugter automatischer Abrechnung.
 - Freigabe erst nach zwei Sekunden durchgehend vollständig geöffneter Schranke.
 - Durchfahrt mit höchstens 10 km/h bis 30 m hinter der Schranke.
 - Speicherung der Spur und Zahlart pro Mautanlage, Einfahrt und Ausfahrt.
@@ -16,11 +16,13 @@ Die Erweiterung ergänzt Pathfinding, Lane Assist und Adaptive Cruise Control. S
 - Fehlerbremsung bei Trackingverlust; Gegenrichtungsprüfung während der Lenkassistenz, auch außerhalb von Mautstellen.
 - F9 gibt die Steuerung zurück und löst eine aktive Fehlerbremsung ausdrücklich zur manuellen Übernahme.
 
-Die Erweiterung erkennt Höhenfreiheit und Zahlart **nicht automatisch**. Eine offene Schranke oder die Kartenkennzeichnung „AllVehicles“ reicht dafür nicht aus. Ohne bestätigte automatische Lkw-Spur wird ab 0.2.12 auf einer gültigen, eindeutig verfolgten Zufahrt ein Halt geplant. F9 gibt die Steuerung zurück. Manuelle Zahlstellen müssen selbst angefahren und bedient werden. Es werden keine Zahlungstasten gedrückt oder Gebühren verändert.
+Ab 0.2.15 liest die Erweiterung die Zahlart unterstützter Mautmodelle aus den Spiel-Hookups und ordnet sie einer eindeutigen Spurkurve zu. Für die Spurwahl prüft sie den vollständigen Weg auf Pkw- und Eskorte-Beschränkungen sowie die Anschlüsse vor und nach der Anlage. Bei ausreichendem Weg kann der native Planer den Wechsel frühzeitig auf der Zufahrt einleiten. Die Erkennung misst keine tatsächliche Durchfahrtshöhe. Mehrdeutige Modellmarkierungen oder unpassende Anschlüsse führen zum Halt vor der Aufteilung.
+
+Wenn eine passende manuelle Lkw-Spur die einzige erkennbare Option ist, wählt der Assistent sie und hält vor der Schranke. Die Zahlung bleibt beim Spieler. Wenn der Zahlpunkt weiter vorne liegt, mit F9 übernehmen und manuell vorrollen.
 
 ## Entwicklungsstand
 
-Quellstand **0.2.14 in Erprobung**. Anfahrt, Spurwahl, langsame Durchfahrt und Rückgabe an den Controller wurden mit einer früheren Version an einer ausgewählten Mautstelle praktisch geprüft. Die normale Straßenlenkung wurde mit 0.2.3 nach einem Neustart ebenfalls erfolgreich geprüft. Version 0.2.4 isolierte die Routenmessung vom veränderlichen Spurwechselzustand der Lenkroute.
+Quellstand **0.2.15 in Erprobung**. Anfahrt, Spurwahl, langsame Durchfahrt und Rückgabe an den Controller wurden mit einer früheren Version an einer ausgewählten Mautstelle praktisch geprüft. Die normale Straßenlenkung wurde mit 0.2.3 nach einem Neustart ebenfalls erfolgreich geprüft. Version 0.2.4 isolierte die Routenmessung vom veränderlichen Spurwechselzustand der Lenkroute.
 
 Bei der weiteren Fahrt mit 0.2.4 trat ein nativer Routenfehler auf. Danach konnte F8 die Fahrassistenz ohne aktive Mautbegrenzung erneut starten; eine zu niedrige Spur wurde gemeldet. Version 0.2.5 verlangt bei eingeschaltetem Mautassistenten eine erfolgreiche Vorbereitung, bevor Fahrassistenz eingeschaltet bleiben darf. Nach einer Störung zuerst mit F9 manuell übernehmen und anhalten; ab 0.2.10 erfolgt die erneute Vorbereitung dann automatisch. Ein normaler Stopp mit F9 löscht die Vorbereitung nicht. Die Rückweisung wird in Daten-Callbacks und im Plugin-Tick geprüft; sie ist keine atomare Sperre sämtlicher Ausgabethreads des Hostprogramms. Bei deaktiviertem Plugin kann diese Prüfung nicht wirken. Die Korrektur ist automatisiert geprüft, eine erneute vollständige Mautfahrt steht aus.
 

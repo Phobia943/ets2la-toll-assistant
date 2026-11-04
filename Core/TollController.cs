@@ -2,7 +2,7 @@ namespace MautAssistent;
 
 public enum BarrierState { Closing, Closed, Opening, Open, Unknown }
 public sealed record Gate(string Key, double Distance, BarrierState State);
-public sealed record TollInput(double Time, double Speed, bool Enabled, bool Fresh, Gate? Gate);
+public sealed record TollInput(double Time, double Speed, bool Enabled, bool Fresh, Gate? Gate, bool ManualPayment = false);
 public sealed record TollDecision(string Phase, double? TargetSpeed, float MaxAcceleration, string? GateKey)
 {
     public bool RequiresTakeover { get; init; }
@@ -76,6 +76,8 @@ public sealed class TollController(TollOptions options)
             cap = Math.Min(options.ApproachSpeedKph / 3.6, Math.Sqrt(2 * options.ComfortableDeceleration * remaining));
             phase = gate.State == BarrierState.Open ? "Wartezeit nach Öffnung" : "Anfahrt / Schranke nicht frei";
             if (remaining < .5) { cap = 0; phase = gate.State == BarrierState.Open ? "Warten vor offener Schranke" : "Halten vor Schranke"; }
+            if (cap == 0 && input.ManualPayment && gate.State == BarrierState.Closed)
+                phase = "Manuelle Zahlung – F9, falls der Zahlpunkt noch nicht erreichbar ist";
         }
         else
         {

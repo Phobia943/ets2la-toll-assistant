@@ -16,18 +16,26 @@ public sealed class TollRouter
     public string? StopKey {get;private set;}
     public double? StopDistance {get;private set;}
     public void CancelPlannedStop() {StopBoundary=null;StopKey=null;StopDistance=null;}
-    public TollPayment PaymentFor(int gate)=>CurrentKey!=null&&preferences.Payments.TryGetValue(PaymentPolicy.Key(CurrentKey,gate),out var mode)?mode:TollPayment.Unknown;
+    public TollPayment PaymentFor(int gate)=>CurrentKey!=null&&preferences.Payments.TryGetValue(PaymentPolicy.Key(CurrentKey,gate),out var mode)?mode:
+        modelPayments.GetValueOrDefault(gate);
+    IReadOnlyDictionary<int,TollPayment> modelPayments = new Dictionary<int,TollPayment>();
+    readonly Func<ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments;
+    readonly Dictionary<int,PrefabPath> plans = new();
+    double lastSearch = double.NegativeInfinity;
+    PlannedItem? shortChangeRoad;
     readonly PreferenceStore preferences;
-    public TollRouter(PreferenceStore preferences) {this.preferences=preferences;}
+    public TollRouter(PreferenceStore preferences, Func<ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments=null)
+    {this.preferences=preferences;this.readPayments=readPayments;}
     public string Status {get;private set;}="Warte auf Route";
     readonly Dictionary<PrefabPath,PrefabPath> replacements=new();
     static readonly MethodInfo clone=typeof(object).GetMethod("MemberwiseClone",BindingFlags.Instance|BindingFlags.NonPublic)!;
 
     static string Key(PrefabPath path)=>$"{path.Prefab.Prefab.Uid}:{path.StartNode.Uid}:{path.EndNode.Uid}";
-    public void Discover(PlannedPathData data,Vector3 truck,ETS2LA.Game.SDK.Semaphore[] sdkGates)
+    public void Discover(PlannedPathData data,Vector3 truck,ETS2LA.Game.SDK.Semaphore[] sdkGates,double speed=0)
     {
         if(data.HasError)return;
-        foreach(var item in data.PlannedPath) {
+        for(int index=0;index<data.PlannedPath.Count;index++) {
+            var item=data.PlannedPath[index];
             var p=item.prefabPath;
             if(p==null)continue;
             p=PrefabRefinement.OriginalFor(p);
@@ -40,7 +48,12 @@ public sealed class TollRouter
             var key=Key(p);
             // Do not replace a pending stop with a newly planned/different plaza.
             if(StopBoundary.HasValue && key!=StopKey)return;
-            if(CurrentKey==key)return;
+            double now=System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
+            if(CurrentKey==key && (SelectedGate.HasValue || now-lastSearch < .5))return;
+            lastSearch=now;
+            modelPayments=readPayments?.Invoke(p.Prefab) ?? new Dictionary<int,TollPayment>();
+            plans.Clear();
+            replacements.Clear();
             var right=Vector3.Cross(forward,Vector3.UnitY);
             var lanes=new List<(int gate,float lateral,bool reachable)>();
             foreach(var c in p.Prefab.Descriptor!.NavCurves.Where(c=>c.SemaphoreId>=0)) {
@@ -50,7 +63,16 @@ public sealed class TollRouter
                 if(Vector3.Dot(heading,forward)<.8)continue;
                 if(!sdkGates.Any(g=>g.type==ETS2LA.Game.SDK.SemaphoreType.GATE && g.id==c.SemaphoreId &&
                     Vector3.Distance(g.GetWorldCoordinates(),sem.GetWorldOrientedPoint().Position)<1))continue;
-                lanes.Add((c.SemaphoreId,Vector3.Dot(sem.GetWorldOrientedPoint().Position-world,right),ViaGate(p,c.SemaphoreId)!=null));
+                var alternatives = new[] { p }.Concat(item.otherPrefabPaths ?? [])
+                    .Where(option => Key(option) == key);
+                foreach (var alternative in alternatives)
+                {
+                    var route = ViaGate(alternative, c.SemaphoreId);
+                    if (route == null || TollEntry.Plan(data,index,p,route,truck,speed) == null) continue;
+                    plans.TryAdd(c.SemaphoreId,route);
+                    break;
+                }
+                lanes.Add((c.SemaphoreId,Vector3.Dot(sem.GetWorldOrientedPoint().Position-world,right),plans.ContainsKey(c.SemaphoreId)));
             }
             CurrentKey=key;
             Choices=lanes.OrderByDescending(l=>l.lateral).Select((l,i)=>new {l,i}).Where(x=>x.l.reachable)
@@ -63,10 +85,17 @@ public sealed class TollRouter
     void SelectAutomatic()
     {
         if(CurrentKey==null)return;
-        SelectedGate=PaymentPolicy.ChooseAutomatic(CurrentKey,Choices.Select(c=>c.GateId),SelectedGate,preferences.Payments);
-        Status=SelectedGate.HasValue?"Automatische Lkw-Mautspur: "+Choices.First(c=>c.GateId==SelectedGate).Label:
-            "Keine bestätigte automatische Lkw-Mautspur – manuell übernehmen";
+        var automatic=Choices.Where(c=>PaymentFor(c.GateId)==TollPayment.Automatic).ToArray();
+        SelectedGate=automatic.Any(c=>c.GateId==SelectedGate)?SelectedGate:
+            automatic.FirstOrDefault()?.GateId ?? Choices.FirstOrDefault(c=>
+                PaymentFor(c.GateId)==TollPayment.Manual && modelPayments.GetValueOrDefault(c.GateId)==TollPayment.Manual)?.GateId;
+        if (SelectedGate.HasValue) CancelPlannedStop();
+        Status=SelectedGate is int gate?LaneStatus(gate):
+            "Keine eindeutig passende Lkw-Mautspur – manuell übernehmen";
     }
+    string LaneStatus(int gate) => (PaymentFor(gate)==TollPayment.Automatic
+        ? "Automatisch abrechnende Lkw-Spur: " : "Lkw-Spur mit manueller Zahlung: ") +
+        Choices.FirstOrDefault(c=>c.GateId==gate)?.Label;
     public void Confirm(int gate,TollPayment payment)
     {
         if(CurrentKey==null || !Choices.Any(c=>c.GateId==gate))throw new ArgumentException("Keine erreichbare Mautspur ausgewählt");
@@ -113,7 +142,8 @@ public sealed class TollRouter
         var all=source.Prefab.Descriptor?.NavCurves;
         if(all==null || source.Curves.Count==0)return null;
         var graph=all.Select((c,i)=>new CurveLink(i,c.NextLines.ToArray(),c.Length,
-            c.AllowedVehicles is AllowedVehicles.AllVehicles or AllowedVehicles.LargeVehicles,c.SemaphoreId)).ToArray();
+            (c.AllowedVehicles is AllowedVehicles.AllVehicles or AllowedVehicles.LargeVehicles) &&
+            c.TrafficRule.ToString() != "escort_only",c.SemaphoreId)).ToArray();
         int first=all.IndexOf(source.Curves[0]),last=all.IndexOf(source.Curves[^1]);
         var ids=CurveGraph.ViaGate(graph,first,last,gate);
         if(ids==null)return null;
@@ -121,7 +151,7 @@ public sealed class TollRouter
         result.Curves=ids.Select(i=>all[i]).ToList();result.Length=result.Curves.Sum(c=>c.Length);
         return PrefabRefinement.Refine(result);
     }
-    public bool Apply(PlannedPathData data,Vector3 truck,out string? error)
+    public bool Apply(PlannedPathData data,Vector3 truck,out string? error,double speed=0)
     {
         error=null;
         if(data.HasError)return false;
@@ -140,10 +170,15 @@ public sealed class TollRouter
             // invent a lateral jump at a road boundary or use the opposite carriageway.
             if(!replacements.TryGetValue(current,out var replacement))
             {
-                replacement=ViaGate(current,SelectedGate.Value);
+                replacement=plans.TryGetValue(SelectedGate.Value,out var plan) ? plan : ViaGate(current,SelectedGate.Value);
                 if(replacement==null) {
-                    error="Die bestätigte Lkw-Spur ist von dieser Einfahrt nicht erreichbar.";return false;
+                    error="Die gewählte Lkw-Spur ist von dieser Einfahrt nicht erreichbar.";return false;
                 }
+                var changes = TollEntry.Plan(data,itemIndex,current,replacement,truck,speed);
+                if (changes == null)
+                {error="Die gewählte Mautspur kann von der aktuellen Fahrspur nicht mehr erreicht werden.";return false;}
+                foreach (var change in changes.Apply) change();
+                if (changes.SlowRoad != null) shortChangeRoad=changes.SlowRoad;
                 replacements[current]=replacement;replacements[replacement]=replacement;
                 if(replacements.Count>128)replacements.Clear();
             }
@@ -160,8 +195,28 @@ public sealed class TollRouter
                 item.allowedToLaneChange=false;
             }
             if(!ExitHandoff.Align(data,itemIndex,truck,out error))return false;
-            Status="Bestätigte Lkw-Spur: "+Choices.FirstOrDefault(c=>c.GateId==SelectedGate)?.Label;
+            Status=LaneStatus(SelectedGate.Value);
         }
         return true;
+    }
+
+    public TollDecision LimitShortChange(PlannedPathData data, RouteTrace trace, Vector3 truck, double speed, TollDecision decision)
+    {
+        if (shortChangeRoad == null) return decision;
+        if (!data.PlannedPath.Contains(shortChangeRoad))
+        {
+            shortChangeRoad=null;
+            return decision;
+        }
+        float start = shortChangeRoad.direction==Direction.Backward?1:0;
+        var snapshot=RouteSnapshot.Capture(data);
+        var road=snapshot.PlannedPath[data.PlannedPath.IndexOf(shortChangeRoad)];
+        var startPoint=road.Interpolate(start,0,false)?.Position;
+        if (!startPoint.HasValue) throw new InvalidOperationException("Beginn des Maut-Spurwechsels fehlt.");
+        double ahead = Math.Max(0,trace.Project(startPoint.Value).Along-trace.Project(truck).Along-speed*1.5);
+        double cap = Math.Sqrt(TollEntry.ShortChangeSpeed*TollEntry.ShortChangeSpeed+2.4*ahead);
+        float limit = (float)Math.Clamp((cap-speed)*.8,-2.5,.35);
+        if (float.IsFinite(decision.MaxAcceleration) && decision.MaxAcceleration <= limit) return decision;
+        return decision with { Phase="Tempo für Maut-Spurwechsel", TargetSpeed=cap, MaxAcceleration=limit };
     }
 }

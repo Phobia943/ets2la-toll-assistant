@@ -16,10 +16,12 @@ public static class ApproachStop
             throw new InvalidOperationException("Unbestätigte Mautspur zu spät erkannt: Anhalteweg vor der Aufteilung reicht nicht.");
         if (distance < -1)
             throw new InvalidOperationException("Haltegrenze vor unbestätigter Mautspur überschritten.");
-        if (speed < .1)
+        if (usable <= .5 && speed < .1)
             return new("Warten auf Mautspur-Freigabe – F9 zur Übernahme", 0, -.35f, null);
         double needed = speed * speed / (2 * Math.Max(.1, usable));
         double deceleration = Math.Clamp(needed, .4, 2.5);
-        return new("Geplanter Halt vor unbestätigter Mautspur", 0, (float)-deceleration, null);
+        double limit = usable <= .5 ? 0 : Math.Min(Math.Sqrt(1.8 * usable), .6 * usable);
+        float acceleration = (float)Math.Clamp((limit-speed)*.8, -deceleration, .35);
+        return new("Geplanter Halt vor unbestätigter Mautspur", limit, acceleration, null);
     }
 }
