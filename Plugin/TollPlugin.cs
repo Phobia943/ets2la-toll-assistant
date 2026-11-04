@@ -19,7 +19,7 @@ public sealed class TollPlugin : Plugin
 {
     public static TollPlugin? Current { get; private set; }
     public override PluginInformation Info => new() {
-        Id = "local.mautassistent", Name = "Mautassistent", Version = "0.2.13",
+        Id = "local.mautassistent", Name = "Mautassistent", Version = "0.2.14",
         Description = "Langsame Mautdurchfahrt. Bereitet sich im Stand automatisch vor; Fahrt startet erst mit F8.",
         AuthorName = "Lokale Anpassung", Dependencies = ["tumppi066.pathlib"],
         PluginPageButtonName = "Einstellungen"
@@ -29,8 +29,12 @@ public sealed class TollPlugin : Plugin
     readonly Stopwatch clock = Stopwatch.StartNew();
     readonly AccBridge bridge = new();
     readonly DriveSupervisor supervisor = new();
+    readonly ConnectorHistory connectorHistory = new();
     readonly Queue<(DriveCheckpoint Before, DriveSample Sample)> driveHistory = new();
     DriveAction driveAction;
+    bool connectorAttempted;
+    bool connectorPending;
+    bool connectorSeeded;
     readonly AutomaticPreparation automaticPreparation = new();
     readonly PassageMemory passage=new();
     string lastPathError="";
@@ -129,6 +133,9 @@ public sealed class TollPlugin : Plugin
             if (subscribed) return;
             _=State; // Register host controls before our cancel listener.
             faultBrake.Release();ResetDriving();
+            connectorAttempted = connectorPending = false;
+            connectorSeeded = false;
+            connectorHistory.Clear();
             active = false; controller.Reset(); tracked = null; passage.Reset();
             automaticPreparation.Request();
             preparationReason="Automatische Vorbereitung wartet auf Stillstand und verbundene Module.";
@@ -154,6 +161,8 @@ public sealed class TollPlugin : Plugin
             sdk = data.sdkActive; paused = data.paused; speed = data.truckFloat.speed;
             position = data.truckPlacement.coordinate.ToVector3();
             headingTurns=data.truckPlacement.rotation.X;
+            if (!sdk || paused || (State.EnableAssists && Math.Abs(speed) > .1)) connectorHistory.Clear();
+            else if (!State.EnableAssists) connectorHistory.Observe(telemetryAt, position, speed);
             SafetyWatchdog(telemetryAt);
         }
     }
@@ -163,6 +172,7 @@ public sealed class TollPlugin : Plugin
         if(e.NewValue is not false)return;
         lock(sync) {
             faultBrake.Release();ResetDriving();
+            connectorAttempted = connectorPending = false;
             router.CancelPlannedStop();warnedStopKey=null;
             if(!active) {
                 automaticPreparation.Request();
@@ -201,6 +211,7 @@ public sealed class TollPlugin : Plugin
             { HasError: false } when safetyTrace != null && routeAge < 1 => RouteFeed.Valid,
             { HasError: false } => RouteFeed.Waiting,
             { ErrorMessage: "Assists are disabled." or "Game is paused." } => RouteFeed.Waiting,
+            { ErrorMessage: ConnectorStart.MissingRoad } when connectorPending => RouteFeed.Loading,
             { ErrorMessage: "Waiting for map data..." } when routeAge < 1 => RouteFeed.Loading,
             _ => RouteFeed.Rejected
         };
@@ -249,11 +260,69 @@ public sealed class TollPlugin : Plugin
             gatesAt = clock.Elapsed.TotalSeconds;
         }
     }
-    void OnPath(PlannedPathData data) { lock(sync) {
-        path = data; pathAt = clock.Elapsed.TotalSeconds;
-        if(RejectUnpreparedStart())return;
+    void OnPath(PlannedPathData data)
+    {
+        IPlugin? planner = null;
+        Vector3 startPosition = default;
+        double startHeading = 0;
+        Vector3[] history = [];
+        lock (sync)
+        {
+            path = data;
+            pathAt = clock.Elapsed.TotalSeconds;
+            if (!State.EnableAssists) connectorAttempted = false;
+            connectorPending = false;
+            if (RejectUnpreparedStart()) return;
+            if (data.HasError && data.ErrorMessage == ConnectorStart.MissingRoad && !connectorAttempted &&
+                (preview || active && !supervisor.Checkpoint.Drove && safetyTrace == null) &&
+                State.EnableAssists && State.DrivingMode != DrivingMode.LaneAssistOnly &&
+                SensorsFresh(pathAt) && Math.Abs(speed) <= .1)
+            {
+                planner = PluginBackend.Current?.PluginHandler?.LoadedPlugins.FirstOrDefault(p =>
+                    p._IsRunning && p.Info.Id == "tumppi066.pathfinding");
+                if (planner != null)
+                {
+                    connectorAttempted = connectorPending = true;
+                    connectorSeeded = false;
+                    startPosition = position;
+                    startHeading = headingTurns;
+                    history = connectorHistory.Snapshot(pathAt, position);
+                }
+            }
+        }
+
+        bool seeded = false;
+        if (planner != null)
+        {
+            try
+            {
+                seeded = ConnectorStart.TrySeed(planner, startPosition, startHeading, history, commit =>
+                {
+                    lock (sync)
+                    {
+                        return ReferenceEquals(path, data) && connectorPending && State.EnableAssists &&
+                            (preview || active) && SensorsFresh(clock.Elapsed.TotalSeconds) && Math.Abs(speed) <= .1 &&
+                            Vector3.Distance(position, startPosition) <= .25 && commit();
+                    }
+                });
+            }
+            catch (Exception ex) { Logger.Warn("Kartenverbinder konnte nicht als Start geprüft werden: " + ex.Message); }
+            if (seeded) Logger.Info("Start auf geprüftem Kartenverbinder; warte auf die native Route.");
+        }
+
+        lock (sync)
+        {
+            if (!ReferenceEquals(path, data)) return;
+            connectorPending = seeded && connectorPending;
+            if (connectorPending) connectorSeeded = true;
+            HandlePath(data);
+        }
+    }
+
+    void HandlePath(PlannedPathData data)
+    {
         // Evaluate explicit route errors before diagnostic I/O, independent of ACC.
-        if (data.HasError && SafetyWatchdog(pathAt) is DriveAction.RejectStart or DriveAction.EmergencyStop) return;
+        if (data.HasError && SafetyWatchdog(clock.Elapsed.TotalSeconds) is DriveAction.RejectStart or DriveAction.EmergencyStop) return;
         if(data.HasError && data.ErrorMessage!=lastPathError && data.ErrorMessage is not "Assists are disabled." and not "Game is paused.") {
             routeTransition=new {utc=DateTimeOffset.UtcNow,error=data.ErrorMessage,active,
                 assists=State.EnableAssists,speedKph=speed*3.6,
@@ -295,6 +364,7 @@ public sealed class TollPlugin : Plugin
                 try {
                     var selected=RouteMatcher.Select(data,position,gates,null);
                     previewStatus=routeFault ?? (selected!=null?$"Routenprobe: Schranke {selected.Key}, {selected.Distance:F1} m":"Routenprobe: Route vorhanden, keine zugeordnete Mautschranke");
+                    if (routeFault == null && connectorSeeded) previewStatus += " · Start auf geprüftem Kartenverbinder";
                     var report=new {utc=DateTimeOffset.UtcNow,routeFault,selected,router.Status,
                         geometry=RouteMatcher.Diagnose(data,position,gates),
                         sampledTruckProjection=RouteMatcher.SampleForTracking(data,position,speed).Project(position),
@@ -308,7 +378,7 @@ public sealed class TollPlugin : Plugin
                 finally {preview=false;State.EnableAssists=false;}
             }
         }
-    } }
+    }
     public string PreviewRoute()
     {
         lock(sync) {
@@ -320,6 +390,8 @@ public sealed class TollPlugin : Plugin
                 return "Für die reine Routenprobe Lane Assist und ACC im Manager ausschalten.";
             if(!plugins.Any(p=>p._IsRunning && p.Info.Id=="tumppi066.pathfinding"))return "Zuerst Pathfinding einschalten.";
             active=false;bridge.Detach();controller.Reset();tracked=null;
+            connectorAttempted = connectorPending = false;
+            connectorSeeded = false;
             automaticPreparation.Request();
             preview=true;previewAt=clock.Elapsed.TotalSeconds;previewStatus="Routenprobe läuft ohne Gas und Lenkung";
             State.EnableAssists=true;
@@ -453,7 +525,7 @@ public sealed class TollPlugin : Plugin
             SafetyWatchdog(clock.Elapsed.TotalSeconds);
             RejectUnpreparedStart();
             double now = clock.Elapsed.TotalSeconds;
-            if(preview && now-previewAt>5) {preview=false;State.EnableAssists=false;previewStatus="Routenprobe abgebrochen: "+(path?.ErrorMessage??"Keine Route");}
+            if(preview && now-previewAt>(connectorPending ? 8 : 5)) {preview=false;State.EnableAssists=false;previewStatus="Routenprobe abgebrochen: "+(path?.ErrorMessage??"Keine Route");}
             TryAutomaticPreparation(now);
             try
             {
@@ -501,7 +573,8 @@ public sealed class TollPlugin : Plugin
                     Directory.CreateDirectory(Path.GetDirectoryName(DiagnosticPath)!);
                     if (sdk && lastMapWrite < 0) { lastMapWrite=now; try { MapDiagnostics.Write(position,Path.GetDirectoryName(DiagnosticPath)!); } catch(Exception ex) { Logger.Warn("Maut-Kartenprüfung: " + ex.Message); } }
                     File.WriteAllText(DiagnosticPath, JsonSerializer.Serialize(new {
-                        version="0.2.13", utc=DateTimeOffset.UtcNow, active, fresh=Fresh(now), speedKph=speed*3.6,
+                        version="0.2.14", utc=DateTimeOffset.UtcNow, active, fresh=Fresh(now), speedKph=speed*3.6,
+                        connectorAttempted, connectorPending, connectorSeeded,
                         driveAction=driveAction.ToString(),
                         plannedStop=router.StopBoundary.HasValue,stopDistance=router.StopDistance,
                         automaticPreparationPending=automaticPreparation.Requested,

@@ -45,6 +45,21 @@ void Run()
     var results=new List<string>();
     void Check(string name, Action test) { try {test(); results.Add("PASS "+name);} catch(Exception ex) {results.Add("FAIL "+name+": "+ex); } }
     void Assert(bool v,string message="Assertion failed") {if(!v)throw new Exception(message);}
+    Check("Connector evidence distinguishes approaching lanes and expires after a stop", () =>
+    {
+        var memory = new ConnectorHistory();
+        for (int i = 1; i <= 12; i++) memory.Observe(i, new System.Numerics.Vector3(0, 0, i), 1);
+        var trace = memory.Snapshot(20, new System.Numerics.Vector3(0, 0, 12));
+        Assert(trace.Length == 12);
+        var sameLane = new RouteTrace([new(0,0,0), new(0,0,30)]);
+        var otherLane = new RouteTrace([new(3,0,0), new(0,0,14), new(0,0,30)]);
+        Assert(ConnectorHistory.Fit(sameLane, trace) == 0);
+        Assert(ConnectorHistory.Fit(otherLane, trace) > 1);
+        Assert(double.IsPositiveInfinity(ConnectorHistory.Fit(sameLane, trace.Reverse().ToArray())));
+        Assert(memory.Snapshot(110, new System.Numerics.Vector3(0, 0, 12)).Length == 0);
+        memory.Observe(25, new System.Numerics.Vector3(0,0,11), -1);
+        Assert(memory.Snapshot(25, new System.Numerics.Vector3(0,0,11)).Length == 0);
+    });
     Check("Unknown toll approach decelerates by available distance without emergency output",()=>{
         var d=ApproachStop.Evaluate(90/3.6,300);
         Assert(d.MaxAcceleration<-.9f && d.MaxAcceleration>-1.3f);

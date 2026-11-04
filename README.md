@@ -20,7 +20,7 @@ Die Erweiterung erkennt Höhenfreiheit und Zahlart **nicht automatisch**. Eine o
 
 ## Entwicklungsstand
 
-Quellstand **0.2.13 in Erprobung**. Anfahrt, Spurwahl, langsame Durchfahrt und Rückgabe an den Controller wurden mit einer früheren Version an einer ausgewählten Mautstelle praktisch geprüft. Die normale Straßenlenkung wurde mit 0.2.3 nach einem Neustart ebenfalls erfolgreich geprüft. Version 0.2.4 isolierte die Routenmessung vom veränderlichen Spurwechselzustand der Lenkroute.
+Quellstand **0.2.14 in Erprobung**. Anfahrt, Spurwahl, langsame Durchfahrt und Rückgabe an den Controller wurden mit einer früheren Version an einer ausgewählten Mautstelle praktisch geprüft. Die normale Straßenlenkung wurde mit 0.2.3 nach einem Neustart ebenfalls erfolgreich geprüft. Version 0.2.4 isolierte die Routenmessung vom veränderlichen Spurwechselzustand der Lenkroute.
 
 Bei der weiteren Fahrt mit 0.2.4 trat ein nativer Routenfehler auf. Danach konnte F8 die Fahrassistenz ohne aktive Mautbegrenzung erneut starten; eine zu niedrige Spur wurde gemeldet. Version 0.2.5 verlangt bei eingeschaltetem Mautassistenten eine erfolgreiche Vorbereitung, bevor Fahrassistenz eingeschaltet bleiben darf. Nach einer Störung zuerst mit F9 manuell übernehmen und anhalten; ab 0.2.10 erfolgt die erneute Vorbereitung dann automatisch. Ein normaler Stopp mit F9 löscht die Vorbereitung nicht. Die Rückweisung wird in Daten-Callbacks und im Plugin-Tick geprüft; sie ist keine atomare Sperre sämtlicher Ausgabethreads des Hostprogramms. Bei deaktiviertem Plugin kann diese Prüfung nicht wirken. Die Korrektur ist automatisiert geprüft, eine erneute vollständige Mautfahrt steht aus.
 
@@ -54,6 +54,10 @@ dotnet run --project CoreTests -c Release -- --replay 'C:\Pfad\zu\last-fault.jso
 ```
 
 Die Wiedergabe vergleicht die Entscheidungen des Watchdogs. Sie simuliert weder Lenkung noch Fahrzeugphysik. Ältere Dateien enthalten noch keine Entscheidungsfolge.
+
+**Start auf Kartenverbindern ab 0.2.14.** Wenn Pathfinding im Stand keinen regulären Startabschnitt findet, prüft die Erweiterung nahe Kartenverbinder. Sie verlangt eine Lkw-taugliche Spur ohne Schranke oder Signal, eine passende Fahrtrichtung und einen durchgehenden Anschluss an die nächste Straße. Bei überlappenden Spuren kann der letzte manuell gefahrene Spurverlauf die Zuordnung klären. Der Verlauf bleibt im Arbeitsspeicher. Mehrdeutige Ausfahrten und fehlende Anschlüsse führen weiterhin zum Startabbruch.
+
+Die Übergabe erfolgt beim Fehlerereignis im Thread des nativen Routenplaners. Sie ist für die lokal geprüften Builds von Pathfinding 1.2.9, PathLib 1.2.8 und den ETS2LA-Ereignisbus freigeschaltet. Bei anderen Builds bleibt die reguläre Startpunktsuche aktiv. Erst ein gültiges Routenereignis kann den Start freigeben.
 
 ## Voraussetzungen
 
