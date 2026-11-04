@@ -5,6 +5,7 @@ public sealed record Gate(string Key, double Distance, BarrierState State);
 public sealed record TollInput(double Time, double Speed, bool Enabled, bool Fresh, Gate? Gate);
 public sealed record TollDecision(string Phase, double? TargetSpeed, float MaxAcceleration, string? GateKey)
 {
+    public bool RequiresTakeover { get; init; }
     public static TollDecision Idle(string phase) => new(phase, null, float.NaN, null);
 }
 
@@ -87,5 +88,5 @@ public sealed class TollController(TollOptions options)
         if (cap == 0) accel = speed > .1 ? (float)-Math.Min(2.5, Math.Max(.5, speed)) : -.35f;
         return new(phase, cap, accel, tracked);
     }
-    TollDecision Lost() => new("Daten fehlen – manuell übernehmen", 0, -2.5f, tracked);
+    TollDecision Lost() => new("Schranke nicht mehr sicher zugeordnet", 0, -2.5f, tracked) { RequiresTakeover = true };
 }

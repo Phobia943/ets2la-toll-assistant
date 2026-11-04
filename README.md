@@ -20,7 +20,7 @@ Die Erweiterung erkennt Höhenfreiheit und Zahlart **nicht automatisch**. Eine o
 
 ## Entwicklungsstand
 
-Quellstand **0.2.12 in Erprobung**. Anfahrt, Spurwahl, langsame Durchfahrt und Rückgabe an den Controller wurden mit einer früheren Version an einer ausgewählten Mautstelle praktisch geprüft. Die normale Straßenlenkung wurde mit 0.2.3 nach einem Neustart ebenfalls erfolgreich geprüft. Version 0.2.4 isolierte die Routenmessung vom veränderlichen Spurwechselzustand der Lenkroute.
+Quellstand **0.2.13 in Erprobung**. Anfahrt, Spurwahl, langsame Durchfahrt und Rückgabe an den Controller wurden mit einer früheren Version an einer ausgewählten Mautstelle praktisch geprüft. Die normale Straßenlenkung wurde mit 0.2.3 nach einem Neustart ebenfalls erfolgreich geprüft. Version 0.2.4 isolierte die Routenmessung vom veränderlichen Spurwechselzustand der Lenkroute.
 
 Bei der weiteren Fahrt mit 0.2.4 trat ein nativer Routenfehler auf. Danach konnte F8 die Fahrassistenz ohne aktive Mautbegrenzung erneut starten; eine zu niedrige Spur wurde gemeldet. Version 0.2.5 verlangt bei eingeschaltetem Mautassistenten eine erfolgreiche Vorbereitung, bevor Fahrassistenz eingeschaltet bleiben darf. Nach einer Störung zuerst mit F9 manuell übernehmen und anhalten; ab 0.2.10 erfolgt die erneute Vorbereitung dann automatisch. Ein normaler Stopp mit F9 löscht die Vorbereitung nicht. Die Rückweisung wird in Daten-Callbacks und im Plugin-Tick geprüft; sie ist keine atomare Sperre sämtlicher Ausgabethreads des Hostprogramms. Bei deaktiviertem Plugin kann diese Prüfung nicht wirken. Die Korrektur ist automatisiert geprüft, eine erneute vollständige Mautfahrt steht aus.
 
@@ -30,7 +30,7 @@ Bei der weiteren Fahrt mit 0.2.4 trat ein nativer Routenfehler auf. Danach konnt
 
 **Version 0.2.7 fordert bei einem erkannten Trackingfehler starkes Bremsen an und schaltet die Lenkassistenz aus.** Die Bremsanforderung läuft unabhängig vom ACC weiter. Sie bleibt bis zur manuellen Übernahme mit F9 aktiv; dabei selbst die Bremse halten. Eine wiedergefundene Route oder F8 lösen die Bremsung nicht. Nach der Übernahme wird ab 0.2.10 im Stand automatisch neu vorbereitet; ein weiterer F8-Druck bleibt zum Fahren erforderlich. Ohne eingeschaltetes, vorbereitetes Plugin wirkt diese Überwachung nicht.
 
-Gemeldete Routenfehler werden direkt beim Empfang behandelt. Der Watchdog reagiert auf mindestens 0,5 s alte Telemetrie bzw. mindestens 1 s alte zuvor verfolgte Routen. Beim Erststart sind bis zu 2 s für die Routenberechnung vorgesehen. Bei Lenkassistenz werden ein Spurabstand über 3 m, mehr als 90° entgegen der lokalen Fahrtrichtung, Rückwärtsfahrt sowie eine gegenläufig neu berechnete Route abgefangen. Die Prüfung ist keine allgemeine Erkennung aller Verkehrszeichen oder Fahrbahnverbote.
+Der Watchdog behandelt gemeldete Routenfehler direkt und reagiert auf mindestens 0,5 s alte Spieltelemetrie. Seit 0.2.13 entscheidet der gemeinsame Fahrzustand, ob die Assistenz noch startet, kurz auf Daten wartet oder sofort abbremsen muss. Bei Lenkassistenz werden ein Spurabstand über 3 m, mehr als 90° entgegen der lokalen Fahrtrichtung, Rückwärtsfahrt sowie eine gegenläufig neu berechnete Route abgefangen. Die Prüfung ist keine allgemeine Erkennung aller Verkehrszeichen oder Fahrbahnverbote.
 
 Der Halteabstand von 8 m bezieht sich auf den Telemetriepunkt des Lkw, nicht auf die Stoßstange. Er ist kein geprüfter Haltepunkt für manuelles Bezahlen. Gefälle, unterschiedliche Fahrzeuge und Beladungen sind nicht umfassend validiert. Die Fehlerbremsung und der tatsächliche Bremsweg sind noch nicht praktisch geprüft; eine ausgefallene App oder Spielanbindung kann keine verlässliche Bremsausgabe garantieren.
 
@@ -43,6 +43,18 @@ Version 0.2.11 unterscheidet kurze Verbindungen zwischen getrennten Routenabschn
 **Version 0.2.12 trennt einen geplanten Halt vor einer unbekannten Mautspur von einem Trackingfehler.** Bei vorhandenen SDK- und Routendaten wird die Mautanlage bis zu 1 km voraus berücksichtigt (die tatsächliche Reichweite hängt vom Spiel und Pathfinding ab). Die Haltegrenze liegt 15 m vor dem Ende der eindeutig zusammenhängenden, für Lkw freigegebenen Zufahrt, spätestens vor der ersten Verzweigung oder beschränkten Kurve. Die Grenze wird entlang der Route verfolgt, nicht als Luftlinie zur Schranke. Eine Warnung fordert zur Übernahme auf; Lenkung und Tracking bleiben während des geplanten Halts aktiv. Die ACC-Verzögerung ergibt sich aus Geschwindigkeit und Restweg, einschließlich 1,5 s Reaktionsreserve, und liegt zwischen 0,4 und 2,5 m/s². Im Stand wird gehalten, bis manuell mit F9 übernommen oder die Spur im ausgeschalteten Zustand bestätigt wird. Es gibt keine automatische Freigabe durch eine neue Route oder offene Schranke. Reicht der Anhalteweg nicht, verschwindet die Haltegrenze aus der gültigen Route oder fällt das Tracking aus, bleibt die starke Fehlerbremsung erhalten. Ohne aktiven Tempomaten ist der geplante Halt nicht verfügbar.
 
 Der gemeldete harte Stopp bei ungefähr 90 km/h wurde durch fehlende Spurfreigabe ausgelöst, nicht durch einen Trackingfehler. Automatische Tests prüfen die neue Unterscheidung im tatsächlichen Plugin-Aufrufpfad einschließlich F9 und anschließendem Trackingverlust. Eine Bremswegsimulation prüft den Halt vor der Grenze. Das ersetzt keinen Fahrtest mit beladenem Lkw; eine sanfte Verzögerung an jeder Mautstelle ist damit noch nicht nachgewiesen.
+**Version 0.2.13 bündelt die Entscheidungen über Start, Datenlücken und Trackingverlust.** Im Stand fordert der Tempomat während der ersten Routenberechnung Halt an. Bei gemeldetem Kartenladen wartet die Assistenz bis zu acht Sekunden, sonst bis zu zwei Sekunden auf die erste vollständige Fahrentscheidung. Meldet ETS2LA einen unbrauchbaren Startpunkt, wird F8 im Stand mit einer Meldung abgebrochen. Während der Fahrt lösen eine ungültige Route, fehlende Spieltelemetrie oder falsche Fahrtrichtung weiterhin sofort die Fehlerbremsung aus.
+
+Bei einer kurzen Datenlücke abseits einer erkannten Mautzufahrt fordert der Tempomat eine leichte Verzögerung an. Voraussetzung sind frische Spieltelemetrie, eine weiterhin prüfbare Route und ausreichende Strecke voraus. Die Erholungsphase dauert höchstens 0,5 Sekunden und endet erst nach 0,15 Sekunden stabiler Daten. Eine mindestens eine Sekunde alte Route löst die Fehlerbremsung aus. Für Schranken und unbestätigte Mautspuren gelten weiterhin die eigenen Halteregeln.
+
+`last-fault.json` enthält ab 0.2.13 bis zu 512 der letzten Entscheidungen samt Eingaben und Anfangszustand. Die Zustandslogik lässt sich ohne laufendes Spiel erneut ausführen:
+
+```powershell
+dotnet run --project CoreTests -c Release -- --replay 'C:\Pfad\zu\last-fault.json'
+```
+
+Die Wiedergabe vergleicht die Entscheidungen des Watchdogs. Sie simuliert weder Lenkung noch Fahrzeugphysik. Ältere Dateien enthalten noch keine Entscheidungsfolge.
+
 ## Voraussetzungen
 
 Geprüfte lokale Kombination:

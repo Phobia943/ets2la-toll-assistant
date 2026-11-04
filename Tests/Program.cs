@@ -2,7 +2,28 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using System.Collections;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using MautAssistent;
+
+if (args is ["--replay", var file])
+{
+    using var report = JsonDocument.Parse(File.ReadAllText(file));
+    var recording = report.RootElement.GetProperty("driveRecording").Deserialize<DriveRecording>(
+        new JsonSerializerOptions { NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals })!;
+    var replay = new DriveSupervisor(recording.InitialState);
+    int mismatches = 0;
+    foreach (var sample in recording.Samples)
+    {
+        var actual = replay.Step(sample.Frame);
+        if (actual == sample.Action) continue;
+        Console.WriteLine($"{sample.Frame.Time:F3}s: recorded {sample.Action}, replayed {actual}");
+        mismatches++;
+    }
+    Console.WriteLine($"{recording.Samples.Length} decisions replayed, {mismatches} differences. " +
+        $"Incident: {report.RootElement.GetProperty("action").GetString()} ({report.RootElement.GetProperty("reason").GetString()})");
+    return recording.Samples.Length > 0 && mismatches == 0 ? 0 : 1;
+}
 
 #if INTEGRATION
 var etsRoot=Environment.GetEnvironmentVariable("EtsRoot") ?? throw new InvalidOperationException("Set EtsRoot to the ETS2LA installation directory.");
@@ -16,6 +37,7 @@ AssemblyLoadContext.Default.Resolving += (_,name) => {
 };
 #endif
 Run();
+return Environment.ExitCode;
 
 [MethodImpl(MethodImplOptions.NoInlining)]
 void Run()
@@ -28,7 +50,7 @@ void Run()
         Assert(d.MaxAcceleration<-.9f && d.MaxAcceleration>-1.3f);
         Assert(ApproachStop.Evaluate(90/3.6,200).MaxAcceleration<d.MaxAcceleration);
         Assert(ApproachStop.Evaluate(0,100).MaxAcceleration<0,"Unknown lane must never launch from standstill");
-        Assert(!d.Phase.Contains("manuell übernehmen"),"Planned halt must not enter fatal tracking path");
+        Assert(!d.RequiresTakeover,"Planned halt must not enter fatal tracking path");
     });
     Check("Planned approach stops before the branch and stays stopped",()=>{
         double speed=25,distance=300;
@@ -227,11 +249,11 @@ void Run()
         for(int i=0;i<=20;i++)c.Step(Input(i*.1,state:BarrierState.Open));
         var stale=c.Step(Input(2.1,state:BarrierState.Open,fresh:false)); Assert(stale.MaxAcceleration<0);
         Assert(c.Step(Input(2.2,state:BarrierState.Open)).TargetSpeed==0);
-        Assert(c.Step(new(2.3,0,true,true,null)).Phase.Contains("manuell"));
+        Assert(c.Step(new(2.3,0,true,true,null)).RequiresTakeover);
     });
     Check("A different gate cannot release the tracked gate",()=>{
         var c=new TollController(new()); c.Step(Input(0));
-        Assert(c.Step(Input(.1,state:BarrierState.Open,key:"B")).Phase.Contains("manuell"));
+        Assert(c.Step(Input(.1,state:BarrierState.Open,key:"B")).RequiresTakeover);
     });
     Check("Exit and reverse release tracking",()=>{
         var c=new TollController(new());c.Step(Input(0));
@@ -284,29 +306,54 @@ void Run()
         Assert(GateSelection.Select([behind],null)==null);
         Assert(GateSelection.Select([behind],"A")!=null);
     });
-    Check("F9, plugin stop, observation and lane-only mode override stale output",()=>{
-        Assert(ControlGuard.Check(true,true,false,false,false,10,true)==ControlPermission.Neutral);
-        Assert(ControlGuard.Check(true,false,true,false,true,0,false)==ControlPermission.Neutral);
-        Assert(ControlGuard.Check(false,true,true,false,true,0,false)==ControlPermission.Neutral);
-        Assert(ControlGuard.Check(true,true,true,true,true,0,false)==ControlPermission.Neutral);
+    Check("Standstill start waits for loading and rejects an unavailable starting road without an emergency stop",()=>{
+        var frame = new DriveFrame(0, 0, true, false, true, RouteFeed.Loading, .01, false, false);
+        var control = new DriveSupervisor();
+        Assert(control.Step(frame) == DriveAction.AwaitRoute);
+        Assert(control.Step(frame with { Time = 6 }) == DriveAction.AwaitRoute);
+        Assert(control.Step(frame with { Time = 8 }) == DriveAction.RejectStart);
+        control.Reset();
+        Assert(control.Step(frame with { Route = RouteFeed.Rejected }) == DriveAction.RejectStart);
+        Assert(control.Step(frame with { Speed = 10, Route = RouteFeed.Rejected }) == DriveAction.EmergencyStop);
     });
-    Check("Watchdog requests disarm on stale telemetry, stale decisions and missing gate",()=>{
-        Assert(ControlGuard.Check(true,true,true,false,true,.1,false)==ControlPermission.Limit);
-        Assert(ControlGuard.Check(true,true,true,false,false,.1,false)==ControlPermission.Disarm);
-        Assert(ControlGuard.Check(true,true,true,false,true,.31,false)==ControlPermission.Disarm);
-        Assert(ControlGuard.Check(true,true,true,false,true,.1,true)==ControlPermission.Disarm);
+    Check("Brief input loss requires continuous recovery and resets after manual cancellation",()=>{
+        var ready = new DriveFrame(0, 16, true, false, true, RouteFeed.Valid, .01, true, true);
+        var control = new DriveSupervisor();
+        Assert(control.Step(ready) == DriveAction.Drive);
+        Assert(control.Step(ready with { Time = .05, DecisionReady = false }) == DriveAction.Recover);
+        var resumed = new DriveSupervisor(control.Checkpoint);
+        foreach (var (time, fresh, expected) in new[]{
+            (.10, true, DriveAction.Recover), (.20, false, DriveAction.Recover),
+            (.22, true, DriveAction.Recover), (.38, true, DriveAction.Drive)
+        })
+        {
+            var input = ready with { Time = time, DecisionReady = fresh };
+            Assert(control.Step(input) == expected && resumed.Step(input) == expected);
+        }
+        Assert(control.Step(ready with { Time = .40, Enabled = false, TelemetryFresh = false }) == DriveAction.Idle);
+        Assert(control.Step(ready with { Time = .41, Speed = 0, Route = RouteFeed.Waiting }) == DriveAction.AwaitRoute);
     });
-    Check("Startup holds until the first route and times out without accelerating",()=>{
-        var s=new StartupGuard();
-        Assert(s.Check(false,false,0)==StartupPermission.Neutral);
-        Assert(s.Check(true,false,1)==StartupPermission.Hold);
-        Assert(s.Check(true,false,2.9)==StartupPermission.Hold);
-        Assert(s.Check(true,false,3)==StartupPermission.Disarm);
-        s.Reset();Assert(s.Check(true,false,4)==StartupPermission.Hold);
-        Assert(s.Check(true,true,4.1)==StartupPermission.Ready);
-        Assert(s.Check(true,false,4.2)==StartupPermission.Disarm);
-        Assert(s.Check(false,false,4.3)==StartupPermission.Neutral);
-        Assert(s.Check(true,false,4.4)==StartupPermission.Hold);
+    Check("Loss of the verified corridor, telemetry, or a toll safety input cannot use the recovery window",()=>{
+        var ready = new DriveFrame(0, 25, true, false, true, RouteFeed.Valid, .01, true, true);
+        foreach (var fault in new[]{
+            ready with { Route = RouteFeed.Rejected },
+            ready with { TelemetryFresh = false },
+            ready with { DecisionReady = false, CanRecover = false },
+            ready with { RouteAge = 1 }
+        })
+        {
+            var control = new DriveSupervisor();
+            Assert(control.Step(ready) == DriveAction.Drive);
+            Assert(control.Step(fault with { Time = .1 }) == DriveAction.EmergencyStop);
+        }
+        var timeout = new DriveSupervisor();
+        timeout.Step(ready);
+        Assert(timeout.Step(ready with { Time = .1, DecisionReady = false }) == DriveAction.Recover);
+        Assert(timeout.Step(ready with { Time = .61, DecisionReady = false }) == DriveAction.EmergencyStop);
+        var toll = new DriveSupervisor();
+        Assert(toll.Step(ready with { CanRecover = false }) == DriveAction.Drive);
+        Assert(toll.Step(ready with { Time = .6, RouteAge = .6, CanRecover = false }) == DriveAction.Drive);
+        Assert(toll.Step(ready with { Time = 1, RouteAge = 1, CanRecover = false }) == DriveAction.EmergencyStop);
     });
     #if INTEGRATION
     Check("Verified ACC type accepts bridge; attach/detach preserves native constraints",()=>{

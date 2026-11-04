@@ -6,7 +6,6 @@ public sealed class TrackingGuard
 {
     RouteTrace? accepted;
     public object? LastDirectionFailure { get; private set; }
-    public bool HasRoute => accepted!=null;
     public void Reset() {accepted=null;LastDirectionFailure=null;}
     // Planning reserve: one second response, 2 m/s² deceleration, 15 m margin.
     // It is a geometry horizon, not a promise about the vehicle's braking distance.
