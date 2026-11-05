@@ -84,3 +84,6 @@ try {
     Get-ChildItem -LiteralPath $resolved -File | ForEach-Object{Remove-Item -LiteralPath $_.FullName}
     Remove-Item -LiteralPath $resolved
 }
+# Missing evidence intentionally returns 2 from the child analyzer. Successful
+# negative tests must not leave that native exit code as the CI job's result.
+exit 0
