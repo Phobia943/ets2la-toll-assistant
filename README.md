@@ -171,9 +171,13 @@ Für einen zusammenhängenden Fahrnachweis stehen zwei rein lesende Werkzeuge f�
 
 Die Aufnahme liest Tempo, Position und physische Pedale aus RenCloud-SDK-Revision 12 sowie die rohen Mautschranken aus dem ETS2LA-SDK. Standardmäßig werden zehn Beobachtungen pro Sekunde erfasst. Die Assistenten-Diagnose kommt weiterhin etwa einmal pro Sekunde; wiederholte Statusreferenzen werden nicht als neue Entscheidungen ausgegeben. Bestehende Aufzeichnungen werden nicht überschrieben.
 
+Doppelte Rohobjekte derselben Durchfahrt werden nur nach einer eindeutigen ersten 3D-Beobachtung zusammengefasst: gleiche Signalnummer, höchstens 1 m Abstand und übereinstimmender Zustand. Fehlt später eines der Objekte, bleibt der beobachtete Anker erhalten. Widersprüchliche Zustände unterbrechen die Offenzeit. Ohne ursprünglichen Anker wird keine Identität aus bloßer Nähe geraten; andere Höhenlagen übernehmen den Anker nicht. Diese Messzuordnung ersetzt keinen Nachweis aus dem Mautmodell.
+
 Die Auswertung zählt zugeordnete Schranken, beobachtete Offenzeitfenster, Halte- und Durchfahrtspunkte sowie Datenlücken. Bei mehreren Schrankenschlüsseln muss `-GateKey` ausdrücklich gewählt werden. Ohne zugeordnete Schranke endet sie mit `Incomplete` und Rückgabecode 2. Sie erteilt keine automatische Gesamtfreigabe: Durchfahrtshöhe, Kollisionen, Zahlart und die tatsächliche Lenkung benötigen weiterhin Spielbild beziehungsweise Fahrerbestätigung. Die rohen Schrankendaten besitzen keinen eigenen Quellzeitstempel; diese Grenze bleibt im Bericht sichtbar. Pausen, Abtastlücken und fehlende Schranken unterbrechen die gemessenen Offenzeitfenster.
 
 `./Tools/Test-TollRecording.ps1` prüft die Auswertung mit künstlichen Aufzeichnungen, einschließlich benachbarter Schranken mit gleicher numerischer ID, Zeitlücken, veralteter Diagnose und unterbrochener Öffnung. Die laufende ETS2LA-Installation bleibt bei diesen Tests unberührt. Aufzeichnungen können Spielpositionen enthalten und werden als `*.jsonl` von Git ausgeschlossen.
+
+17 Prüfungen der Aufnahmeauswertung bestehen. Den vorhandenen Nachweisen und dem noch offenen vollständigen Fahrversuch ist [VALIDATION.md](VALIDATION.md) gewidmet.
 
 - `Core/`: Bremsentscheidungen, Zustandsüberwachung, Spurgraph und Einstellungen.
 - `Plugin/`: ETS2LA-Anbindung, Routenzuordnung, ACC-Begrenzung und Einstellungsseite.

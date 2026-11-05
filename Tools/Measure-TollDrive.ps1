@@ -5,6 +5,7 @@ param(
     [string]$GateKey
 )
 $ErrorActionPreference='Stop'
+Import-Module (Join-Path $PSScriptRoot 'CaptureFormat.psm1') -Force
 $rows=[Collections.Generic.List[object]]::new()
 $status=$null;$lastT=[double]::NegativeInfinity
 foreach($line in [IO.File]::ReadLines([IO.Path]::GetFullPath($Recording))) {
@@ -27,25 +28,29 @@ if(!$GateKey) {
 }
 $windows=[Collections.Generic.List[object]]::new();$points=[Collections.Generic.List[object]]::new()
 $openStart=$null;$previous=$null;$previousStamp=$null;$issues=0;$missing=0;$stale=0;$faults=0
+$anchor=$null;$replicas=0;$conflicts=0
 foreach($r in $rows) {
     $s=$r.currentStatus
     if(!$s){$stale++}
     if($s.faultBraking){$faults++}
-    $matched=@($r.gates|Where-Object{$_.key -ceq $GateKey})
-    $valid=$r.active -and !$r.paused -and @($r.issues).Count -eq 0 -and $matched.Count -eq 1 -and
+    $observed=Resolve-TollGateObservation -Gates $r.gates -GateKey $GateKey -RememberedAnchor $anchor
+    if($null -ne $observed.anchor){$anchor=$observed.anchor}
+    if($observed.rawCount -gt 1){$replicas++}
+    if($observed.issue -eq 'ConflictingOrInvalidStates'){$conflicts++}
+    $valid=$r.active -and !$r.paused -and @($r.issues).Count -eq 0 -and $observed.state -in 0..3 -and
         $r.sdkTimestamp -ne $previousStamp -and ($null -eq $previous -or $r.t-$previous -le .5)
     if(@($r.issues).Count){$issues++}
-    if($matched.Count -ne 1){$missing++}
-    if($valid -and $matched[0].state -eq 3) {
+    if($observed.state -notin 0..3){$missing++}
+    if($valid -and $observed.state -eq 3) {
         if($null -eq $openStart){$openStart=$r.t}
     } else {
         if($null -ne $openStart){$windows.Add([ordered]@{from=$openStart;lastObservation=$previous;observedSeconds=$previous-$openStart})}
         $openStart=$null
     }
     if($valid) {
-        $gate=$matched[0];$distance=$null
+        $distance=$null
         if($s.gate -ceq $GateKey -and $s.candidate.Key -ceq $GateKey){$distance=$s.candidate.Distance}
-        $points.Add([pscustomobject]@{t=$r.t;speedKph=$r.speedMps*3.6;barrierState=$gate.state;
+        $points.Add([pscustomobject]@{t=$r.t;speedKph=$r.speedMps*3.6;barrierState=$observed.state;
             consecutiveOpenSeconds=$(if($null -ne $openStart){$r.t-$openStart}else{0});
             distanceAlongRoute=$distance;statusAge=$r.statusAgeSeconds;assists=$s.assists;phase=$s.phase;
             manualBrake=$r.userBrake;manualThrottle=$r.userThrottle;selectedLane=$s.selectedLane;payment=$s.selectedPayment})
@@ -61,6 +66,7 @@ $switched=@($rows|Where-Object{$_.currentStatus.assists -and $_.currentStatus.ga
 [ordered]@{
     result='EvidenceOnly';gateKey=$GateKey;samples=$rows.Count;selectedGateObservations=$points.Count
     missingOrAmbiguousGateSamples=$missing;captureIssueSamples=$issues;staleStatusSamples=$stale;faultBrakeSamples=$faults
+    duplicateBoothObjectSamples=$replicas;conflictingBoothStateSamples=$conflicts;observedRawAnchor=$anchor
     observedOpenWindows=$windows.ToArray();nearGateSamples=$near.Count;stationaryBeforeClosedGateSamples=$held.Count
     nearGatePeakSpeedKph=($near.speedKph|Measure-Object -Maximum).Maximum
     observedPassageSamples=$passage.Count;observedExitBeyond30mSamples=$exit.Count
@@ -73,5 +79,6 @@ $switched=@($rows|Where-Object{$_.currentStatus.assists -and $_.currentStatus.ga
         'Spurhöhe, Kollisionen und die Eignung der Durchfahrt benötigen Spielbild beziehungsweise Fahrerbestätigung.'
         'Abtastlücken, pausierte Simulation und fehlende Schranke unterbrechen jedes Offenzeitfenster.'
         'Die Messübersicht erteilt keine automatische Freigabe der vollständigen Mautdurchfahrt.'
+        'Doppelte Rohobjekte werden nur innerhalb 1 m um eine zuvor eindeutig beobachtete 3D-Position derselben Signalnummer zusammengefasst; das ist kein Modellnachweis.'
     )
 }|ConvertTo-Json -Depth 8

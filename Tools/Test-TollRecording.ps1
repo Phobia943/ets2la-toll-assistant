@@ -75,6 +75,37 @@ try {
     $rows=Fixture;$rows[6].status.gate=$neighbor
     $r=InvokeRecordingAnalysis $rows -Automatic
     Assert ($r.result -eq 'Incomplete' -and $r.gateKeys.Count -eq 2) 'Different gate assignments require explicit selection.';$checks++
+    function PositionedFixture {
+        $rows=Fixture
+        foreach($row in $rows) {
+            $row.gates=@(
+                [pscustomobject]@{key=$key;id=7;x=12.3;y=4;z=-45.6;state=3},
+                [pscustomobject]@{key='7:12.3:-45.3';id=7;x=12.3;y=4;z=-45.25;state=3},
+                [pscustomobject]@{key=$neighbor;id=7;x=16.8;y=4;z=-45.6;state=1},
+                [pscustomobject]@{key=$key;id=8;x=12.3;y=14;z=-45.6;state=1})
+            # The other level uses its own key, just as the real decoder does.
+            $row.gates[3].key='8:12.3:-45.6'
+        }
+        return $rows
+    }
+    $rows=PositionedFixture;$rows[5].gates=@($rows[5].gates[1..3])
+    $r=InvokeRecordingAnalysis $rows
+    Assert ($r.observedOpenWindows.Count -eq 1 -and $r.missingOrAmbiguousGateSamples -eq 0 -and $r.duplicateBoothObjectSamples -eq 10) 'A known physical booth must survive one raw replica disappearing without adopting the nearby other booth.';$checks++
+    $rows=PositionedFixture;$rows[5].gates[1].state=1
+    $r=InvokeRecordingAnalysis $rows
+    Assert ($r.observedOpenWindows.Count -eq 2 -and $r.conflictingBoothStateSamples -eq 1) 'Conflicting same-booth objects must break the open window.';$checks++
+    $rows=PositionedFixture;foreach($row in $rows){$row.gates=@($row.gates[1..3])}
+    $r=InvokeRecordingAnalysis $rows
+    Assert ($r.observedOpenWindows.Count -eq 0 -and $r.missingOrAmbiguousGateSamples -eq 11) 'A nearby replica without a previously observed exact 3D anchor cannot establish identity.';$checks++
+    $rows=PositionedFixture
+    # Establish the real level, then present the same numeric ID and rounded key
+    # on another level. The stored anchor must neither jump nor grant clearance.
+    for($i=5;$i -lt $rows.Count;$i++){$rows[$i].gates=@([pscustomobject]@{key=$key;id=7;x=12.3;y=14;z=-45.6;state=3})}
+    $r=InvokeRecordingAnalysis $rows
+    Assert ($r.observedOpenWindows.Count -eq 1 -and $r.observedOpenWindows[0].observedSeconds -lt .5 -and $r.missingOrAmbiguousGateSamples -eq 6) 'A reused key at another height cannot replace a remembered booth.';$checks++
+    $rows=PositionedFixture;foreach($row in $rows){$row.gates[0].id=8}
+    $r=InvokeRecordingAnalysis $rows
+    Assert ($r.observedOpenWindows.Count -eq 0) 'An inconsistent raw key and numeric signal ID cannot establish an anchor.';$checks++
     Write-Output "$checks recording checks passed. No game or ETS2LA output opened."
 } finally {
     # Only files created by this test in its unique temporary directory are removed.
