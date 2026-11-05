@@ -7,6 +7,28 @@ using PathLib;
 
 public static class NativeSteeringDiagnosticsIntegration
 {
+    public sealed class SettingsFixture
+    {
+        public int SteeringPointCount=5;
+        public float RawControlSpeedThreshold=27;
+        public bool WidenTurnsWithTrailer=true;
+        public float WidenStartSpeed=10;
+        public float MaxWidenAmount=1.5f;
+        public float MaxWidenAtAngle=30;
+    }
+    public static void SettingsWithoutInitialization(Action<bool,string> assert)
+    {
+        int created=0;
+        var lazy=new Lazy<SettingsFixture>(()=>{created++;return new();});
+        assert(NativeSteeringDiagnostics.ReadInitializedSettings(lazy)==null&&created==0&&!lazy.IsValueCreated,
+            "The observer cannot initialize native settings merely to report them");
+        _=lazy.Value;
+        var settings=NativeSteeringDiagnostics.ReadInitializedSettings(lazy);
+        assert(settings?.SteeringPointCount==5&&settings.MaxWidenAmount==1.5f&&settings.WidenTurnsWithTrailer==true&&created==1,
+            "Once already initialized, report the actual in-memory settings without constructing another instance");
+        assert(NativeSteeringDiagnostics.ReadInitializedSettings(new object())==null,
+            "Only a framework Lazy instance can provide the initialization guard");
+    }
     public static void Run(Action<bool,string> assert)
     {
         var root=Environment.GetEnvironmentVariable("EtsRoot")!;
@@ -26,6 +48,8 @@ public static class NativeSteeringDiagnosticsIntegration
         assert(!s.AtomicSnapshot,"Separate native fields cannot be claimed as an atomic control frame");
         var json=System.Text.Json.JsonSerializer.Serialize(s);
         assert(json.Contains("Closest point")&&!json.Contains("NaN"),"The diagnostic snapshot must serialize without special-number settings");
+        Set("lastFrameSteeringOutput",-.37f);
+        assert(NativeSteeringDiagnostics.Read(plugin).SteeringOutput==.37f,"Native display steering must be normalized to the actual published control-channel sign");
         assert(!NativeSteeringDiagnostics.Read(new RollingStartIntegration.Planner()).Supported,
             "Unknown native builds cannot be interpreted using guessed private fields");
         assert(NativeSteeringDiagnostics.Capture(()=>throw new InvalidOperationException()).ObservationIssue==nameof(InvalidOperationException),

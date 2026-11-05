@@ -32,7 +32,7 @@ Die Startsuche berücksichtigt auf geprüften Pathfinding-Builds auch die Grenze
 
 Die Mautregelung reduziert das Tempo über den verfügbaren Weg. Unter gleichwertigen Zahlarten bevorzugt sie eine erreichbare Spur mit weniger Änderungen an der Route. Wenn die gewählte Spur unerreichbar wird, versucht sie vor der Aufteilung zu halten, solange der geprüfte Bremsweg reicht. Bei einer früh sichtbaren Routenlücke bremst sie auf dem zusammenhängenden Teil der Route ab. Bei verlorener oder falsch gerichteter Spur greift weiterhin die Fehlerbremsung.
 
-65 vollständige lokale Prüfungen und 42 unabhängige Logikprüfungen bestehen. Neue Starttests prüfen die Bewegung während der Berechnung, den ersten Steuerungszyklus, erneutes F8 nach F9 und sichere Ablehnungen. Bremsübernahme wird mit aktiver Assistenz, offener Prüfung und aktiver Fehlerbremsung geprüft.
+66 vollständige lokale Prüfungen und 42 unabhängige Logikprüfungen bestehen. Neue Starttests prüfen die Bewegung während der Berechnung, den ersten Steuerungszyklus, erneutes F8 nach F9 und sichere Ablehnungen. Bremsübernahme wird mit aktiver Assistenz, offener Prüfung und aktiver Fehlerbremsung geprüft.
 
 Mit 0.3.3 praktisch geprüft: Die physische Bremse eines Xbox-Controllers schaltet Full Self-Driving aus; Gas löst die Abschaltung nicht aus. Loslassen startet nicht automatisch neu, die manuelle Lenkung funktioniert wieder. Nach manueller Fahrt wurde F8 bei rund 69 km/h angefordert, die Route geprüft und dieselbe gültige Route in den Fahrmodus übernommen. Die Aufzeichnung und der Fahrer bestätigen die Übernahme ohne Fehlerbremsung. Die konkrete Achsenhälfte war an diesem Gerät `Axis Z / SplitPos`; andere Geräte müssen separat geprüft werden. Eine vollständige Mautdurchfahrt mit dieser Version bleibt offen.
 

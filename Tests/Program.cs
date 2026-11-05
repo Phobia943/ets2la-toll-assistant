@@ -102,6 +102,7 @@ void Run()
     });
     #if INTEGRATION
     Check("Verified native steering diagnostics are read-only, build-pinned and safe on lookup failures",()=>NativeSteeringDiagnosticsIntegration.Run(Assert));
+    Check("Native settings diagnostics read only initialized values and never invoke their factory",()=>NativeSteeringDiagnosticsIntegration.SettingsWithoutInitialization(Assert));
     Check("Valid routes cannot hide missing steering; braking bypasses route locks and manual takeover releases it",()=>SteeringSafetyIntegration.Run(Assert));
     Check("Live steering commands remain visible during busy route work without false dropout braking",()=>SteeringSafetyIntegration.BusyHealthyFeed(Assert));
     Check("A newly delivered game pause is honored even before busy route bookkeeping drains it",()=>SteeringSafetyIntegration.PauseDeliveryWhileBusy(Assert));
