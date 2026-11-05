@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.3.7 – Pausenzustand und native Lenkdiagnose (vorbereitet)
+
+- 0.3.6 zeichnete während der Fahrt ausbleibende Lenksignale auf. In einem gesicherten Fall bei rund 35 km/h blieb die Route gültig, während der seitliche Abstand bis auf rund 0,8 m abnahm. Die Überwachung schaltete nach rund 151 ms ohne neuen Befehl ab. Das belegt das Ausbleiben der Signale, aber nicht dessen ursprünglichen Auslöser.
+- Die passende Kurve des gespeicherten Kartenverbinders wurde offline rekonstruiert. Der native Lenkpunkt liegt dort ebenfalls rund 0,8 m vom Lkw entfernt. Ein großer Projektionsfehler ist an diesem Punkt damit nicht nachgestellt. Die spätere Routenfortsetzung ist mangels gespeicherter Auswahl aller Kurven nicht vollständig rekonstruierbar.
+- Ein davon unabhängiger Fehlalarm wurde vor der Korrektur reproduziert: Bereits gelieferte Pause war im noch beschäftigten Routenthread nicht übernommen. Der unabhängige Lenkmonitor liest Pause und Wiederaufnahme nun aus dem zuletzt gelieferten zusammengehörigen SDK-Bild. Er wartet nicht auf die Routenverwaltung. Wiederaufnahme stellt die Überwachung wieder her; die Grenzwerte für echte Ausfälle bleiben erhalten.
+- Bei einem Lenkausfall wird zusätzlich ein rein lesender Diagnoseauszug der exakt geprüften Lane-Assist-Bibliothek erfasst: native Fehlermeldung, letzte Regleranteile, Kurvenversatz und Fehlerstatus der nativen Route. Unbekannte Bibliotheksstände werden nicht mit geratenen Feldnamen interpretiert; Fehler beim Lesen beeinflussen die Schutzentscheidung nicht. Kein Aufruf nativer Steuerzyklen durch die Diagnose.
+- 65 Integrationstests und weiterhin 42 unabhängige Logiktests. Die Diagnose ist gegen den installierten Bibliothekstyp ohne Konstruktor oder Fahrzeugausgabe geprüft. Fassung vorbereitet, noch nicht installiert oder im Spiel geprüft. Ursprünglicher Kurvenunfall und vollständige Mautdurchfahrt bleiben offen.
+
 ## 0.3.6 – Überwachung der tatsächlichen Lenkausgabe
 
 - Anlass ist ein weiterer Unfall in einer Kurve mit 0.3.5. Der gespeicherte Fehler zeigt knapp 7 m tatsächlichen seitlichen Abstand bei rund 40 km/h; die Fehlerbremsung wurde angefordert. Die vorherige Lenkausgabe wurde noch nicht aufgezeichnet. Ob sie ausfiel oder trotz vorhandener Befehle die Kurve verfehlte, ist nicht abschließend belegt.

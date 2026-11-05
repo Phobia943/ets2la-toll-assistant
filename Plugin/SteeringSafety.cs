@@ -13,7 +13,8 @@ public sealed partial class TollPlugin
     bool steeringMonitoringLive;
     sealed record SteeringCommand(double At,float Value);
     sealed record PedalCommand(double At,float? Throttle,float? Brake);
-    sealed record SteeringFailure(double At,DateTimeOffset Utc,string Reason,double? CommandAge,float? LastCommand);
+    sealed record SteeringFailure(double At,DateTimeOffset Utc,string Reason,double? CommandAge,float? LastCommand,
+        NativeSteeringSnapshot Native);
     SteeringCommand? lastSteeringCommand;
     PedalCommand? lastAccCommand;
     SteeringFailure? pendingSteeringFailure,lastSteeringFailure;
@@ -37,14 +38,16 @@ public sealed partial class TollPlugin
             // Keep an existing stop alive even while route bookkeeping is busy.
             if(faultBrake.Latched)faultBrake.Refresh();
             var state=State;var command=Volatile.Read(ref lastSteeringCommand);
+            var latestTelemetry=Volatile.Read(ref latestDeliveredTelemetry);
             double now=clock.Elapsed.TotalSeconds;
+            bool gamePaused=latestTelemetry?.Paused??Volatile.Read(ref paused);
             bool required=steeringMonitoringLive && _IsRunning && Volatile.Read(ref active) &&
-                state.EnableAssists && !Volatile.Read(ref preview) && !Volatile.Read(ref paused) &&
+                state.EnableAssists && !Volatile.Read(ref preview) && !gamePaused &&
                 state.DrivingMode!=DrivingMode.AdaptiveCruiseControlOnly;
             steeringFeedState=steeringGuard.Check(now,command?.At??double.NegativeInfinity,required);
             if(steeringFeedState!=SteeringFeedState.Lost)return;
             var failure=new SteeringFailure(now,DateTimeOffset.UtcNow,"Lenkausgabe ausgefallen: keine frischen Steuerbefehle der Spurhilfe.",
-                command!=null?now-command.At:null,command?.Value);
+                command!=null?now-command.At:null,command?.Value,NativeSteeringDiagnostics.Capture(readLaneAssist));
             state.EnableAssists=false;
             // FaultBrake uses the public output contract; no route or ACC lock.
             faultBrake.Trip();

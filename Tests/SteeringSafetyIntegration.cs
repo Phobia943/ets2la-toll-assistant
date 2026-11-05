@@ -92,4 +92,23 @@ public static class SteeringSafetyIntegration
                 "A busy route lock cannot manufacture a missing-steering fault while commands are arriving");
         } finally {stop.Cancel();Monitor.Exit(sync);if(producer!=null&&!producer.Wait(TimeSpan.FromSeconds(3)))throw new Exception("Steering producer did not exit");}
     }
+
+    public static void PauseDeliveryWhileBusy(Action<bool,string> assert)
+    {
+        var f=new RollingStartIntegration.Fixture(true);f.Set("steeringMonitoringLive",true);f.F8();f.Probe();
+        f.Call("OnControlOutput",Command(0));f.Call("CheckSteeringOutput");
+        var sync=typeof(TollPlugin).GetField("sync",BindingFlags.Instance|BindingFlags.NonPublic)!.GetValue(f.Plugin)!;
+        try {
+            Monitor.Enter(sync);
+            var delivery=Task.Run(()=>f.Call("OnTelemetry",new ETS2LA.Game.Telemetry.GameTelemetryData {sdkActive=true,paused=true,time=22}));
+            assert(delivery.Wait(TimeSpan.FromMilliseconds(300)),"Pause delivery cannot wait for route work");
+            Thread.Sleep(190);f.Call("CheckSteeringOutput");
+            assert(!f.Plugin.FaultBraking,"A delivered pause must suppress missing-steering faults before route bookkeeping consumes it");
+            f.Call("OnTelemetry",new ETS2LA.Game.Telemetry.GameTelemetryData {sdkActive=true,paused=true,time=23});
+            var resume=Task.Run(()=>f.Call("OnTelemetry",new ETS2LA.Game.Telemetry.GameTelemetryData {sdkActive=true,paused=false,time=24}));
+            assert(resume.Wait(TimeSpan.FromMilliseconds(300)),"Resume delivery cannot wait for route work");
+            f.Call("CheckSteeringOutput");Thread.Sleep(370);f.Call("CheckSteeringOutput");
+            assert(f.Plugin.FaultBraking,"A fresh resume must restore steering supervision even if the cached route-side pause is still true");
+        } finally {Monitor.Exit(sync);}
+    }
 }

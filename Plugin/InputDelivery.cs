@@ -12,6 +12,7 @@ public sealed partial class TollPlugin
     sealed record TelemetryFrame(double Arrived,ulong Time,bool Active,bool Paused,double Speed,Vector3 Position,double Heading);
     sealed record GateFrame(double Arrived,Semaphore[] Gates);
     TelemetryFrame? incomingTelemetry;
+    TelemetryFrame? latestDeliveredTelemetry;
     GateFrame? incomingGates;
     double pathReceivedAt=-100;
     double routeWorkMilliseconds,maxRouteWorkMilliseconds;
@@ -21,6 +22,7 @@ public sealed partial class TollPlugin
         var frame=new TelemetryFrame(clock.Elapsed.TotalSeconds,data.time,data.sdkActive,data.paused,
             data.truckFloat.speed,data.truckPlacement.coordinate.ToVector3(),data.truckPlacement.rotation.X);
         Interlocked.Exchange(ref incomingTelemetry,frame);
+        Interlocked.Exchange(ref latestDeliveredTelemetry,frame);
         if(!Monitor.TryEnter(sync))return;
         try
         {

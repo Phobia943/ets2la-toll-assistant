@@ -45,6 +45,7 @@ public sealed partial class TollPlugin : Plugin
     readonly Func<ApplicationState> readState;
     readonly Func<IPlugin?> readAcc;
     readonly Func<IPlugin?> readPlanner;
+    readonly Func<IPlugin?> readLaneAssist;
     readonly Func<IPlugin,Vector3,double,Vector3[],PlannedPathData?> probeRoute;
     readonly Action<string,string> notify;
     readonly FaultBrake faultBrake;
@@ -59,10 +60,12 @@ public sealed partial class TollPlugin : Plugin
     internal TollPlugin(Func<ApplicationState> readState, Action<string,string> notify,Action<ControlEvent>? output=null,Func<IPlugin?>? readAcc=null,
         Func<ETS2LA.Game.Data.ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments=null, Func<IPlugin?>? readPlanner=null,
         Func<IPlugin,Vector3,double,Vector3[],PlannedPathData?>? probeRoute=null,
-        Func<IPlugin,PlannedPathData,PlannedPathData,Vector3,double,bool>? installStart=null,bool monitorSteering=false) {
+        Func<IPlugin,PlannedPathData,PlannedPathData,Vector3,double,bool>? installStart=null,bool monitorSteering=false,
+        Func<IPlugin?>? readLaneAssist=null) {
         this.monitorSteering=monitorSteering;
         this.readState=readState;this.readAcc=readAcc??FindAcc;this.notify=notify;this.readPayments=readPayments;
         this.readPlanner=readPlanner??FindPlanner;
+        this.readLaneAssist=readLaneAssist??FindLaneAssist;
         this.probeRoute=probeRoute??ConnectorStart.Probe;
         this.installStart=installStart??ConnectorStart.TryInstallStart;
         publishOutput=output??(_=>{});
@@ -185,6 +188,7 @@ public sealed partial class TollPlugin : Plugin
             preparationReason="Automatische Vorbereitung wartet auf Stillstand und verbundene Module.";
             telemetryAt = gatesAt = pathAt = gameTimeChangedAt = -100;
             Interlocked.Exchange(ref incomingTelemetry,null);
+            Interlocked.Exchange(ref latestDeliveredTelemetry,null);
             Interlocked.Exchange(ref incomingGates,null);
             // Ensure the providers exist before subscribing to their published frames.
             Events.Current.Subscribe<GameTelemetryData>(GameTelemetry.Current.EventString, OnTelemetry);
@@ -477,6 +481,8 @@ public sealed partial class TollPlugin : Plugin
 
     static IPlugin? FindPlanner() => PluginBackend.Current?.PluginHandler?.LoadedPlugins.FirstOrDefault(p =>
         p._IsRunning && p.Info.Id == "tumppi066.pathfinding");
+    static IPlugin? FindLaneAssist() => PluginBackend.Current?.PluginHandler?.LoadedPlugins.FirstOrDefault(p =>
+        p.GetType().FullName=="LaneAssist.LaneAssistPlugin");
 
     void CompletePreview(int request, IPlugin? planner, Vector3 origin, double heading, Vector3[] history)
     {

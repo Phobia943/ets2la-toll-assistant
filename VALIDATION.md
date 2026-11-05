@@ -1,6 +1,6 @@
 # Fahrnachweis
 
-Stand: 0.3.6 vorbereitet, 5. November 2026. Die vollständige Mautdurchfahrt ist **noch nicht validiert**. Ein späterer Kurvenunfall mit 0.3.5 begrenzt die Aussagekraft der zuvor erfolgreichen kurzen Straßenbeobachtung. Bestandene Logiktests, Kartenproben und einzelne Fahrfenster sind getrennte Nachweise.
+Stand: 0.3.6 installiert, 0.3.7 vorbereitet, 5. November 2026. Die vollständige Mautdurchfahrt ist **noch nicht validiert**. Ein späterer Kurvenunfall mit 0.3.5 begrenzt die Aussagekraft der zuvor erfolgreichen kurzen Straßenbeobachtung. 0.3.6 zeichnete während der Fahrt ausbleibende Lenksignale auf und forderte Abschaltung und Bremsung an. Der geplante kontrollierte Standtest und ein physikalischer Bremsnachweis bleiben offen. Bestandene Logiktests, Kartenproben und einzelne Fahrfenster sind getrennte Nachweise.
 
 | Anforderung | Vorhandener Nachweis | Noch erforderlich |
 | --- | --- | --- |
