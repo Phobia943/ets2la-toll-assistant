@@ -4,7 +4,7 @@
 
 - Die Standprüfung nach Installation von 0.3.4 fand einen unabhängigen Startfehler: Ein etwa 20 m langer Kartenverbinder wurde wegen einer Signalmarkierung ganz am Anfang vollständig ausgeschlossen, obwohl der Lkw bereits rund 15 m dahinter stand.
 - Nur für den ersten Startverbinder darf ein vollständig passierter Signalabschnitt mit mindestens 2 m Abstand hinter dem Lkw liegen. Signalmetadaten bleiben erhalten. Signale voraus, spätere Verbinder, Pkw- und Eskorte-Beschränkungen werden weiterhin abgelehnt; Richtung, Anschluss und nutzbare Strecke werden unverändert geprüft.
-- 59 Integrationstests und weiterhin 41 unabhängige Logiktests. Die Offline-Kartenprobe liefert am unveränderten Haltepunkt acht zusammenhängende Planungseinträge statt eines Startabbruchs. Die Fahrprüfung und eine vollständige Mautdurchfahrt bleiben offen.
+- 59 Integrationstests und weiterhin 41 unabhängige Logiktests. Die Offline-Kartenprobe liefert am unveränderten Haltepunkt acht zusammenhängende Planungseinträge statt eines Startabbruchs. Im Spiel geladen und automatisch vorbereitet. F8 aktiviert FSD; eine anschließende Minute Straßenfahrt mit bis zu rund 77 km/h enthält 59 frische Statusbilder ohne Fehlerbremsung oder Routenfehler. Eine vollständige Mautdurchfahrt bleibt offen.
 
 ## 0.3.4 – Korrektur falscher Tracking- und Mautstopps
 

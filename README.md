@@ -81,6 +81,8 @@ Doppelte Signalobjekte derselben Mautdurchfahrt werden zusammengefasst; widerspr
 
 Ab 0.3.5 kann die Startsuche auf dem ersten Kartenverbinder einen vollständig passierten Signalabschnitt mit mindestens 2 m Abstand hinter dem Lkw berücksichtigen. Signale voraus bleiben gesperrt; Signalmetadaten und Fahrzeugbeschränkungen werden nicht entfernt. Die Kartenprobe am betroffenen Haltepunkt liefert damit eine gültige Route, ohne den Lkw zu versetzen.
 
+Mit 0.3.5 im Spiel bestätigt: automatische Vorbereitung und Aktivierung von Full Self-Driving mit F8. Eine Minute normaler Straßenfahrt bis rund 77 km/h wurde mit 545 SDK-Proben und 59 frischen Statusbildern aufgezeichnet; keine Fehlerbremsung und kein gemeldeter Routenfehler in diesem Zeitfenster. Das bestätigt weder die gesamte Strecke noch eine vollständige Mautdurchfahrt.
+
 ## Voraussetzungen
 
 Geprüfte lokale Kombination:
