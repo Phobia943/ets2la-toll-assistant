@@ -13,12 +13,19 @@ public static class RouteFaultEvidenceIntegration
         assert(f.State.EnableAssists&&!f.Plugin.FaultBraking,"A valid plan must be accepted before the route error");
         // A later native mutation must not rewrite the accepted evidence.
         native.laneIndex=2;state.SetValue(native,.9f);
+        var failureType=typeof(TollPlugin).GetField("lastSteeringFailure",BindingFlags.Instance|BindingFlags.NonPublic)!.FieldType;
+        var oldFailure=failureType.GetConstructors(BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic)
+            .Single(c=>c.GetParameters().Length==6).Invoke([0d,DateTimeOffset.UtcNow.AddMinutes(-3),"Historic steering failure",.2d,.1f,
+                NativeSteeringDiagnostics.Capture(()=>null)]);
+        f.Set("lastSteeringFailure",oldFailure);
         f.Call("OnPath",new PathLib.PlannedPathData {HasError=true,ErrorMessage="No suitable starting road found for path planning.",PlannedPath=[]});
         assert(f.Plugin.FaultBraking,"Preserving evidence cannot turn a route error into permission to keep driving");
         var fault=f.Get<object>("lastFault");
         using var json=JsonDocument.Parse(JsonSerializer.Serialize(fault,new JsonSerializerOptions {
             NumberHandling=System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals}));
         var root=json.RootElement;
+        assert(root.GetProperty("steeringFailure").ValueKind==JsonValueKind.Null,
+            "A new route error must not misattribute an earlier steering fault as its current cause");
         assert(root.GetProperty("routePlanSource").GetString()=="LastAccepted"&&root.GetProperty("routePlan").GetArrayLength()==1,
             "An empty native error event must retain the preceding accepted route for reconstruction");
         var first=root.GetProperty("routePlan")[0];

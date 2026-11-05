@@ -1,0 +1,23 @@
+# Nächste Sitzung
+
+Abschluss vom 5. November 2026: **0.3.7 installiert**, noch nicht im Spiel gestartet oder fahrgeprüft. Spiel und ETS2LA sind beendet. 67 vollständige lokale Prüfungen bestanden; die unabhängige Logik umfasst 42 Prüfungen. Der Installations-Hash beginnt mit `E2EC56944A7C76A1`. Rücksicherung von 0.3.6 liegt lokal beim Installationspaket.
+
+## Enthalten
+
+- Bereits gelieferte Pause und Wiederaufnahme erreichen die unabhängige Lenküberwachung auch bei beschäftigter Routenverwaltung.
+- Native Lenkfehler und bereits geladene Lenkparameter werden bei einem Ausfall rein lesend aufgezeichnet. Unbekannte Bibliotheksstände werden ausdrücklich nicht mit geratenen Feldern ausgewertet.
+- Die letzte akzeptierte Route bleibt für die Fehleranalyse als getrennte Kopie mit Alter, Kurvenauswahl und Spurwechselzustand erhalten, auch wenn der native Planer danach nur eine leere Fehlerroute liefert.
+- Eine ältere Lenkausfallmeldung wird einem späteren unabhängigen Routenfehler nicht mehr als aktuelle Ursache zugeordnet.
+- Bremsübernahme, Ausgabeüberwachung und bestehende Mautbegrenzung bleiben enthalten. Diagnosekopien erlauben keine Weiterfahrt trotz Fehler.
+
+## Reihenfolge morgen
+
+1. ETS2LA über die übliche Verknüpfung starten. Geladenen Stand anhand frischer Diagnosedaten auf 0.3.7 prüfen. Die vier Module bereitstellen; Overlay ausgeschaltet lassen. Im Stand mit Feststellbremse bleiben, F8 zunächst aus.
+2. Zuerst die Ausgabeüberwachung im Stand prüfen: F8 aktivieren, frische Lenksignale bestätigen, dann Lane Assist gezielt deaktivieren. Abschaltung und gehaltene Bremsanforderung prüfen; bei Spielfokus zusätzlich die tatsächlichen SDK-Pedalwerte lesen. Keine Fahrbewegung für diesen Test.
+3. Mit physischer Bremse beziehungsweise F9 manuell übernehmen. Fehlerbremsung muss quittiert bleiben, Controller-Lenkung muss funktionieren; Loslassen darf nicht automatisch neu starten. Lane Assist wieder bereitstellen, Fahrassistenz zunächst aus lassen.
+4. Erst danach kurze beaufsichtigte Straßen-/Kurvenprobe, möglichst im Einzelspieler mit Savepoint und gleicher Beladung. Bei erneutem Ausfall die neue native Fehlermeldung, Reglerwerte und Routen-/Spurwechselzustände sichern. Nicht durch wiederholtes F8 die Ursache übergehen.
+5. Anschließend den vollständigen Mautdurchlauf aus [VALIDATION.md](VALIDATION.md) prüfen: Lkw-Spur, Zahlart, Anfahrt, nötiger Halt, verzögerte Freigabe, langsame Passage, Ausfahrt und manuelle Übernahme.
+
+## Weiter offen
+
+Die ursprüngliche Ursache des Kurvenunfalls ist nicht bewiesen behoben. Gesichert sind sowohl ausbleibende Lenksignale bei weiterhin gültiger Route als auch ein anderer nativer Routenabbruch nach einem protokollierten Spurwechsel. Für beide fehlen im alten Stand bestimmte native Zustandsdaten. Die neue Diagnose soll diese Lücke schließen. Eine vollständige Mautdurchfahrt mit dem aktuellen Stand ist ebenfalls noch nicht nachgewiesen.
