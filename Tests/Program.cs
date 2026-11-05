@@ -101,6 +101,7 @@ void Run()
         }
     });
     #if INTEGRATION
+    Check("An empty native error retains detached prior route evidence without relaxing fault braking",()=>RouteFaultEvidenceIntegration.Run(Assert));
     Check("Verified native steering diagnostics are read-only, build-pinned and safe on lookup failures",()=>NativeSteeringDiagnosticsIntegration.Run(Assert));
     Check("Native settings diagnostics read only initialized values and never invoke their factory",()=>NativeSteeringDiagnosticsIntegration.SettingsWithoutInitialization(Assert));
     Check("Valid routes cannot hide missing steering; braking bypasses route locks and manual takeover releases it",()=>SteeringSafetyIntegration.Run(Assert));

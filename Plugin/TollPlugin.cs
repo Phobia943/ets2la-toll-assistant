@@ -51,6 +51,8 @@ public sealed partial class TollPlugin : Plugin
     readonly FaultBrake faultBrake;
     readonly TrackingGuard trackingGuard=new();
     RouteTrace? safetyTrace;
+    PlannedPathData? lastAcceptedPlan;
+    double lastAcceptedPlanAt=-100;
     double headingTurns;
     ApplicationState State => readState();
     public TollPlugin() : this(() => ApplicationState.Current, Notify,
@@ -242,6 +244,7 @@ public sealed partial class TollPlugin : Plugin
         supervisor.Reset();
         trackingGuard.Reset();
         safetyTrace = null;
+        lastAcceptedPlan=null;lastAcceptedPlanAt=-100;
         decisionArmed = false;
         driveHistory.Clear();
         driveAction = DriveAction.Idle;
@@ -470,6 +473,7 @@ public sealed partial class TollPlugin : Plugin
                     var fault=trackingGuard.Check(trace,position,headingTurns,speed,State.DrivingMode!=DrivingMode.AdaptiveCruiseControlOnly);
                     if(fault!=null)Disarm(fault);else {
                         safetyTrace=trace;
+                        lastAcceptedPlan=RouteSnapshot.Capture(data);lastAcceptedPlanAt=clock.Elapsed.TotalSeconds;
                         // Geometry was checked against the latest pose just now.
                         // Keep source receipt age separately for timing diagnostics.
                         pathAt=clock.Elapsed.TotalSeconds;
@@ -678,17 +682,12 @@ public sealed partial class TollPlugin : Plugin
         active=false; State.EnableAssists=false;
         startCheck=null;
         if(brake)faultBrake.Trip();
-        object? geometry;object? routePlan=null;
+        object? geometry;object? routePlan=null;object? previousAcceptedPlan=null;
         try {
-            var snapshot=path!=null&&!path.HasError?RouteSnapshot.Capture(path):null;
+            var snapshot=path!=null&&!path.HasError?RouteSnapshot.Capture(path):lastAcceptedPlan;
             geometry=snapshot!=null?RouteMatcher.Diagnose(snapshot,position,gates):null;
-            routePlan=snapshot?.PlannedPath.Select(i=>new {
-                kind=i.item.GetType().Name,start=i.startNode.Uid,end=i.endNode.Uid,
-                lane=i.laneIndex,targetLane=i.targetLaneIndex,direction=i.direction.ToString(),
-                prefab=i.prefabPath?.Prefab.Prefab.Uid,
-                roads=i.item is ETS2LA.Game.Data.ParsedRoadList list?list.Roads.Select(r=>r.Road.Uid).ToArray():
-                    i.item is ETS2LA.Game.Data.ParsedRoad road?new[]{road.Road.Uid}:Array.Empty<ulong>()
-            }).ToArray();
+            routePlan=snapshot!=null?RouteSnapshot.Describe(snapshot):null;
+            previousAcceptedPlan=lastAcceptedPlan!=null?RouteSnapshot.Describe(lastAcceptedPlan):null;
         }
         catch(Exception ex) {geometry=new{error=ex.Message};}
         // Capture before disabling assists: the next path frame otherwise overwrites
@@ -697,6 +696,9 @@ public sealed partial class TollPlugin : Plugin
             phase=decision.Phase, tracked, candidate, pathError=path?.ErrorMessage,
             action=action.ToString(), geometry,routeTracking=safetyTrace?.Diagnose(position),tracking=trackingGuard.LastDirectionFailure,
             steeringFailure=lastSteeringFailure,motion=motionHistory.ToArray(),routePlan,
+            routePlanSource=path is {HasError:false}?"Current":lastAcceptedPlan!=null?"LastAccepted":"Unavailable",
+            lastAcceptedPlanAge=lastAcceptedPlan!=null?clock.Elapsed.TotalSeconds-lastAcceptedPlanAt:(double?)null,
+            previousAcceptedPlan,
             driveRecording=new DriveRecording(driveHistory.TryPeek(out var first) ? first.Before : default,
                 driveHistory.Select(entry => entry.Sample).ToArray())};
         try {File.WriteAllText(Path.Combine(Path.GetDirectoryName(DiagnosticPath)!,"last-fault.json"),

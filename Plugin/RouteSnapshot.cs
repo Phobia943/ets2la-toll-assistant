@@ -12,6 +12,23 @@ namespace MautAssistent;
 public static class RouteSnapshot
 {
     static readonly MethodInfo clone = typeof(object).GetMethod("MemberwiseClone", BindingFlags.Instance | BindingFlags.NonPublic)!;
+    static readonly FieldInfo? laneChangeStart=typeof(PlannedItem).Module.ModuleVersionId==new Guid("8d0821da-1971-4caa-a8be-78ea1093e51d")?
+        typeof(PlannedItem).GetField("laneChangeStartFactor",BindingFlags.Instance|BindingFlags.NonPublic):null;
+
+    // Describe a detached snapshot, never the live native steering containers.
+    internal static object Describe(PlannedPathData snapshot)=>snapshot.PlannedPath.Select(i=> {
+        var original=i.prefabPath!=null?PrefabRefinement.OriginalFor(i.prefabPath):null;
+        float? start=laneChangeStart?.GetValue(i) is float f&&float.IsFinite(f)?f:null;
+        return new {
+            kind=i.item.GetType().Name,start=i.startNode.Uid,end=i.endNode.Uid,
+            lane=i.laneIndex,targetLane=i.targetLaneIndex,direction=i.direction.ToString(),
+            i.allowedToLaneChange,laneChangeStartFactor=start,laneStateBuildVerified=laneChangeStart!=null,
+            prefab=original?.Prefab.Prefab.Uid,
+            curves=original?.Curves.Select(c=>original.Prefab.Descriptor?.NavCurves.IndexOf(c)??-1).ToArray(),
+            roads=i.item is ETS2LA.Game.Data.ParsedRoadList list?list.Roads.Select(r=>r.Road.Uid).ToArray():
+                i.item is ETS2LA.Game.Data.ParsedRoad road?new[]{road.Road.Uid}:Array.Empty<ulong>()
+        };
+    }).ToArray();
 
     public static PlannedPathData Capture(PlannedPathData source)
     {
