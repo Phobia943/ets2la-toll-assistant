@@ -17,17 +17,17 @@ using TruckLib.ScsMap;
 public static class RollingStartIntegration
 {
     const BindingFlags Hidden=BindingFlags.Instance|BindingFlags.NonPublic;
-    sealed class Planner:Plugin
+    internal sealed class Planner:Plugin
     {
         NavigationData navigationData=new() {entries=[new NavigationEntry {nodeUid=1}]};
         public override PluginInformation Info=>new() {Id="test.pathfinding",Name="Test",Version="1",Description="Isolated planner"};
         public void ChangeNavigation()=>navigationData=new() {entries=[new NavigationEntry {nodeUid=2}]};
     }
-    sealed class Fixture
+    internal sealed class Fixture
     {
         public readonly ApplicationState State=(ApplicationState)RuntimeHelpers.GetUninitializedObject(typeof(ApplicationState));
         public readonly TollPlugin Plugin;
-        public readonly Planner Planner=new();
+        internal readonly Planner Planner=new();
         public readonly List<ControlEvent> Outputs=[];
         public readonly List<string> Notices=[];
         public readonly Vector3 Point;

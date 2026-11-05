@@ -18,7 +18,7 @@ public sealed class TrackingGuard
     {
         LastDirectionFailure=null;
         if(!double.IsFinite(headingTurns)||!double.IsFinite(speed))return "Ungültige Fahrtrichtungsdaten.";
-        var projection=route.Project(position);
+        var projection=route.ProjectForTracking(position);
         if(!double.IsFinite(projection.Offset)||projection.Offset>3)return "Routenverfolgung verloren: Lkw außerhalb der geplanten Spur.";
         if(route.EndsAtGap && route.Length-projection.Along<=RequiredLookahead(speed))
             return "Planungslücke innerhalb der Anhaltereserve: "+route.EndReason;
@@ -35,7 +35,7 @@ public sealed class TrackingGuard
                 return "Lkw zeigt entgegen der geplanten Fahrtrichtung.";
             }
             if(accepted!=null&&!ReferenceEquals(accepted,route)) {
-                var old=accepted.Project(position);
+                var old=accepted.ProjectForTracking(position);
                 if(old.Offset<5&&Vector3.Dot(accepted.DirectionAt(old.Along),direction)<0) {
                     LastDirectionFailure=new {headingTurns,speedKph=speed*3.6,directionDot,
                         previous=accepted.Diagnose(position),route=route.Diagnose(position)};

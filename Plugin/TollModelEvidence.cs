@@ -10,11 +10,11 @@ using TruckLib.Models.Ppd;
 
 namespace MautAssistent;
 
-public sealed class TollModelEvidence(Func<IFileSystem?> readFiles)
+public sealed class TollModelEvidence(Func<IFileSystem?> readFiles,Func<bool>? readSpecialJob=null)
 {
     IFileSystem? files;
     Dictionary<string,string>? models;
-    readonly Dictionary<(string Model, string Variant), IReadOnlyDictionary<int,TollPayment>> cache = new();
+    readonly Dictionary<(string Model, string Variant,bool SpecialJob), IReadOnlyDictionary<int,TollPayment>> cache = new();
     static readonly IReadOnlyDictionary<int,TollPayment> Unknown = new Dictionary<int,TollPayment>();
 
     public IReadOnlyDictionary<int,TollPayment> Read(ParsedPrefab prefab)
@@ -22,7 +22,7 @@ public sealed class TollModelEvidence(Func<IFileSystem?> readFiles)
         var current = readFiles();
         if (current == null || prefab.Descriptor == null || prefab.Prefab.AdditionalParts.Count > 0) return Unknown;
         if (!ReferenceEquals(current, files)) { files = current; models = null; cache.Clear(); }
-        var key = (prefab.Prefab.Model.ToString(), prefab.Prefab.Variant.ToString());
+        var key = (prefab.Prefab.Model.ToString(), prefab.Prefab.Variant.ToString(),readSpecialJob?.Invoke()??false);
         if (cache.TryGetValue(key, out var known)) return known;
         try
         {
@@ -35,7 +35,7 @@ public sealed class TollModelEvidence(Func<IFileSystem?> readFiles)
             var locators = model.Parts.Where((_, i) => variants[0].Attributes[i].Value == 1)
                 .SelectMany(p => p.Locators);
             var pmg = current.ReadAllBytes(Path.ChangeExtension(pmd, ".pmg"));
-            var markers = locators.Select(l => (l.Position, Payment: DecodeHookup(pmg, l.HookupOffset)))
+            var markers = locators.Select(l => (l.Position, Payment: DecodeHookup(pmg, l.HookupOffset,key.Item3)))
                 .Where(l => l.Payment != TollPayment.Unknown);
             return cache[key] = Match(prefab.Descriptor, markers);
         }
@@ -65,7 +65,7 @@ public sealed class TollModelEvidence(Func<IFileSystem?> readFiles)
     }
 
     // PMG v21: locator offsets point into the null-terminated hookup table.
-    public static TollPayment DecodeHookup(ReadOnlySpan<byte> pmg, int offset)
+    public static TollPayment DecodeHookup(ReadOnlySpan<byte> pmg, int offset,bool specialJob=false)
     {
         if (pmg.Length < 96 || pmg[0] != 21 || offset < 0) return TollPayment.Unknown;
         int table = BinaryPrimitives.ReadInt32LittleEndian(pmg[88..]);
@@ -78,7 +78,10 @@ public sealed class TollModelEvidence(Func<IFileSystem?> readFiles)
         if (end < 1 || end > 64) return TollPayment.Unknown;
         return Encoding.ASCII.GetString(tail[..end]) switch
         {
-            "tollgate.autopass.custom" or "tollgate.autopass.oversize" => TollPayment.Automatic,
+            "tollgate.autopass.custom" or "tollgate.autopass.custom.wide" => TollPayment.Automatic,
+            "tollgate.autopass.oversize" when specialJob => TollPayment.Automatic,
+            "tollgate.autopass.ovs_disable" or "tollgate.autopass.ovs_disable.long" when !specialJob => TollPayment.Automatic,
+            "tollgate.manual.ovs_disable" when !specialJob => TollPayment.Manual,
             "tollgate.custom" => TollPayment.Manual,
             _ => TollPayment.Unknown
         };
@@ -88,15 +91,24 @@ public sealed class TollModelEvidence(Func<IFileSystem?> readFiles)
         IEnumerable<(Vector3 Position, TollPayment Payment)> markers)
     {
         var curves = descriptor.NavCurves;
-        var uniqueGates = descriptor.Semaphores.GroupBy(s => (int)s.SemaphoreId)
-            .Where(g => g.Count() == 1).Select(g => g.Key).ToHashSet();
+        // Some prefabs contain several signal objects for the same physical
+        // booth. Payment identity follows the directed lane geometry, not the
+        // count of roadside objects sharing a numeric signal ID.
+        var booths=new List<List<NavCurve>>();
+        var boothForCurve=new Dictionary<NavCurve,int>();
+        foreach(var curve in curves.Where(c=>c.SemaphoreId>=0))
+        {
+            int booth=booths.FindIndex(g=>g[0].SemaphoreId==curve.SemaphoreId && g.All(c=>TollSignals.SameBooth(c,curve)));
+            if(booth<0) {booth=booths.Count;booths.Add([]);}
+            booths[booth].Add(curve);boothForCurve[curve]=booth;
+        }
         int? GateAhead(int index)
         {
             var visited = new HashSet<int>();
             while (index >= 0 && index < curves.Count && visited.Add(index))
             {
                 var curve = curves[index];
-                if (curve.SemaphoreId >= 0) return uniqueGates.Contains(curve.SemaphoreId) ? curve.SemaphoreId : null;
+                if (curve.SemaphoreId >= 0) return boothForCurve.GetValueOrDefault(curve);
                 if (curve.NextLines.Count != 1) return null;
                 index = curve.NextLines[0];
             }
@@ -119,6 +131,12 @@ public sealed class TollModelEvidence(Func<IFileSystem?> readFiles)
             if (!evidence.TryGetValue(gate, out var kinds)) evidence[gate] = kinds = new();
             kinds.Add(marker.Payment);
         }
-        return evidence.Where(e => e.Value.Count == 1).ToDictionary(e => e.Key, e => e.Value.Single());
+        var result=new Dictionary<int,TollPayment>();
+        foreach(var id in booths.Select((curves,index)=>(Gate:curves[0].SemaphoreId,Index:index)).GroupBy(b=>b.Gate))
+        {
+            var kinds=id.Select(b=>evidence.TryGetValue(b.Index,out var values)&&values.Count==1?values.Single():TollPayment.Unknown).ToArray();
+            if(kinds.All(k=>k!=TollPayment.Unknown)&&kinds.Distinct().Count()==1)result[id.Key]=kinds[0];
+        }
+        return result;
     }
 }

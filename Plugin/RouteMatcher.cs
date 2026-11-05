@@ -52,11 +52,14 @@ public static class RouteMatcher
         if (path.HasError || !float.IsFinite(path.TotalLength) || path.TotalLength < 1) return null;
         var trace=SampleForTracking(path,truck,speed);
         sampled=trace;
-        var truckProjection=trace.Project(truck);
+        var truckProjection=trace.ProjectForTracking(truck);
         if(truckProjection.Offset>3) return null;
         var candidates = new List<GateProjection>();
-        var mapped = path.PlannedPath.Where(i=>i.prefabPath!=null).SelectMany(i=>i.prefabPath!.GetSemaphores()).ToArray();
-        foreach (var gate in semaphores)
+        var mapped = path.PlannedPath.Where(i=>i.prefabPath!=null).SelectMany(i=>TollSignals.ForPath(i.prefabPath!)).ToArray();
+        var canonical=mapped.Select(s=>TollSignals.ReadLive(semaphores,(int)s.Semaphore.SemaphoreId,s.GetWorldOrientedPoint().Position))
+            .Where(s=>s!=null).Cast<ETS2LA.Game.SDK.Semaphore>().DistinctBy(Key).ToArray();
+        foreach (var gate in canonical.Concat(semaphores.Where(g=>!mapped.Any(s=>s.Semaphore.SemaphoreId==(uint)g.id &&
+            Vector3.Distance(s.GetWorldOrientedPoint().Position,g.GetWorldCoordinates())<=1))))
         {
             if (gate.type != SemaphoreType.GATE) continue;
             var key = Key(gate);
@@ -81,6 +84,20 @@ public static class RouteMatcher
         return GateSelection.Select(candidates, tracked);
     }
 
+    public static ETS2LA.Game.SDK.Semaphore? FindLiveGate(PlannedPathData? path,ETS2LA.Game.SDK.Semaphore[] gates,string? key,Vector3? remembered=null)
+    {
+        if(key==null)return null;
+        if(path is {HasError:false})
+            foreach(var signal in path.PlannedPath.Where(i=>i.prefabPath!=null).SelectMany(i=>TollSignals.ForPath(i.prefabPath!)))
+            {
+                var anchor=signal.GetWorldOrientedPoint().Position;
+                var live=TollSignals.ReadLive(gates,(int)signal.Semaphore.SemaphoreId,anchor);
+                if(live!=null && Key(live)==key)return live;
+            }
+        if(remembered.HasValue && int.TryParse(key.Split(':')[0],out var id))return TollSignals.ReadLive(gates,id,remembered.Value);
+        return gates.FirstOrDefault(g=>g.type==SemaphoreType.GATE && Key(g)==key);
+    }
+
     public static RouteTrace Sample(PlannedPathData path) => Sample(path,null,0);
     public static RouteTrace SampleForTracking(PlannedPathData path,Vector3 truck,double speed)
         => Sample(path,truck,TrackingGuard.RequiredLookahead(speed));
@@ -94,7 +111,7 @@ public static class RouteMatcher
         {
             if(truck.HasValue&&points.Count>=2) {
                 var prefix=new RouteTrace(points,connectorEnds) {EndsAtGap=true,EndReason=reason};
-                var projected=prefix.Project(truck.Value);
+                var projected=prefix.ProjectForTracking(truck.Value);
                 double ahead=prefix.Length-projected.Along;
                 if(projected.Offset<=3 && ahead>requiredAhead)return prefix;
                 reason+=FormattableString.Invariant($"; noch {ahead:F1} m, Anhaltereserve {requiredAhead:F1} m");

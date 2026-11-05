@@ -19,13 +19,21 @@ public sealed partial class TollPlugin
     {
         float value=e.NewValue switch {float f=>f,bool b=>b?1:0,_=>float.NaN};
         if(!float.IsFinite(value)||value<0||value>1)return;
+        bool immediateTakeover=value>=.12f && (State.EnableAssists || rollingStartPending || faultBrake.Latched);
+        if(immediateTakeover)
+        {
+            // Releasing the modern override must not wait for model/route work.
+            // State is disabled first; bookkeeping follows under the plugin lock.
+            State.EnableAssists=false;
+            ReleaseAssistOutputs();
+        }
         lock(sync)
         {
             brakeInputValue=value;
             if(value<=.05f)brakeHeld=false;
             if(value<.12f || brakeHeld)return;
             brakeHeld=true;
-            bool driving=State.EnableAssists || rollingStartPending || faultBrake.Latched;
+            bool driving=immediateTakeover || State.EnableAssists || rollingStartPending || faultBrake.Latched;
             CancelRollingStart();
             preview=previewCalculating=false;previewGeneration++;
             State.EnableAssists=false;
@@ -39,7 +47,7 @@ public sealed partial class TollPlugin
             if(driving)
             {
                 takeoverUntil=clock.Elapsed.TotalSeconds+.3;
-                ReleaseAssistOutputs();
+                if(!immediateTakeover)ReleaseAssistOutputs();
             }
         }
     }

@@ -69,6 +69,7 @@ public sealed partial class TollPlugin
         catch(Exception ex) { failure=ex.GetBaseException().Message; }
         lock(sync)
         {
+            DrainInputFrames();
             if(!rollingStartPending || request!=rollingStartGeneration)return;
             double now=clock.Elapsed.TotalSeconds;
             if(!_IsRunning || faultBrake.Latched || State.EnableAssists || !SensorsFresh(now) ||
@@ -94,7 +95,7 @@ public sealed partial class TollPlugin
                 ExitHandoff.RepairRoadConnections(planned,position);
                 var trace=RouteMatcher.SampleForTracking(planned,position,speed);
                 issue??=new TrackingGuard().Check(trace,position,headingTurns,speed);
-                var projection=trace.Project(position);
+                var projection=trace.ProjectForTracking(position);
                 if(projection.Offset>1.25 || Vector3.Dot(TrackingGuard.TruckForward(headingTurns),trace.DirectionAt(projection.Along))<.9)
                     issue??="Lkw und geplante Fahrspur sind noch nicht ausreichend ausgerichtet.";
                 if(trace.Length-projection.Along<TrackingGuard.RequiredLookahead(speed))

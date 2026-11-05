@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using System.Collections;
+using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using MautAssistent;
@@ -93,6 +94,9 @@ void Run()
     Check("Unsafe rolling starts leave manual control without emergency braking",()=>RollingStartIntegration.Refusals(Assert));
     Check("Pending rolling starts are cancelled by F9 and cannot commit from foreign threads",()=>RollingStartIntegration.CancelDuringProbe(Assert));
     Check("Physical brake cancels active and pending assists without automatic restart",()=>RollingStartIntegration.BrakeOverride(Assert));
+    Check("SDK delivery remains live through slow toll work without weakening actual telemetry-loss braking",()=>InputDeliveryIntegration.Run(Assert));
+    Check("Physical brake releases assist outputs immediately even during route computation",()=>InputDeliveryIntegration.BrakeWhileBusy(Assert));
+    Check("Duplicate signal objects preserve physical booth identity, payment and conservative clearance",()=>SignalIdentityIntegration.Run(Assert));
     Check("Distant planning gaps do not trip current tracking; nearby gaps still brake",()=>FutureGapIntegration.Run(Assert));
     Check("Tracking faults brake independently of ACC; F9 releases and F8 cannot restart",()=>FaultBrakeIntegration.Run(Assert));
     Check("Toll exit hands over to the connected road lane, not merely a target lane",()=>ExitHandoffIntegration.Run(Assert));
@@ -138,6 +142,22 @@ void Run()
         Assert(TrackingGuard.RequiredLookahead(53/3.6)>80);
         Assert(TrackingGuard.RequiredLookahead(90/3.6)>190);
         Assert(double.IsPositiveInfinity(TrackingGuard.RequiredLookahead(double.NaN)));
+    });
+    Check("Lane tracking distinguishes vertical reference offset from actual lateral departure",()=>{
+        var trace=new RouteTrace([new(0,7.0137f,0),new(0,7.0137f,300)]);
+        var truck=new Vector3(.217f,10.010934f,120);
+        Assert(trace.Project(truck).Offset>3,"Reproduce the former 3D-distance rejection");
+        var projection=trace.ProjectForTracking(truck);
+        Assert(projection.Offset<.22&&projection.HeightOffset>2.99);
+        Assert(new TrackingGuard().Check(trace,truck,.5,76.365/3.6)==null,"Height must not be counted as leaving the lane");
+        Assert(new TrackingGuard().Check(trace,new(3.01f,10.01f,120),.5,20)!=null,"Actual lateral departure still trips tracking");
+        Assert(new TrackingGuard().Check(trace,truck,0,20)!=null,"Opposite heading remains rejected");
+    });
+    Check("Tracking projection retains 3D level selection and handles degenerate traces",()=>{
+        var levels=new RouteTrace([new(0,0,0),new(0,0,100),new(10,3,100),new(10,3,0),new(0,3,0),new(0,3,100)]);
+        var projection=levels.ProjectForTracking(new(0,3,50));
+        Assert(projection.Along>200&&projection.Offset<.001&&Math.Abs(projection.HeightOffset)<.001);
+        Assert(new TrackingGuard().Check(new RouteTrace([Vector3.Zero,Vector3.Zero]),Vector3.Zero,0,0)!=null);
     });
     Check("Tracking guard rejects opposite headings and reversed replacement routes",()=>{
         var north=new RouteTrace(new System.Numerics.Vector3[]{new(0,0,20),new(0,0,-100)});

@@ -113,7 +113,7 @@ public static class TollEntry
             try
             {
                 var trace = RouteMatcher.Sample(prefix);
-                var projection = trace.Project(truck);
+                var projection = trace.ProjectForTracking(truck);
                 return projection.Offset <= 3 ? trace.Length - projection.Along : -1;
             }
             catch (InvalidOperationException) { return -1; }

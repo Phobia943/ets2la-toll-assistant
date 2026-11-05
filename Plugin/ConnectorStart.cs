@@ -65,15 +65,18 @@ public static class ConnectorStart
 
     internal static bool TrimPassedStart(PlannedPathData planned,Vector3 position)
     {
+        int selected=-1;double best=double.PositiveInfinity;
         for(int index=0;index<planned.PlannedPath.Count;index++)
         {
             var item=planned.PlannedPath[index];
             var point=item.Interpolate(item.GetFactorFor(position),0,false);
-            if(!point.HasValue || Vector3.Distance(point.Value.Position,position)>1.25)continue;
-            if(index>0)planned.PlannedPath.RemoveRange(0,index);
-            return true;
+            if(!point.HasValue || Vector2.Distance(new(point.Value.Position.X,point.Value.Position.Z),new(position.X,position.Z))>1.25)continue;
+            double distance=Vector3.Distance(point.Value.Position,position);
+            if(distance<best){best=distance;selected=index;}
         }
-        return false;
+        if(selected<0)return false;
+        if(selected>0)planned.PlannedPath.RemoveRange(0,selected);
+        return true;
     }
 
     internal static bool TryInstallStart(IPlugin planner,PlannedPathData planned,PlannedPathData published,
@@ -259,7 +262,7 @@ public static class ConnectorStart
                     RouteTrace trace;
                     try { trace = RouteMatcher.Sample(new() { PlannedPath=plan, HasError=false }); }
                     catch (InvalidOperationException) { continue; }
-                    var local = trace.Project(position);
+                    var local = trace.ProjectForTracking(position);
                     if (local.Offset > 1.25 || trace.Length - local.Along < 25 ||
                         new TrackingGuard().Check(trace, position, heading, 0) != null) continue;
                     var samples = Enumerable.Range(0, 9)

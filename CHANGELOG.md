@@ -1,5 +1,14 @@
 # Änderungen
 
+## 0.3.4 – Korrektur falscher Tracking- und Mautstopps
+
+- SDK-Eingaben werden als zusammengehörige, zeitgestempelte Bilder übernommen, ohne den synchronen Telemetrieverteiler hinter einer Mautberechnung warten zu lassen. Nach aufwendiger Routenarbeit wird die neueste Position geprüft. Echte veraltete Telemetrie löst weiterhin die Fehlerbremsung aus; der Grenzwert wurde nicht erhöht.
+- Physische Bremsübernahme deaktiviert die Assistenz und neutralisiert Ausgaben vor dem Warten auf die Routenverwaltung. Ein Test hält diese Verwaltung länger als den Telemetriegrenzwert beschäftigt und prüft die sofortige Übernahme.
+- Tracking misst den seitlichen Abstand unabhängig von der Kartenhöhe. Die Auswahl des nächstgelegenen Routenabschnitts bleibt dreidimensional, ebenso die Prüfung von Kartenanschlüssen. Tatsächliche seitliche Abweichung über 3 m und Gegenrichtung bleiben Fehler. Diagnose trennt seitlichen Abstand, Höhe und Bearbeitungszeit.
+- Mehrere Signalobjekte derselben physischen Mautdurchfahrt erhalten eine gemeinsame Identität. Abweichende Zustandsmeldungen bleiben unbekannt. Die Modellzuordnung akzeptiert identische Kurven derselben Durchfahrt, aber keine unbestätigte oder widersprüchliche Wiederverwendung einer Signalnummer an anderen Durchfahrten.
+- AutoPASS-Markierungen für normale Aufträge und Sondertransporte werden anhand ihrer jeweiligen Spieldefinition unterschieden. Die gespeicherte betroffene Anlage bietet dadurch eine erreichbare, automatisch abrechnende Lkw-Spur statt eines Halts vor einer unbekannten Spur.
+- 58 vollständige und 41 unabhängige lokale Prüfungen. Kartenwiederholung: Die betroffene Straßenposition liegt seitlich unter 0,3 m neben der Kartenlinie, deren Höhe rund 3 m abweicht. Die betroffene Mautanfahrt wählt automatisch die erreichbare Schranke 7 ohne unbekannte Haltegrenze. Diese Kartenproben ersetzen keinen Fahrtest; vollständige Mautdurchfahrt mit 0.3.4 noch offen.
+
 ## 0.3.3 – Start während der Fahrt und Bremsübernahme
 
 - Diagnosewerkzeuge für einen zusammenhängenden Maut-Fahrnachweis ergänzt: rein lesende Aufnahme von SDK-Telemetrie, rohen Schranken und Assistentenstatus; Auswertung benennt Datenlücken und bleibt ohne Fahrnachweis ausdrücklich unvollständig. 12 Prüfungen der Aufzeichnung und Auswertung sowie eine kurze reale Leseprobe bestanden. Keine Änderung der installierten Plugin-DLL dafür erforderlich.

@@ -49,7 +49,7 @@ public sealed class TollRouter
             var p=item.prefabPath;
             if(p==null)continue;
             p=PrefabRefinement.OriginalFor(p);
-            var routeGates=p.GetSemaphores().Where(s=>sdkGates.Any(g=>g.type==ETS2LA.Game.SDK.SemaphoreType.GATE &&
+            var routeGates=TollSignals.ForPath(p).Where(s=>sdkGates.Any(g=>g.type==ETS2LA.Game.SDK.SemaphoreType.GATE &&
                 g.id==s.Semaphore.SemaphoreId && Vector3.Distance(g.GetWorldCoordinates(),s.GetWorldOrientedPoint().Position)<1)).ToArray();
             if(routeGates.Length==0)continue;
             var first=routeGates[0];var world=first.GetWorldOrientedPoint().Position;
@@ -69,7 +69,7 @@ public sealed class TollRouter
             var lanes=new List<(int gate,float lateral,bool reachable)>();
             foreach(var c in p.Prefab.Descriptor!.NavCurves.Where(c=>c.SemaphoreId>=0)) {
                 var single=(PrefabPath)clone.Invoke(p,null)!;single.Curves=[c];single.Length=c.Length;
-                var sem=single.GetSemaphores().FirstOrDefault();if(sem==null)continue;
+                var sem=TollSignals.ForPath(single).FirstOrDefault();if(sem==null)continue;
                 var heading=Vector3.Normalize(sem.GetCurveEndWorldCoordinates().Position-sem.GetCurveStartWorldCoordinates().Position);
                 if(Vector3.Dot(heading,forward)<.8)continue;
                 if(!sdkGates.Any(g=>g.type==ETS2LA.Game.SDK.SemaphoreType.GATE && g.id==c.SemaphoreId &&
@@ -89,7 +89,8 @@ public sealed class TollRouter
                 lanes.Add((c.SemaphoreId,Vector3.Dot(sem.GetWorldOrientedPoint().Position-world,right),plans.ContainsKey(c.SemaphoreId)));
             }
             CurrentKey=key;
-            Choices=lanes.OrderByDescending(l=>l.lateral).Select((l,i)=>new {l,i}).Where(x=>x.l.reachable)
+            Choices=lanes.GroupBy(l=>l.gate).Select(g=>g.OrderByDescending(l=>l.lateral).First())
+                .OrderByDescending(l=>l.lateral).Select((l,i)=>new {l,i}).Where(x=>x.l.reachable)
                 .Select(x=>new LaneChoice(x.l.gate,$"{x.i+1}. Durchfahrt von rechts")).ToArray();
             SelectedGate=preferences.Gates.TryGetValue(key,out var chosen)?chosen:null;
             SelectAutomatic();
@@ -125,7 +126,7 @@ public sealed class TollRouter
     {
         if(StopBoundary is not Vector3 boundary)return null;
         var trace=RouteMatcher.SampleForTracking(data,truck,speed);
-        var target=trace.Project(boundary);var current=trace.Project(truck);
+        var target=trace.Project(boundary);var current=trace.ProjectForTracking(truck);
         if(target.Offset>1 || current.Offset>3 || (trace.EndsAtGap && target.Along>=trace.Length-.01))
             throw new InvalidOperationException("Haltegrenze der Mautzufahrt nicht mehr sicher verfolgbar.");
         StopDistance=target.Along-current.Along-ApproachStop.BufferMetres;
@@ -244,7 +245,7 @@ public sealed class TollRouter
             var boundary = CommonApproachEnd(approach);
             var trace = RouteMatcher.SampleForTracking(data, truck, speed);
             var target = trace.Project(boundary);
-            var current = trace.Project(truck);
+            var current = trace.ProjectForTracking(truck);
             if (target.Offset > 1 || current.Offset > 3 || (trace.EndsAtGap && target.Along >= trace.Length - .01))
                 return false;
             double distance = target.Along - current.Along - ApproachStop.BufferMetres;

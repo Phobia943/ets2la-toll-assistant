@@ -1,7 +1,7 @@
 using System.Numerics;
 
 namespace MautAssistent;
-public sealed record TraceProjection(double Along, double Offset, int SegmentEndIndex=0);
+public sealed record TraceProjection(double Along, double Offset, int SegmentEndIndex=0,double HeightOffset=0);
 public sealed class RouteTrace
 {
     readonly Vector3[] points;
@@ -34,6 +34,18 @@ public sealed class RouteTrace
         }
         return new(along,Math.Sqrt(best),segment);
     }
+    public TraceProjection ProjectForTracking(Vector3 point)
+    {
+        // Keep the 3D segment choice, including stacked road levels, and measure
+        // lane departure horizontally like the native pathfinder.
+        var projection=Project(point);int i=projection.SegmentEndIndex;
+        if(i<1)return projection;
+        double length=distances[i]-distances[i-1];
+        float factor=length>0?(float)((projection.Along-distances[i-1])/length):0;
+        var nearest=Vector3.Lerp(points[i-1],points[i],factor);
+        double horizontal=Vector2.Distance(new(point.X,point.Z),new(nearest.X,nearest.Z));
+        return projection with {Offset=horizontal,HeightOffset=point.Y-nearest.Y};
+    }
     public Vector3 DirectionAt(double along)
     {
         Vector3 previous=Vector3.Zero;
@@ -52,7 +64,7 @@ public sealed class RouteTrace
     {
         var p=Project(position);var direction=DirectionAt(p.Along);
         int first=Math.Max(0,p.SegmentEndIndex-12),last=Math.Min(points.Length-1,p.SegmentEndIndex+12);
-        return new {Length,EndsAtGap,EndReason,projection=p,
+        return new {Length,EndsAtGap,EndReason,projection=p,trackingProjection=ProjectForTracking(position),
             direction=new{x=direction.X,y=direction.Y,z=direction.Z},
             samples=Enumerable.Range(first,last-first+1).Select(i=>new{index=i,along=distances[i],
                 x=points[i].X,y=points[i].Y,z=points[i].Z,connectorFromPrevious=connectorEnds.Contains(i)}).ToArray()};

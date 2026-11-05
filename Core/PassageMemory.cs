@@ -10,6 +10,7 @@ public sealed class PassageMemory
     string? key;
     double gateAlong;
     public void Reset() {trace=null;key=null;}
+    public Vector3? PositionFor(string? gateKey)=>key!=null&&key==gateKey?gatePosition:null;
     public void Capture(string gateKey,Vector3 position,RouteTrace route)
     {
         if(key==gateKey)return;
@@ -22,7 +23,7 @@ public sealed class PassageMemory
     {
         if(!freshNavigation||!passageReleased||trace==null||tracked==null||key!=tracked||
             Vector3.Distance(liveGatePosition,gatePosition)>1)return null;
-        var projection=trace.Project(truck);
+        var projection=trace.ProjectForTracking(truck);
         double distance=gateAlong-projection.Along;
         if(projection.Offset>3||distance>=-1)return null;
         return new(tracked,distance,state);
