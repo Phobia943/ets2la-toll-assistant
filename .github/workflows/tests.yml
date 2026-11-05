@@ -14,3 +14,10 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Run independent controller tests
         run: dotnet run --project CoreTests -c Release
+  recording-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check recording analysis without a running game
+        shell: pwsh
+        run: ./Tools/Test-TollRecording.ps1

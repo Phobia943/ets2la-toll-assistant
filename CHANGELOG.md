@@ -2,6 +2,7 @@
 
 ## 0.3.3 – Start während der Fahrt und Bremsübernahme
 
+- Diagnosewerkzeuge für einen zusammenhängenden Maut-Fahrnachweis ergänzt: rein lesende Aufnahme von SDK-Telemetrie, rohen Schranken und Assistentenstatus; Auswertung benennt Datenlücken und bleibt ohne Fahrnachweis ausdrücklich unvollständig. 12 Prüfungen der Aufzeichnung und Auswertung sowie eine kurze reale Leseprobe bestanden. Keine Änderung der installierten Plugin-DLL dafür erforderlich.
 - F8 fordert bei Vorwärtsfahrt eine Routenprüfung an. Bis zur geprüften Übergabe bleibt die Fahrt manuell. Geprüft werden aktuelle Position, Ausrichtung, Navi-Knoten, Fahrmodus, frische SDK-Daten und geschwindigkeitsabhängige Strecke voraus. Bereits überfahrene Planungseinträge werden vor der Übergabe entfernt. Die Route wird nur auf dem eigenen Tick eines exakt unterstützten Planers übernommen.
 - F9 verwirft offene Startprüfungen ohne unbeabsichtigten Moduswechsel. Timeout, fehlende Route und abgelehnte Starts greifen nicht in die manuelle Steuerung ein.
 - Neue physische Eingabe „Bremse – manuelle Übernahme“ in Controls. Ab 12 % gehen Lenkung und Tempomat aus, offene Prüfungen werden verworfen und verbleibende Steuerbefehle neutralisiert. Die zugeordnete Bremse kann auch eine Fehlerbremsung ausdrücklich zur manuellen Übernahme quittieren. Loslassen aktiviert nichts; F8 ist während gehaltener Bremse gesperrt. Keine Auswertung der automatischen Bremsung als Benutzereingabe.

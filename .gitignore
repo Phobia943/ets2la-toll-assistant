@@ -6,6 +6,7 @@ References/
 *.exe
 *.zip
 *.log
+*.jsonl
 *.user
 *.suo
 .vs/
