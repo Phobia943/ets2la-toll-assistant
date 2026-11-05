@@ -27,7 +27,8 @@
     }
     <p>Die Spurwahl nutzt die Zahlart im Spielmodell und prüft den gesamten Lkw-Weg. Sie bevorzugt automatische Abrechnung. Bei einer manuellen Zahlspur hält die Assistenz vor der Schranke. Fehlt eine passende Spur, nähert sich der Lkw dem Haltepunkt vor der Aufteilung. F9 gibt die Steuerung zurück.</p>
     <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="Preview">Route im Stand prüfen (ohne Gas und Lenkung)</button>
-    <p>Prüft im Stand automatisch die Startroute und bereitet sich bei erfolgreicher Prüfung vor. Die Fahrt startet mit F8. F9 gibt die Steuerung zurück. Nach manuellem Versetzen oder einem geänderten Navi-Ziel wird die Startroute erneut geprüft.</p>
+    <p>Prüft im Stand automatisch die Startroute. F8 kann auch während der Fahrt starten: Bis zum Abschluss der Routenprüfung selbst weitersteuern. Erst mit passender Spur, Fahrtrichtung und genügend Strecke voraus übernimmt die Assistenz. F9 gibt die Steuerung zurück und bricht eine laufende Startprüfung ab.</p>
+    <p>Manuelle Bremsübernahme: Unter Einstellungen → Controls „Bremse – manuelle Übernahme“ derselben physischen Bremsachse wie im Spiel zuordnen. Ab 12 % Bremseingabe gehen Lenkung und Tempomat aus. Vor einem neuen F8-Start die Bremse ganz loslassen. Die Abschaltung muss nach der Zuordnung im Stand geprüft werden.</p>
     <label>Anfahrt (km/h) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="5" max="30" @bind="approach" /></label>
     <label>Durchfahrt (km/h) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="3" max="15" @bind="passage" /></label>
     <label>Halteabstand zum Lkw-Messpunkt (m) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="4" max="15" @bind="offset" /></label>
@@ -37,9 +38,9 @@
     <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="Observe">Nur beobachten / Fehlerbremsung lösen</button>
     <button style="padding:10px;border:1px solid #b58a6f;border-radius:6px" @onclick="Activate">Vorbereitung jetzt prüfen (optional)</button>
     <p>@message</p>
-    <p>Zum Einschalten: Fahrassistenz auslassen, im Stand auf „Bereit“ warten, dann F8. Nach dem ETS2LA-Start ist kein Klick auf eine Vorbereitungsschaltfläche nötig.</p>
-    <p>Bei fehlenden Daten oder während der Fahrt erfolgt keine neue Vorbereitung. Nach einer Störung zuerst mit F9 übernehmen und anhalten; danach wird automatisch erneut vorbereitet. Ein normaler Stopp mit F9 bleibt startbereit. „Nur beobachten“ pausiert die automatische Vorbereitung bis F9 oder bis zur manuellen Vorbereitung.</p>
-    <p>Bei Trackingverlust oder falscher Fahrtrichtung wird die Lenkassistenz ausgeschaltet und starkes Bremsen angefordert. Die Fehlerbremsung bleibt bis zur manuellen Übernahme mit F9 aktiv, auch im Stand. Dann selbst die Bremse halten. F8 kann die Fehlerbremsung nicht lösen. Kein automatisches Bezahlen und keine Schrankenmanipulation.</p>
+    <p>Zum Einschalten F8 drücken. Im Stand erfolgt die Vorbereitung automatisch. Während der Fahrt fordert F8 eine neue Prüfung und anschließende Übernahme an. Eine fehlgeschlagene Startprüfung lässt die manuelle Fahrt ohne Bremseingriff weiterlaufen. Nach spätestens vier Sekunden wird ein noch offener Startversuch verworfen.</p>
+    <p>Fehlende oder veraltete Spieldaten verhindern den Start. Eine aktive Fehlerbremsung muss zuerst mit F9 oder der zugeordneten physischen Bremse quittiert werden; dabei selbst die Bremse halten. „Nur beobachten“ pausiert die Vorbereitung und den Start während der Fahrt bis F9 oder bis zur manuellen Vorbereitung.</p>
+    <p>Bei Trackingverlust oder falscher Fahrtrichtung wird die Lenkassistenz ausgeschaltet und starkes Bremsen angefordert. Die Fehlerbremsung bleibt bis zur manuellen Übernahme mit F9 oder der zugeordneten physischen Bremse aktiv, auch im Stand. Dann selbst die Bremse halten. F8 kann die Fehlerbremsung nicht lösen. Kein automatisches Bezahlen und keine Schrankenmanipulation.</p>
     <p>Diagnose: @TollPlugin.Current?.DiagnosticPath</p>
 </div>
 @code {

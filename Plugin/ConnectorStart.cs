@@ -63,6 +63,41 @@ public static class ConnectorStart
         return new PlannedPathData { HasError = false, PlannedPath = items };
     }
 
+    internal static bool TrimPassedStart(PlannedPathData planned,Vector3 position)
+    {
+        for(int index=0;index<planned.PlannedPath.Count;index++)
+        {
+            var item=planned.PlannedPath[index];
+            var point=item.Interpolate(item.GetFactorFor(position),0,false);
+            if(!point.HasValue || Vector3.Distance(point.Value.Position,position)>1.25)continue;
+            if(index>0)planned.PlannedPath.RemoveRange(0,index);
+            return true;
+        }
+        return false;
+    }
+
+    internal static bool TryInstallStart(IPlugin planner,PlannedPathData planned,PlannedPathData published,
+        Vector3 position,double heading)
+    {
+        var type=planner.GetType();
+        if(!Compatible(planner) || planned.HasError || planned.PlannedPath.Count==0 ||
+            !published.HasError || published.ErrorMessage!="Assists are disabled." ||
+            !new StackTrace().GetFrames().Any(f=>f.GetMethod() is {Name:"Tick"} m && m.DeclaringType==type) ||
+            type.GetField("plannedPath",Fields)?.GetValue(planner) is not List<PlannedItem> {Count:0} target ||
+            type.GetField("telemetryData",Fields)?.GetValue(planner) is not GameTelemetryData data ||
+            !data.sdkActive || data.paused || !float.IsFinite(data.truckFloat.speed) || data.truckFloat.speed<0 ||
+            Vector3.Distance(position,data.truckPlacement.coordinate.ToVector3())>.25 ||
+            Vector3.Dot(TrackingGuard.TruckForward(heading),TrackingGuard.TruckForward(data.truckPlacement.rotation.X))<.995)
+            return false;
+        // Verified Tick: Clear -> synchronous Publish(disabled) -> return.
+        // Install before enabling assists so its next Tick uses this exact plan.
+        target.AddRange(planned.PlannedPath);
+        published.PlannedPath=target;
+        published.ErrorMessage=null;
+        published.HasError=false;
+        return true;
+    }
+
     public static bool TrySeed(IPlugin planner, Vector3 position, double heading, Vector3[] history, Func<Func<bool>, bool> commit)
     {
         var type = planner.GetType();

@@ -12,6 +12,8 @@ Die Erweiterung ergänzt Pathfinding, Lane Assist und Adaptive Cruise Control. S
 - Durchfahrt mit höchstens 10 km/h bis 30 m hinter der Schranke.
 - Speicherung der Spur und Zahlart pro Mautanlage, Einfahrt und Ausfahrt.
 - Automatische Vorbereitung nach dem Start mit mindestens einer Sekunde Stillstand, frischen Spieldaten, erfolgreicher Routenprobe und geprüfter ACC-Anbindung. Die Fahrt beginnt mit F8.
+- F8 kann während der Vorwärtsfahrt eine neue Routenprüfung und anschließende Übernahme anfordern. Während der Prüfung bleibt die Fahrt manuell. F9 bricht auch einen offenen Startversuch ab.
+- Physische Bremse als manuelle Übernahme: „Bremse – manuelle Übernahme“ in ETS2LA Controls der eigenen Bremsachse zuordnen. Ab 12 % schalten Lenkung und Tempomat ab; Loslassen startet nicht automatisch erneut. Automatische Bremsausgaben werden nicht als Benutzereingabe ausgewertet.
 - Startversuche ohne Vorbereitung werden bei eingeschaltetem Plugin zurückgewiesen, auch nach einer Störung. F9 bleibt für die manuelle Übernahme verfügbar.
 - Fehlerbremsung bei Trackingverlust; Gegenrichtungsprüfung während der Lenkassistenz, auch außerhalb von Mautstellen.
 - F9 gibt die Steuerung zurück und löst eine aktive Fehlerbremsung ausdrücklich zur manuellen Übernahme.
@@ -22,13 +24,15 @@ Wenn eine passende manuelle Lkw-Spur die einzige erkennbare Option ist, wählt d
 
 ## Entwicklungsstand
 
-Quellstand **0.3.2 in Erprobung**. Die Standprobe berechnet eine separate Route und lässt Spurführung und Tempomat eingeschaltet. Die automatische Vorbereitung führt diese Prüfung vor der Startfreigabe aus. Ein fehlender, fehlerhafter oder veralteter Nachweis sperrt F8. Manuelles Versetzen, eine geänderte Fahrtrichtung und geänderte Navi-Knoten erfordern eine neue Prüfung im Stand. Ein fehlgeschlagener Haltepunkt wird nach Bewegung oder einer ausdrücklichen neuen Routenprobe erneut geprüft.
+Quellstand **0.3.3 in Erprobung**. Die automatische Standprobe berechnet eine separate Route und lässt Spurführung und Tempomat eingeschaltet. Während der Fahrt fordert F8 eine neue Prüfung an. Erst nach Prüfung an der neuesten Lkw-Position wird dieselbe Route an den kompatiblen nativen Planer übergeben und die Assistenz aktiviert. Eine alte Standfreigabe reicht dafür nicht aus. Der Lkw muss zur Spur ausgerichtet sein, höchstens 1,25 m vom geplanten Verlauf liegen und genügend zusammenhängende Strecke für das aktuelle Tempo voraus haben. Ein offener Startversuch endet spätestens nach vier Sekunden. F9 verwirft auch ein noch laufendes Prüfergebnis. Ein abgelehnter Start während manueller Fahrt löst keine Fehlerbremsung aus; tatsächlicher Trackingverlust nach einer Übernahme bleibt überwacht.
+
+Die Bremsübernahme liest eine separat zugeordnete physische Achse über die öffentliche ETS2LA-Eingabeschnittstelle. Sie wertet weder die simulierte Bremswirkung noch gemischte SDK-Pedalwerte aus. Bei geteilten Achsen muss die passende Achsenhälfte in Controls eingestellt werden; danach im Stand prüfen. Eine Bremsübernahme verwirft Startversuche, gibt Lenkung und Pedale frei und quittiert eine aktive Fehlerbremsung ausdrücklich zur manuellen Übernahme. Solange die Bremse gehalten wird, bleibt F8 gesperrt. Nach dem Loslassen ist ein neuer F8-Druck nötig.
 
 Die Startsuche berücksichtigt auf geprüften Pathfinding-Builds auch die Grenzen zusammenhängender Kartenverbinder. Dort gelten weiterhin die Prüfung von Lkw-Freigabe, lokaler Richtung, geometrischer Verbindung und mindestens 25 Metern zusammenhängender Strecke. An einzelnen Kartenübergängen sind Richtung und Vorzeichen der Spurnummer unabhängig. Diese Kombination wird nur übernommen, wenn Verkehrsseite und Fahrbahngeometrie übereinstimmen und zwei native Startproben hinter dem Übergang dieselbe Spur bestätigen.
 
 Die Mautregelung reduziert das Tempo über den verfügbaren Weg. Unter gleichwertigen Zahlarten bevorzugt sie eine erreichbare Spur mit weniger Änderungen an der Route. Wenn die gewählte Spur unerreichbar wird, versucht sie vor der Aufteilung zu halten, solange der geprüfte Bremsweg reicht. Bei einer früh sichtbaren Routenlücke bremst sie auf dem zusammenhängenden Teil der Route ab. Bei verlorener oder falsch gerichteter Spur greift weiterhin die Fehlerbremsung.
 
-49 vollständige lokale Prüfungen und 39 unabhängige Logikprüfungen bestehen. Zusätzlich wurden gespeicherte Haltepunkte mit der Originalkarte wiedergegeben. Das prüft die Routenberechnung. Der Bremsweg und die Lenkung des beladenen Lkw müssen in der Fahrt geprüft werden.
+53 vollständige lokale Prüfungen und 39 unabhängige Logikprüfungen bestehen. Neue Starttests prüfen die Bewegung während der Berechnung, den ersten Steuerungszyklus, erneutes F8 nach F9 und sichere Ablehnungen. Bremsübernahme wird mit aktiver Assistenz, offener Prüfung und aktiver Fehlerbremsung geprüft. Die physische Zuordnung und die neue Übernahme während der Fahrt müssen im Spiel geprüft werden.
 
 Anfahrt, Spurwahl, langsame Durchfahrt und Rückgabe an den Controller wurden mit einer früheren Version an einer ausgewählten Mautstelle praktisch geprüft. Die Fahrvalidierung von 0.3.2 steht aus. Die normale Straßenlenkung wurde mit 0.2.3 nach einem Neustart ebenfalls erfolgreich geprüft. Version 0.2.4 isolierte die Routenmessung vom veränderlichen Spurwechselzustand der Lenkroute.
 
@@ -104,12 +108,12 @@ ETS2LA-Updates können den kompletten Anwendungsordner einschließlich manuell i
 
 1. Lkw sicher abstellen, Fahrassistenz ausschalten und ETS2LA schließen. Eine vorhandene Version von `MautAssistent.dll` sichern.
 2. Die gebaute DLL in den Ordner `Plugins` der ETS2LA-Installation kopieren und ETS2LA neu starten. Keine andere Kopie desselben Plugins parallel installieren.
-3. Mautassistent, Pathfinding, Lane Assist und Adaptive Cruise Control im Plugin-Manager einschalten. Der Mautassistent wartet auf Stillstand und frische Daten und bereitet sich automatisch vor.
+3. Mautassistent, Pathfinding, Lane Assist und Adaptive Cruise Control im Plugin-Manager einschalten. Im Stand bereitet sich der Mautassistent automatisch vor; während der Fahrt fordert F8 eine neue Prüfung an.
 4. Unter **Mautassistent → Einstellungen** die erkannte Mautanlage prüfen. Eine tatsächlich Lkw-taugliche Spur und deren Zahlart bestätigen. Es sind keine fremden Spurfreigaben vorinstalliert.
 5. Bei stehendem Lkw und ausgeschalteter Fahrassistenz auf **Bereit – F8 startet die Fahrassistenz** warten. Kein zusätzlicher Klick ist erforderlich. Zum Fahren in ETS2LA den Modus **Full Self-Driving** verwenden.
-6. Mit der eingerichteten Starttaste aktivieren. Bei falscher Route oder unpassender Bremsung ausschalten und selbst übernehmen.
+6. In **Settings → Controls** die physische Bremse unter **Bremse – manuelle Übernahme** zuordnen und die Achsenrichtung einstellen. Im Stand prüfen: Bremse drücken muss die Assistenz ausschalten, Gas darf dies nicht tun. Erst danach die Abschaltung verwenden. Die eingerichtete Starttaste kann bei gültiger Route auch während der Vorwärtsfahrt übernehmen; bis zum Abschluss der Prüfung selbst steuern.
 
-Für **Route im Stand prüfen** müssen Lane Assist und ACC ausgeschaltet sein. Die Probe berechnet kurz eine Route ohne Gas- oder Lenkausgabe und schaltet die Fahrassistenz wieder aus.
+Für **Route im Stand prüfen** muss die Fahrassistenz ausgeschaltet sein. Die Module Lane Assist und ACC bleiben eingeschaltet. Die Probe berechnet eine separate Route ohne Gas- oder Lenkausgabe.
 
 ### Tastatur und Stream Deck
 
@@ -122,10 +126,11 @@ Die Tasten werden in ETS2LA unter **Settings → Controls** zugeordnet; das Plug
 | F10 | Decrease/SET | Tempo verringern / setzen |
 | F11 | Next/OK | Weiter / bestätigen |
 | F12 | frei | Keine Belegung erforderlich |
+| Eigene Bremsachse | Bremse – manuelle Übernahme | Lenkung und Tempomat ausschalten; gehaltene Bremse verhindert einen neuen Start |
 
 Zuerst im Stand prüfen, ob F9 die Steuerung zuverlässig an den Controller zurückgibt. Ein Overlay ist nicht erforderlich.
 
-„Nur beobachten / Fehlerbremsung lösen“ schaltet die Fahrassistenz aus, löst die Fehlerbremsung und pausiert die automatische Vorbereitung. F9 gibt die automatische Vorbereitung wieder frei; alternativ bleibt eine optionale manuelle Prüfung möglich. Für eine reine Routenprobe bleibt die separate Schaltfläche verfügbar; dabei müssen die Ausgabemodule ausgeschaltet sein.
+„Nur beobachten / Fehlerbremsung lösen“ schaltet die Fahrassistenz aus, löst die Fehlerbremsung und pausiert die Vorbereitung einschließlich Start während der Fahrt. F9 gibt die Vorbereitung wieder frei; alternativ bleibt eine optionale manuelle Prüfung möglich. Für eine reine Routenprobe bleibt die separate Schaltfläche verfügbar.
 
 ## Tests
 

@@ -15,12 +15,12 @@ using ETS2LA.Game.Output;
 
 namespace MautAssistent;
 
-public sealed class TollPlugin : Plugin
+public sealed partial class TollPlugin : Plugin
 {
     public static TollPlugin? Current { get; private set; }
     public override PluginInformation Info => new() {
         Id = "local.mautassistent", Name = "Mautassistent", Version = typeof(TollPlugin).Assembly.GetName().Version!.ToString(3),
-        Description = "Langsame Mautdurchfahrt. Bereitet sich im Stand automatisch vor; Fahrt startet erst mit F8.",
+        Description = "Langsame Mautdurchfahrt. F8 startet nach Routenprüfung auch während der Fahrt; F9 übernimmt manuell.",
         AuthorName = "Lokale Anpassung", Dependencies = ["tumppi066.pathlib"],
         PluginPageButtonName = "Einstellungen"
     };
@@ -57,10 +57,13 @@ public sealed class TollPlugin : Plugin
         readPayments: new TollModelEvidence(() => ApplicationState.Current.RunningGame?.GetFileSystem()).Read) { }
     internal TollPlugin(Func<ApplicationState> readState, Action<string,string> notify,Action<ControlEvent>? output=null,Func<IPlugin?>? readAcc=null,
         Func<ETS2LA.Game.Data.ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments=null, Func<IPlugin?>? readPlanner=null,
-        Func<IPlugin,Vector3,double,Vector3[],PlannedPathData?>? probeRoute=null) {
+        Func<IPlugin,Vector3,double,Vector3[],PlannedPathData?>? probeRoute=null,
+        Func<IPlugin,PlannedPathData,PlannedPathData,Vector3,double,bool>? installStart=null) {
         this.readState=readState;this.readAcc=readAcc??FindAcc;this.notify=notify;this.readPayments=readPayments;
         this.readPlanner=readPlanner??FindPlanner;
         this.probeRoute=probeRoute??ConnectorStart.Probe;
+        this.installStart=installStart??ConnectorStart.TryInstallStart;
+        publishOutput=output??(_=>{});
         router=new(preferences,readPayments);faultBrake=new(output??(_=>{}));
     }
     string preparationReason="Automatische Vorbereitung wartet auf Stillstand und verbundene Module.";
@@ -76,8 +79,11 @@ public sealed class TollPlugin : Plugin
     bool RejectUnpreparedStart()
     {
         if(!State.EnableAssists)return false;
+        if(brakeHeld || clock.Elapsed.TotalSeconds<takeoverUntil) {State.EnableAssists=false;return true;}
         if(active && !preview && (supervisor.Checkpoint.Started.HasValue || CanStartNow(clock.Elapsed.TotalSeconds)))return false;
         State.EnableAssists=false;
+        if (rollingStartPending) return true;
+        if (Math.Abs(speed)>.1 && RequestRollingStart()) return true;
         if (active && !preview)
         {
             active=false;
@@ -110,7 +116,7 @@ public sealed class TollPlugin : Plugin
         Vector3.Dot(TrackingGuard.TruckForward(headingTurns),TrackingGuard.TruckForward(check.Heading))>=.995f &&
         check.Navigation==ConnectorStart.NavigationKey(readPlanner());
 
-    bool CanStartNow(double now) => _IsRunning && active && !preview && !faultBrake.Latched && SensorsFresh(now) &&
+    bool CanStartNow(double now) => _IsRunning && active && !preview && !brakeHeld && now>=takeoverUntil && !faultBrake.Latched && SensorsFresh(now) &&
         Math.Abs(speed)<=.1 && CheckMatches() && startCheck!.Failure==null;
     double previewAt;
     string previewStatus="Noch keine Routenprobe";
@@ -132,7 +138,7 @@ public sealed class TollPlugin : Plugin
     public TollOptions Options { get { lock(sync) return options; } }
     public bool Active { get { lock(sync) return active; } }
     public bool FaultBraking { get { lock(sync) return faultBrake.Latched; } }
-    public string Status { get { lock(sync) return faultBrake.Latched ? "Fehlerbremsung aktiv – F9 zur manuellen Übernahme: "+preparationReason : preview ? "Routenprobe ohne Fahrsteuerung" : active ? (State.EnableAssists ? driveAction switch {
+    public string Status { get { lock(sync) return faultBrake.Latched ? "Fehlerbremsung aktiv – F9 zur manuellen Übernahme: "+preparationReason : rollingStartPending ? "Start angefordert – Route wird geprüft; noch selbst steuern. F9 bricht ab." : preview ? "Routenprobe ohne Fahrsteuerung" : active ? (State.EnableAssists ? driveAction switch {
         DriveAction.AwaitRoute => "Warte auf eine gültige Startroute",
         DriveAction.Recover => "Kurze Datenlücke – kein Gas",
         DriveAction.Paused => "Spiel pausiert",
@@ -152,6 +158,7 @@ public sealed class TollPlugin : Plugin
 
     public override void Init() {
         Current = this;
+        ControlsBackend.Current.RegisterControl(BrakeControl);
         try {
             preferences.MigrateFrom(Path.Combine(AppContext.BaseDirectory,"MautAssistent","settings.json"));
             preferences.Load(); options=preferences.Options;controller=new(options);
@@ -169,6 +176,7 @@ public sealed class TollPlugin : Plugin
             connectorSeeded = false;
             connectorHistory.Clear();
             active = false; controller.Reset(); tracked = null; passage.Reset();
+            CancelRollingStart();
             startCheck=null;
             automaticPreparation.Request();
             preparationReason="Automatische Vorbereitung wartet auf Stillstand und verbundene Module.";
@@ -178,6 +186,9 @@ public sealed class TollPlugin : Plugin
             Events.Current.Subscribe<SemaphoreData>(SemaphoreProvider.Current.EventString, OnGates);
             Events.Current.Subscribe<PlannedPathData>("Pathfinding.PlannedPathData", OnPath);
             ControlsBackend.Current.On(DefaultControls.Cancel.Id,OnCancel);
+            ControlsBackend.Current.On(DefaultControls.Increase.Id,OnStart);
+            ControlsBackend.Current.On(DefaultControls.Decrease.Id,OnStart);
+            ControlsBackend.Current.On(BrakeControl.Id,OnBrakeInput);
             subscribed = true;
         }
         base.OnEnable();
@@ -201,11 +212,22 @@ public sealed class TollPlugin : Plugin
             SafetyWatchdog(telemetryAt);
         }
     }
+    void OnStart(object? sender,ControlChangeEventArgs e)
+    {
+        // The host enables on both edges. Intercept immediately after its
+        // listener instead of waiting for the next telemetry/ACC/plugin tick.
+        lock(sync) RejectUnpreparedStart();
+    }
     void OnCancel(object? sender,ControlChangeEventArgs e)
     {
         // Same release edge as the host's F9 / Cancel control.
         if(e.NewValue is not false)return;
         lock(sync) {
+            // The host cycles modes when it sees assists off. A pending start
+            // is still a cancel operation, so retain the requested driving mode.
+            if (rollingStartPending) State.DrivingMode=rollingStartMode;
+            CancelRollingStart();
+            State.EnableAssists=false;
             faultBrake.Release();ResetDriving();
             startCheck=null;
             active=false;
@@ -308,6 +330,7 @@ public sealed class TollPlugin : Plugin
     void OnPath(PlannedPathData data)
     {
         int probe = 0;
+        int rollingProbe = 0;
         IPlugin? planner = null;
         Vector3 startPosition = default;
         double startHeading = 0;
@@ -319,6 +342,15 @@ public sealed class TollPlugin : Plugin
             if (!State.EnableAssists) connectorAttempted = false;
             connectorPending = false;
             if (RejectUnpreparedStart()) return;
+            if (rollingStartPending && !rollingStartCalculating && data is { HasError: true, ErrorMessage: "Assists are disabled." })
+            {
+                rollingStartCalculating=true;
+                rollingProbe=rollingStartGeneration;
+                planner=readPlanner();
+                startPosition=position;
+                startHeading=headingTurns;
+                history=connectorHistory.Snapshot(pathAt,position);
+            }
             if (preview && !previewCalculating && data is { HasError: true, ErrorMessage: "Assists are disabled." })
             {
                 previewCalculating = true;
@@ -343,13 +375,18 @@ public sealed class TollPlugin : Plugin
                     history = connectorHistory.Snapshot(pathAt, position);
                 }
             }
-            if (probe == 0 && planner == null)
+            if (probe == 0 && rollingProbe == 0 && planner == null)
             {
                 HandlePath(data);
                 return;
             }
         }
 
+        if (rollingProbe != 0)
+        {
+            CompleteRollingStart(rollingProbe,planner,data,startPosition,startHeading,history);
+            return;
+        }
         if (probe != 0)
         {
             CompletePreview(probe, planner, startPosition, startHeading, history);
@@ -520,6 +557,7 @@ public sealed class TollPlugin : Plugin
                 return "Für die Routenprobe muss der Lkw stehen und die Fahrassistenz aus sein.";
             if (preview) return previewStatus;
             if (readPlanner() == null) return "Zuerst Pathfinding einschalten.";
+            CancelRollingStart();
             previewRouter=null;
             startCheck=null;
             previewCalculating=false;
@@ -536,6 +574,7 @@ public sealed class TollPlugin : Plugin
     {
         lock(sync) {
             if(Math.Abs(speed)>.1 || State.EnableAssists)return "Bitte zuerst anhalten und F9 drücken.";
+            CancelRollingStart();
             try {
                 (previewRouter ?? router).Confirm(gate,payment);
                 if (previewRouter != null) router.ResetSelection();
@@ -552,6 +591,7 @@ public sealed class TollPlugin : Plugin
         lock(sync)
         {
             if (Math.Abs(speed) > .1 || State.EnableAssists) return "Bitte im Stand bei ausgeschalteter Fahrassistenz ändern.";
+            CancelRollingStart();
             try { newOptions.Validate(); } catch (ArgumentException e) { return e.Message; }
             try {preferences.Save(newOptions,preferences.Gates);} catch(Exception ex) {return "Einstellungen nicht gespeichert: "+ex.Message;}
             options = newOptions; controller = new(options); tracked = null; active = false;  bridge.Detach();
@@ -564,6 +604,7 @@ public sealed class TollPlugin : Plugin
     string? PreparationBlock(double now)
     {
         if(faultBrake.Latched)return "Zuerst F9 zur manuellen Übernahme drücken und selbst die Bremse halten.";
+        if(brakeHeld || now<takeoverUntil)return "Manuelle Bremsübernahme: zum Starten zuerst die Bremse loslassen.";
         if(!_IsRunning)return "Zuerst das Mautassistent-Plugin einschalten.";
         if(preview)return "Routenprobe läuft noch.";
         if(!double.IsFinite(speed)||Math.Abs(speed)>.1||State.EnableAssists)return "Warte auf Stillstand mit ausgeschalteter Fahrassistenz.";
@@ -580,7 +621,7 @@ public sealed class TollPlugin : Plugin
             active=false;
             automaticPreparation.Request();
         }
-        if(active||!automaticPreparation.Requested)return;
+        if(active||rollingStartPending||!automaticPreparation.Requested)return;
         var blocked=PreparationBlock(now);
         if(!automaticPreparation.ShouldAttempt(now,blocked==null)) {
             preparationReason=blocked??"Automatische Vorbereitung: Stillstand wird geprüft.";
@@ -593,6 +634,7 @@ public sealed class TollPlugin : Plugin
     {
         lock(sync)
         {
+            CancelRollingStart();
             if (!value) { startCheck=null;preview=previewCalculating=false; router.CancelPlannedStop();warnedStopKey=null; automaticPreparation.Cancel(); active = false; State.EnableAssists=false; faultBrake.Release(); ResetDriving(); preparationReason="Beobachtungsmodus. F9 gibt die automatische Vorbereitung wieder frei."; bridge.Detach();  controller.Reset(); tracked = null; passage.Reset(); return "Manuelle Übernahme, Fehlerbremsung gelöst. Automatische Vorbereitung pausiert; mit F9 wieder freigeben."; }
             var blocked=PreparationBlock(clock.Elapsed.TotalSeconds);
             if(blocked!=null)return blocked;
@@ -651,6 +693,7 @@ public sealed class TollPlugin : Plugin
     {
         lock(sync)
         {
+            if (RejectUnpreparedStart() && !faultBrake.Latched) return float.NaN;
             var action = SafetyWatchdog(clock.Elapsed.TotalSeconds);
             if (faultBrake.Latched) return -5f;
             if (RejectUnpreparedStart() || !_IsRunning || State.DrivingMode == DrivingMode.LaneAssistOnly) return float.NaN;
@@ -680,9 +723,12 @@ public sealed class TollPlugin : Plugin
         lock(sync)
         {
             if (!subscribed) return;
-            SafetyWatchdog(clock.Elapsed.TotalSeconds);
             RejectUnpreparedStart();
+            SafetyWatchdog(clock.Elapsed.TotalSeconds);
             double now = clock.Elapsed.TotalSeconds;
+            if(now<takeoverUntil) ReleaseAssistOutputs();
+            if(rollingStartPending && now-rollingStartAt>RollingStartTimeout)
+                FailRollingStart("Zeitlimit der Routenprüfung erreicht. Bitte selbst weiterfahren und bei Bedarf erneut F8 drücken.");
             if(preview && now-previewAt>8) {
                 preview=false;previewCalculating=false;
                 FailStartCheck(position,headingTurns,"Pathfinding antwortet nicht auf die Routenprobe.");
@@ -745,6 +791,8 @@ public sealed class TollPlugin : Plugin
                         automaticPreparationPending=automaticPreparation.Requested,
                         startBlocked=!(active&&State.EnableAssists)&&!CanStartNow(now), readyToStart=CanStartNow(now),
                         startRouteFailure=startCheck?.Failure,preparationReason,selectedLane=(previewRouter??router).SelectedGate,plaza=(previewRouter??router).CurrentKey,
+                        rollingStartPending,rollingStartCalculating,rollingStartStatus,
+                        brakeHeld,brakeInputValue,
                         selectedPayment=router.SelectedGate is int gateId ? router.PaymentFor(gateId).ToString() : null,
                         faultBraking=faultBrake.Latched,headingTurns,
                         pendingRouteGap=safetyTrace?.EndReason,
@@ -778,6 +826,7 @@ public sealed class TollPlugin : Plugin
         {
             if(active || preview || faultBrake.Latched)State.EnableAssists=false;
             active = false;
+            CancelRollingStart();
             automaticPreparation.Cancel();
             faultBrake.Release();ResetDriving();
             preview=previewCalculating=false;
@@ -790,6 +839,9 @@ public sealed class TollPlugin : Plugin
                 Events.Current.Unsubscribe<SemaphoreData>(SemaphoreProvider.Current.EventString, OnGates);
                 Events.Current.Unsubscribe<PlannedPathData>("Pathfinding.PlannedPathData", OnPath);
                 ControlsBackend.Current.UnregisterListener(DefaultControls.Cancel.Id,OnCancel);
+                ControlsBackend.Current.UnregisterListener(DefaultControls.Increase.Id,OnStart);
+                ControlsBackend.Current.UnregisterListener(DefaultControls.Decrease.Id,OnStart);
+                ControlsBackend.Current.UnregisterListener(BrakeControl.Id,OnBrakeInput);
                 subscribed = false;
             }
             bridge.Detach(); controller.Reset(); tracked = null; passage.Reset();

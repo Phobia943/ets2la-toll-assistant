@@ -89,6 +89,10 @@ void Run()
     #if INTEGRATION
     Check("Short item seams do not create false opposite road headings",()=>DirectionSeamIntegration.Run(Assert));
     Check("Automatic preparation attaches only at standstill and preserves fault takeover",()=>AutomaticPreparationIntegration.Run(Assert));
+    Check("Rolling F8 validates the latest pose before handoff and can resume after F9",()=>RollingStartIntegration.StartAndTakeover(Assert));
+    Check("Unsafe rolling starts leave manual control without emergency braking",()=>RollingStartIntegration.Refusals(Assert));
+    Check("Pending rolling starts are cancelled by F9 and cannot commit from foreign threads",()=>RollingStartIntegration.CancelDuringProbe(Assert));
+    Check("Physical brake cancels active and pending assists without automatic restart",()=>RollingStartIntegration.BrakeOverride(Assert));
     Check("Distant planning gaps do not trip current tracking; nearby gaps still brake",()=>FutureGapIntegration.Run(Assert));
     Check("Tracking faults brake independently of ACC; F9 releases and F8 cannot restart",()=>FaultBrakeIntegration.Run(Assert));
     Check("Toll exit hands over to the connected road lane, not merely a target lane",()=>ExitHandoffIntegration.Run(Assert));
