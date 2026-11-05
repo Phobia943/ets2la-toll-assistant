@@ -35,7 +35,7 @@ foreach($r in $rows) {
     if($s.faultBraking){$faults++}
     $observed=Resolve-TollGateObservation -Gates $r.gates -GateKey $GateKey -RememberedAnchor $anchor
     if($null -ne $observed.anchor){$anchor=$observed.anchor}
-    if($observed.rawCount -gt 1){$replicas++}
+    if($observed.source -eq 'ObservedRawAnchor' -and $observed.rawCount -gt 1){$replicas++}
     if($observed.issue -eq 'ConflictingOrInvalidStates'){$conflicts++}
     $valid=$r.active -and !$r.paused -and @($r.issues).Count -eq 0 -and $observed.state -in 0..3 -and
         $r.sdkTimestamp -ne $previousStamp -and ($null -eq $previous -or $r.t-$previous -le .5)

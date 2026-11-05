@@ -106,6 +106,10 @@ try {
     $rows=PositionedFixture;foreach($row in $rows){$row.gates[0].id=8}
     $r=InvokeRecordingAnalysis $rows
     Assert ($r.observedOpenWindows.Count -eq 0) 'An inconsistent raw key and numeric signal ID cannot establish an anchor.';$checks++
+    $rows=PositionedFixture
+    foreach($row in $rows){$row.gates[3].key=$key;$row.gates[3].id=7}
+    $r=InvokeRecordingAnalysis $rows
+    Assert ($r.observedOpenWindows.Count -eq 0 -and $r.duplicateBoothObjectSamples -eq 0) 'An ambiguous first key at two heights must not be counted as a proven physical booth replica.';$checks++
     Write-Output "$checks recording checks passed. No game or ETS2LA output opened."
 } finally {
     # Only files created by this test in its unique temporary directory are removed.
