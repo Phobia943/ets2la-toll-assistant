@@ -97,6 +97,7 @@ void Run()
     Check("SDK delivery remains live through slow toll work without weakening actual telemetry-loss braking",()=>InputDeliveryIntegration.Run(Assert));
     Check("Physical brake releases assist outputs immediately even during route computation",()=>InputDeliveryIntegration.BrakeWhileBusy(Assert));
     Check("Duplicate signal objects preserve physical booth identity, payment and conservative clearance",()=>SignalIdentityIntegration.Run(Assert));
+    Check("Connector starts distinguish passed signals from signals and restrictions ahead",()=>ConnectorSignalIntegration.Run(Assert));
     Check("Distant planning gaps do not trip current tracking; nearby gaps still brake",()=>FutureGapIntegration.Run(Assert));
     Check("Tracking faults brake independently of ACC; F9 releases and F8 cannot restart",()=>FaultBrakeIntegration.Run(Assert));
     Check("Toll exit hands over to the connected road lane, not merely a target lane",()=>ExitHandoffIntegration.Run(Assert));

@@ -137,9 +137,22 @@ public static class ConnectorStart
 
     sealed record Candidate(List<PlannedItem> Plan, float Offset, Vector3[] Ahead, double HistoryFit);
 
-    static bool IsTruckConnector(PrefabPath path) => path.Curves.Count != 0 && path.Curves.All(c => c.SemaphoreId < 0 &&
-        (c.AllowedVehicles is AllowedVehicles.AllVehicles or AllowedVehicles.LargeVehicles) &&
-        c.TrafficRule.ToString() != "escort_only");
+    internal static bool IsTruckConnector(PrefabPath path,double passedDistance=0)
+    {
+        if(path.Curves.Count==0 || !double.IsFinite(passedDistance) || passedDistance<0)return false;
+        double end=0;
+        foreach(var curve in path.Curves)
+        {
+            if(!float.IsFinite(curve.Length)||curve.Length<=0 ||
+                curve.AllowedVehicles is not (AllowedVehicles.AllVehicles or AllowedVehicles.LargeVehicles) ||
+                curve.TrafficRule.ToString()=="escort_only")return false;
+            end+=curve.Length;
+            // On the initial connector only, a complete signal curve may be
+            // behind the truck. Keep a 2 m margin; never suppress its metadata.
+            if(curve.SemaphoreId>=0 && end+2>passedDistance)return false;
+        }
+        return passedDistance<=end;
+    }
 
     internal static bool ConfirmRoadLane(PlannedItem item, IReadOnlyList<Node> nodes, MethodInfo nativeStart)
     {
@@ -238,10 +251,10 @@ public static class ConnectorStart
                 var (primary, alternatives) = parsed.GetPathsFromNodeToNode(entry, exit, entry.Position);
                 foreach (var original in primary.Concat(alternatives))
                 {
-                    if (!IsTruckConnector(original)) continue;
                     if (original.Length < 2 || original.Length > 350) continue;
                     var path = PrefabRefinement.Refine(original);
                     float factor = Math.Clamp(path.GetFactorForPoint(position),.00001f,.99999f);
+                    if (!IsTruckConnector(path,factor*path.Length)) continue;
                     var point = path.Interpolate(factor, 0)?.Position;
                     if (!point.HasValue) continue;
                     float offset = Vector3.Distance(point.Value, position);
