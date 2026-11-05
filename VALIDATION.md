@@ -1,6 +1,6 @@
 # Fahrnachweis
 
-Stand: 0.3.5, 5. November 2026. Die vollständige Mautdurchfahrt ist **noch nicht validiert**. Bestandene Logiktests, Kartenproben und normale Straßenfahrt sind getrennte Nachweise.
+Stand: 0.3.6 vorbereitet, 5. November 2026. Die vollständige Mautdurchfahrt ist **noch nicht validiert**. Ein späterer Kurvenunfall mit 0.3.5 begrenzt die Aussagekraft der zuvor erfolgreichen kurzen Straßenbeobachtung. Bestandene Logiktests, Kartenproben und einzelne Fahrfenster sind getrennte Nachweise.
 
 | Anforderung | Vorhandener Nachweis | Noch erforderlich |
 | --- | --- | --- |
@@ -10,6 +10,7 @@ Stand: 0.3.5, 5. November 2026. Die vollständige Mautdurchfahrt ist **noch nich
 | Verzögerte Freigabe | Tests verlangen zwei Sekunden ununterbrochen offene Schranke; Schließen und Datenlücken setzen die Wartezeit zurück | Offenzeit und tatsächliche Anfahrt im selben Fahrversuch beobachten |
 | Langsame Passage und saubere Ausfahrt | 10-km/h-Begrenzung bis 30 m hinter der Schranke; Tests für schließende Schranke hinter dem Lkw und Anschluss-Spur | Vollständige Ausfahrt, danach stabile Straßenlenkung |
 | Sichere manuelle Übernahme | Mit 0.3.3 im Stand und während der Fahrt durch Fahrer bestätigt; 0.3.5 prüft zusätzlich unmittelbare Ausgabe-Freigabe bei beschäftigter Routenverwaltung | Erneute Übernahme im abschließenden Fahrversuch bestätigen |
+| Tatsächliche Lenkbereitschaft | 0.3.6 prüft ausbleibende Lenkausgabe, Halt beim Anlauf, Bremsung trotz beschäftigter Routenverwaltung sowie sofortige manuelle Quittierung | Neue Überwachung im Stand auslösen und physische Bremsausgabe kontrollieren; Kurvenfahrt erneut prüfen |
 | Start und normale Straßenfahrt | 0.3.5 live geladen, automatisch vorbereitet und mit F8 aktiviert. Erste Minute plus weitere drei Minuten beobachtet: bis etwa 80 km/h, kein aufgezeichneter Trackingfehler und keine Fehlerbremsung | Kein Nachweis beliebiger Strecken; weitere Fehlermeldungen anhand ihrer Aufzeichnungen prüfen |
 
 ## Zusammenhängender Mautversuch

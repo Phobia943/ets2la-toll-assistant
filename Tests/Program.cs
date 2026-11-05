@@ -46,6 +46,19 @@ void Run()
     var results=new List<string>();
     void Check(string name, Action test) { try {test(); results.Add("PASS "+name);} catch(Exception ex) {results.Add("FAIL "+name+": "+ex); } }
     void Assert(bool v,string message="Assertion failed") {if(!v)throw new Exception(message);}
+    Check("Steering supervision has bounded startup, immediate stale-feed loss and explicit reset",()=>{
+        var g=new SteeringFeedGuard();
+        Assert(g.Check(0,double.NegativeInfinity,true)==SteeringFeedState.Starting);
+        Assert(g.Check(.34,double.NegativeInfinity,true)==SteeringFeedState.Starting);
+        Assert(g.Check(.36,double.NegativeInfinity,true)==SteeringFeedState.Lost);
+        Assert(g.Check(.4,double.NegativeInfinity,false)==SteeringFeedState.Off);
+        Assert(g.Check(.5,.5,true)==SteeringFeedState.Healthy);
+        Assert(g.Check(.64,.5,true)==SteeringFeedState.Healthy);
+        Assert(g.Check(.66,.5,true)==SteeringFeedState.Lost,"Loss after a healthy frame cannot reuse startup grace");
+        Assert(g.Check(.7,.7,false)==SteeringFeedState.Off);
+        Assert(g.Check(1,double.NaN,true)==SteeringFeedState.Starting);
+        Assert(g.Check(double.NaN,1,true)==SteeringFeedState.Lost);
+    });
     Check("Connector evidence distinguishes approaching lanes and expires after a stop", () =>
     {
         var memory = new ConnectorHistory();
@@ -88,6 +101,9 @@ void Run()
         }
     });
     #if INTEGRATION
+    Check("Valid routes cannot hide missing steering; braking bypasses route locks and manual takeover releases it",()=>SteeringSafetyIntegration.Run(Assert));
+    Check("Live steering commands remain visible during busy route work without false dropout braking",()=>SteeringSafetyIntegration.BusyHealthyFeed(Assert));
+    Check("Manual brake releases even a pending steering fault before route bookkeeping is available",()=>SteeringSafetyIntegration.BusyManualRelease(Assert));
     Check("Short item seams do not create false opposite road headings",()=>DirectionSeamIntegration.Run(Assert));
     Check("Automatic preparation attaches only at standstill and preserves fault takeover",()=>AutomaticPreparationIntegration.Run(Assert));
     Check("Rolling F8 validates the latest pose before handoff and can resume after F9",()=>RollingStartIntegration.StartAndTakeover(Assert));

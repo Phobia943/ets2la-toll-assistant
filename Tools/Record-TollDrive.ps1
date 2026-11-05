@@ -53,7 +53,8 @@ try {
                     $lastStatus=$status.utc
                     $newStatus=$status|Select-Object utc,version,assists,active,mode,phase,targetSpeedKph,gate,candidate,
                         selectedLane,selectedPayment,plaza,faultBraking,pathError,driveAction,connectedMetresAhead,
-                        requiredLookahead,telemetryAge,gatesAge,pathAge,options,routing,routeFault,plannedStop,stopDistance
+                        requiredLookahead,telemetryAge,gatesAge,pathAge,options,routing,routeFault,plannedStop,stopDistance,
+                        steeringFeed,steeringAge,steeringFault
                 }
             } catch {$issues.Add('StatusUnreadable')}
         }

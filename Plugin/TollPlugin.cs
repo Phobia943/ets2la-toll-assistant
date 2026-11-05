@@ -55,11 +55,12 @@ public sealed partial class TollPlugin : Plugin
     public TollPlugin() : this(() => ApplicationState.Current, Notify,
         output=>Events.Current.Publish(GameOutput.Current.EventString,output),
         readPayments: new TollModelEvidence(() => ApplicationState.Current.RunningGame?.GetFileSystem(),
-            ()=>GameTelemetry.Current.GetCurrentData().configBool.specialJob).Read) { }
+            ()=>GameTelemetry.Current.GetCurrentData().configBool.specialJob).Read,monitorSteering:true) { }
     internal TollPlugin(Func<ApplicationState> readState, Action<string,string> notify,Action<ControlEvent>? output=null,Func<IPlugin?>? readAcc=null,
         Func<ETS2LA.Game.Data.ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments=null, Func<IPlugin?>? readPlanner=null,
         Func<IPlugin,Vector3,double,Vector3[],PlannedPathData?>? probeRoute=null,
-        Func<IPlugin,PlannedPathData,PlannedPathData,Vector3,double,bool>? installStart=null) {
+        Func<IPlugin,PlannedPathData,PlannedPathData,Vector3,double,bool>? installStart=null,bool monitorSteering=false) {
+        this.monitorSteering=monitorSteering;
         this.readState=readState;this.readAcc=readAcc??FindAcc;this.notify=notify;this.readPayments=readPayments;
         this.readPlanner=readPlanner??FindPlanner;
         this.probeRoute=probeRoute??ConnectorStart.Probe;
@@ -173,6 +174,7 @@ public sealed partial class TollPlugin : Plugin
             if (subscribed) return;
             _=State; // Register host controls before our cancel listener.
             faultBrake.Release();ResetDriving();
+            motionHistory.Clear();lastMotionAt=-100;
             connectorAttempted = connectorPending = false;
             connectorSeeded = false;
             connectorHistory.Clear();
@@ -188,6 +190,7 @@ public sealed partial class TollPlugin : Plugin
             Events.Current.Subscribe<GameTelemetryData>(GameTelemetry.Current.EventString, OnTelemetry);
             Events.Current.Subscribe<SemaphoreData>(SemaphoreProvider.Current.EventString, OnGates);
             Events.Current.Subscribe<PlannedPathData>("Pathfinding.PlannedPathData", OnPath);
+            Events.Current.Subscribe<ControlEvent>(GameOutput.Current.EventString,OnControlOutput);
             ControlsBackend.Current.On(DefaultControls.Cancel.Id,OnCancel);
             ControlsBackend.Current.On(DefaultControls.Increase.Id,OnStart);
             ControlsBackend.Current.On(DefaultControls.Decrease.Id,OnStart);
@@ -195,6 +198,7 @@ public sealed partial class TollPlugin : Plugin
             subscribed = true;
         }
         base.OnEnable();
+        StartSteeringMonitor();
         Logger.Info("Mautassistent: automatische Vorbereitung im Stand; Fahrassistenz bleibt ausgeschaltet.");
     }
 
@@ -208,6 +212,7 @@ public sealed partial class TollPlugin : Plugin
     {
         // Same release edge as the host's F9 / Cancel control.
         if(e.NewValue is not false)return;
+        CancelSteeringSession();
         lock(sync) {
             // The host cycles modes when it sees assists off. A pending start
             // is still a cancel operation, so retain the requested driving mode.
@@ -241,6 +246,9 @@ public sealed partial class TollPlugin : Plugin
     DriveAction SafetyWatchdog(double now)
     {
         DrainInputFrames();
+        CheckSteeringOutput();
+        DrainSteeringFailure();
+        RecordMotion(now);
         if (faultBrake.Latched)
         {
             State.EnableAssists = false;
@@ -283,7 +291,8 @@ public sealed partial class TollPlugin : Plugin
                 trace.Length - trace.Project(position).Along > TrackingGuard.RequiredLookahead(speed);
         }
 
-        bool decisionReady = laneOnly || (Fresh(now) && decisionArmed && now - evaluatedAt <= .3);
+        bool steeringReady=!monitorSteering || State.DrivingMode==DrivingMode.AdaptiveCruiseControlOnly || steeringFeedState==SteeringFeedState.Healthy;
+        bool decisionReady = steeringReady && (laneOnly || (Fresh(now) && decisionArmed && now - evaluatedAt <= .3));
         var frame = new DriveFrame(now, speed, true, paused, telemetryFresh, route, routeAge, decisionReady, mayRecover);
         var before = supervisor.Checkpoint;
         var action = supervisor.Step(frame);
@@ -657,19 +666,31 @@ public sealed partial class TollPlugin : Plugin
     {
         if (retryAtStandstill) automaticPreparation.Request(); else automaticPreparation.Cancel();
         driveAction = action;
-        bool brake=action==DriveAction.EmergencyStop && active&&State.EnableAssists&&!preview;
+        RecordMotion(clock.Elapsed.TotalSeconds,true);
+        bool brake=action==DriveAction.EmergencyStop && (faultBrake.Latched || active&&State.EnableAssists&&!preview);
         preparationReason=reason;
         active=false; State.EnableAssists=false;
         startCheck=null;
         if(brake)faultBrake.Trip();
-        object? geometry;
-        try {geometry=path!=null&&!path.HasError?RouteMatcher.Diagnose(path,position,gates):null;}
+        object? geometry;object? routePlan=null;
+        try {
+            var snapshot=path!=null&&!path.HasError?RouteSnapshot.Capture(path):null;
+            geometry=snapshot!=null?RouteMatcher.Diagnose(snapshot,position,gates):null;
+            routePlan=snapshot?.PlannedPath.Select(i=>new {
+                kind=i.item.GetType().Name,start=i.startNode.Uid,end=i.endNode.Uid,
+                lane=i.laneIndex,targetLane=i.targetLaneIndex,direction=i.direction.ToString(),
+                prefab=i.prefabPath?.Prefab.Prefab.Uid,
+                roads=i.item is ETS2LA.Game.Data.ParsedRoadList list?list.Roads.Select(r=>r.Road.Uid).ToArray():
+                    i.item is ETS2LA.Game.Data.ParsedRoad road?new[]{road.Road.Uid}:Array.Empty<ulong>()
+            }).ToArray();
+        }
         catch(Exception ex) {geometry=new{error=ex.Message};}
         // Capture before disabling assists: the next path frame otherwise overwrites
         // the actual fault with the generic "Assists are disabled" message.
         lastFault=new {utc=DateTimeOffset.UtcNow, reason, speedKph=speed*3.6,
             phase=decision.Phase, tracked, candidate, pathError=path?.ErrorMessage,
             action=action.ToString(), geometry,routeTracking=safetyTrace?.Diagnose(position),tracking=trackingGuard.LastDirectionFailure,
+            steeringFailure=lastSteeringFailure,motion=motionHistory.ToArray(),routePlan,
             driveRecording=new DriveRecording(driveHistory.TryPeek(out var first) ? first.Before : default,
                 driveHistory.Select(entry => entry.Sample).ToArray())};
         try {File.WriteAllText(Path.Combine(Path.GetDirectoryName(DiagnosticPath)!,"last-fault.json"),
@@ -795,6 +816,8 @@ public sealed partial class TollPlugin : Plugin
                         phase=decision.Phase, targetSpeedKph=decision.TargetSpeed*3.6, gate=tracked, candidate, dataStatus=DataStatus,
                         telemetryAge=now-telemetryAt, gatesAge=now-gatesAt, pathAge=now-pathAt, gameTimeAge=now-gameTimeChangedAt,
                         pathReceivedAge=now-pathReceivedAt,routeWorkMilliseconds,maxRouteWorkMilliseconds,
+                        steeringFeed=steeringFeedState.ToString(),steeringAge=lastSteeringCommand!=null?now-lastSteeringCommand.At:(double?)null,
+                        steeringFault=lastSteeringFailure,
                         sdk, paused, pathError=path?.ErrorMessage,
                         gateCount=gates.Count(g=>g.type==SemaphoreType.GATE), options,
                         geometry=RouteMatcher.Diagnose(path,position,gates), routing=router.Status, routeFault, lastFault, previewStatus,routeTransition,
@@ -817,6 +840,7 @@ public sealed partial class TollPlugin : Plugin
     }
     public override void OnDisable()
     {
+        StopSteeringMonitor();
         lock(sync)
         {
             if(active || preview || faultBrake.Latched)State.EnableAssists=false;
@@ -833,6 +857,7 @@ public sealed partial class TollPlugin : Plugin
                 Events.Current.Unsubscribe<GameTelemetryData>(GameTelemetry.Current.EventString, OnTelemetry);
                 Events.Current.Unsubscribe<SemaphoreData>(SemaphoreProvider.Current.EventString, OnGates);
                 Events.Current.Unsubscribe<PlannedPathData>("Pathfinding.PlannedPathData", OnPath);
+                Events.Current.Unsubscribe<ControlEvent>(GameOutput.Current.EventString,OnControlOutput);
                 ControlsBackend.Current.UnregisterListener(DefaultControls.Cancel.Id,OnCancel);
                 ControlsBackend.Current.UnregisterListener(DefaultControls.Increase.Id,OnStart);
                 ControlsBackend.Current.UnregisterListener(DefaultControls.Decrease.Id,OnStart);

@@ -1,5 +1,14 @@
 # Änderungen
 
+## 0.3.6 – Überwachung der tatsächlichen Lenkausgabe
+
+- Anlass ist ein weiterer Unfall in einer Kurve mit 0.3.5. Der gespeicherte Fehler zeigt knapp 7 m tatsächlichen seitlichen Abstand bei rund 40 km/h; die Fehlerbremsung wurde angefordert. Die vorherige Lenkausgabe wurde noch nicht aufgezeichnet. Ob sie ausfiel oder trotz vorhandener Befehle die Kurve verfehlte, ist nicht abschließend belegt.
+- Die Schutzlogik überwacht zusätzlich die frischen Steuerbefehle des nativen Lane Assist. Nach einem empfangenen Lenksignal lösen über 150 ms ohne gültigen Befehl Abschaltung und eine gehaltene Bremsanforderung aus; eine separate 50-ms-Prüfung wartet dafür nicht auf Routenberechnungen. Geradeausfahrt mit Lenkbefehl 0 gilt als gültig. Andere Kanäle und ungültige Befehle halten die Überwachung nicht am Leben.
+- Beim Start gilt eine begrenzte Anlaufzeit von 350 ms. Bis zum ersten frischen Lenksignal fordert die ACC-Anbindung Halt an. Pause und reiner ACC-Modus erfordern keine Lenkausgabe. Ein erneutes Lenksignal löst eine Fehlerbremsung nicht selbstständig.
+- Physische Bremse und F9 geben eine Fehlerbremsung auch vor dem Ende laufender Routenarbeit frei. Nach manueller Übernahme verworfene Fehlermeldungen dürfen sie nicht erneut anfordern.
+- Fehleraufzeichnungen enthalten nun einen begrenzten Verlauf von Position, Richtung, Tempo, Spurabstand, Lenkausgabe und ACC-Befehlen sowie die betroffenen Routenabschnitte. Das soll zwischen ausbleibender Lenkung, falschen Befehlen und einer fehlerhaften Route unterscheiden helfen.
+- 63 Integrationstests und 42 unabhängige Logiktests. Neue Fälle prüfen echte und falsche Ausgabeverluste bei beschäftigter Routenverwaltung, dauerhafte Bremsanforderung und manuelle Freigabe. Reale Prüfung der neuen Überwachung sowie Wiederholung des Kurvenfalls und vollständige Mautdurchfahrt noch offen. Keine allgemeine Kollisionsvermeidung oder nachgewiesene Korrektur der ursprünglichen Lenkursache.
+
 ## 0.3.5 – Start hinter bereits passierten Signalabschnitten
 
 - Rein lesende Messauswertung an doppelte Schrankenobjekte angepasst: beobachteten 3D-Anker beibehalten, widersprüchliche Zustände und andere Höhenlagen ablehnen. 18 Werkzeugprüfungen bestehen. Keine Änderung der installierten Plugin-DLL dafür erforderlich. Weitere drei Minuten normale Fahrt bis rund 80 km/h ohne aufgezeichneten Trackingfehler oder Fehlerbremsung beobachtet; keine Mautschranke zugeordnet. Fahrnachweise und offene Anforderungen in `VALIDATION.md` getrennt dokumentiert.

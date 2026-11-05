@@ -5,7 +5,8 @@ namespace MautAssistent;
 /// <summary>Latched fault braking, independent of ACC and EnableAssists.</summary>
 public sealed class FaultBrake(Action<ControlEvent> publish)
 {
-    public bool Latched { get; private set; }
+    volatile bool latched;
+    public bool Latched => latched;
     public const string ChannelId="local.mautassistent.fault-brake";
     void Send(float pedal) => publish(new ControlEvent {
         ChannelDefinition=new() {Id=ChannelId,Timeout=.2f},
@@ -17,12 +18,12 @@ public sealed class FaultBrake(Action<ControlEvent> publish)
         // can remain in output memory while our brake channel stays alive.
         Variables=new() {abackward=pedal,steering=0}
     });
-    public void Trip() {Latched=true;Send(-1);}
+    public void Trip() {latched=true;Send(-1);}
     public void Refresh() {if(Latched)Send(-1);}
     public void Release()
     {
         if(!Latched)return;
-        Latched=false;
+        latched=false;
         // Explicit zero is required: expiry alone may leave legacy pedal memory
         // unchanged while another channel (e.g. steering) is still present.
         Send(0);

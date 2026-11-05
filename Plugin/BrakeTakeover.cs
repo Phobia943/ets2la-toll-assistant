@@ -24,7 +24,7 @@ public sealed partial class TollPlugin
         {
             // Releasing the modern override must not wait for model/route work.
             // State is disabled first; bookkeeping follows under the plugin lock.
-            State.EnableAssists=false;
+            CancelSteeringSession();
             ReleaseAssistOutputs();
         }
         lock(sync)
