@@ -20,12 +20,53 @@ public static class ConnectorStart
     static readonly Guid PathLibBuild = new("8d0821da-1971-4caa-a8be-78ea1093e51d");
     const BindingFlags Fields = BindingFlags.Instance | BindingFlags.NonPublic;
 
+    static bool Compatible(IPlugin planner) => planner._IsRunning && planner.Info.Id == "tumppi066.pathfinding" &&
+        planner.GetType().Module.ModuleVersionId == PlannerBuild && typeof(Events).Module.ModuleVersionId == EventBusBuild &&
+        typeof(PlannedItem).Module.ModuleVersionId == PathLibBuild;
+
+    internal static bool IsLoadingMap(IPlugin planner) => Compatible(planner) &&
+        planner.GetType().GetField("nearbyNodes",Fields)?.GetValue(planner) is not IReadOnlyList<Node> { Count: > 0 };
+
+    internal static ulong NavigationKey(IPlugin? planner)
+    {
+        var data = planner?.GetType().GetField("navigationData",Fields)?.GetValue(planner) as ETS2LA.Game.SDK.NavigationData;
+        if (data?.entries is not { } entries) return 0;
+        ulong key = 14695981039346656037;
+        foreach (var entry in entries)
+            key = unchecked((key ^ entry.nodeUid) * 1099511628211);
+        return key;
+    }
+
+    internal static PlannedPathData? Probe(IPlugin planner, Vector3 position, double heading, Vector3[] history)
+    {
+        if (!Compatible(planner))
+            throw new InvalidOperationException("Diese Pathfinding-Version unterstützt die Routenprobe nicht.");
+        var type = planner.GetType();
+        if (type.GetField("nearbyNodes", Fields)?.GetValue(planner) is not IReadOnlyList<Node> { Count: > 0 } nodes)
+            throw new InvalidOperationException("Pathfinding hat die lokale Karte noch nicht geladen.");
+        var utils = type.Assembly.GetType("Pathfinding.Utils.PathfindingUtils", throwOnError: true)!;
+        var start = utils.GetMethod("CreateFirstPlannedItem")!;
+        var next = utils.GetMethod("CreateNextPlannedItem")!;
+        var navigation = type.GetField("navigationData", Fields)?.GetValue(planner);
+        PlannedItem? Extend(List<PlannedItem> items) => next.Invoke(null, [items, navigation]) as PlannedItem;
+
+        var first = start.Invoke(null, [nodes, position, new Vector3((float)heading, 0, 0)]) as PlannedItem;
+        var items = first == null ? Find(nodes, position, heading, Extend, history,
+            road => ConfirmRoadLane(road,nodes,start)) : [first];
+        if (items == null) return null;
+        while (items.Count < 8 && items.Sum(i => i.GetLength()) < 1500)
+        {
+            var following = Extend(items);
+            if (following == null || items.Any(i => i.endNode.Uid == following.endNode.Uid)) break;
+            items.Add(following);
+        }
+        return new PlannedPathData { HasError = false, PlannedPath = items };
+    }
+
     public static bool TrySeed(IPlugin planner, Vector3 position, double heading, Vector3[] history, Func<Func<bool>, bool> commit)
     {
         var type = planner.GetType();
-        if (!planner._IsRunning || planner.Info.Id != "tumppi066.pathfinding" ||
-            type.Module.ModuleVersionId != PlannerBuild || typeof(Events).Module.ModuleVersionId != EventBusBuild ||
-            typeof(PlannedItem).Module.ModuleVersionId != PathLibBuild) return false;
+        if (!Compatible(planner)) return false;
 
         // Publish is synchronous in the verified EventBus build. Only touch the
         // host list on its own Tick stack, at the empty-plan error return.
@@ -40,10 +81,13 @@ public static class ConnectorStart
             Vector3.Distance(position, data.truckPlacement.coordinate.ToVector3()) <= .25 &&
             Vector3.Dot(TrackingGuard.TruckForward(heading), TrackingGuard.TruckForward(data.truckPlacement.rotation.X)) > .995;
         if (!StillStanding()) return false;
-        var next = type.Assembly.GetType("Pathfinding.Utils.PathfindingUtils")?.GetMethod("CreateNextPlannedItem");
-        if (next == null) return false;
+        var utils = type.Assembly.GetType("Pathfinding.Utils.PathfindingUtils");
+        var next = utils?.GetMethod("CreateNextPlannedItem");
+        var start = utils?.GetMethod("CreateFirstPlannedItem");
+        if (next == null || start == null) return false;
         var navigation = type.GetField("navigationData", Fields)?.GetValue(planner);
-        var plan = Find(nodes, position, heading, seed => next.Invoke(null, [new List<PlannedItem> { seed }, navigation]) as PlannedItem, history);
+        var plan = Find(nodes, position, heading, items => next.Invoke(null, [items, navigation]) as PlannedItem, history,
+            road => ConfirmRoadLane(road,nodes,start));
         if (plan == null) return false;
         return commit(() =>
         {
@@ -53,10 +97,86 @@ public static class ConnectorStart
         });
     }
 
-    sealed record Candidate(PlannedItem First, PlannedItem Next, float Offset, Vector3[] Ahead, double HistoryFit);
+    sealed record Candidate(List<PlannedItem> Plan, float Offset, Vector3[] Ahead, double HistoryFit);
+
+    static bool IsTruckConnector(PrefabPath path) => path.Curves.Count != 0 && path.Curves.All(c => c.SemaphoreId < 0 &&
+        (c.AllowedVehicles is AllowedVehicles.AllVehicles or AllowedVehicles.LargeVehicles) &&
+        c.TrafficRule.ToString() != "escort_only");
+
+    internal static bool ConfirmRoadLane(PlannedItem item, IReadOnlyList<Node> nodes, MethodInfo nativeStart)
+    {
+        if (item.item is not ParsedRoadList { Roads.Count: > 0 } list || item.laneIndex == 0) return false;
+        bool forward = item.direction == Direction.Forward;
+        var road = forward ? list.Roads[0] : list.Roads[^1];
+        var side = item.laneIndex > 0 ? Side.Right : Side.Left;
+        var opposite = side == Side.Right ? Side.Left : Side.Right;
+        int lane = Math.Abs(item.laneIndex)-1;
+        if (lane >= road.GetLaneCount(side) || road.GetLaneCount(opposite) == 0 || road.Road.Length < 15) return false;
+
+        // Spline direction and the signed lane index are independent on some
+        // map items. Require two interior samples that agree with the map's
+        // traffic side and also restart on the same native lane and direction.
+        foreach (float fraction in new[] { .15f,.3f })
+        {
+            float t = forward ? fraction : 1-fraction;
+            var point = road.InterpolateLane(t,side,lane).Position;
+            var next = road.InterpolateLane(t+(forward?.01f:-.01f),side,lane).Position;
+            var tangent = next-point;
+            tangent.Y=0;
+            var heading = Vector3.Normalize(tangent);
+            var travelSide = Vector3.Cross(heading,Vector3.UnitY) * (road.Road.LeftHandTraffic ? -1 : 1);
+            var center = road.Interpolate(t).Position;
+            if (!(Vector3.Dot(point-center,travelSide)>1) || Enumerable.Range(0,road.GetLaneCount(opposite)).Any(i =>
+                    !(Vector3.Dot(road.InterpolateLane(t,opposite,i).Position-center,travelSide)<-.5f)))
+                return false;
+            var turns = MathF.Atan2(-heading.X,-heading.Z)/MathF.Tau;
+            var check = nativeStart.Invoke(null,[nodes,point,new Vector3(turns,0,0)]) as PlannedItem;
+            if (check?.item is not ParsedRoadList confirmed || check.direction != item.direction ||
+                check.laneIndex != item.laneIndex || !confirmed.Roads.Any(r=>r.Road.Uid==road.Road.Uid))
+                return false;
+        }
+        return true;
+    }
+
+    internal static List<PlannedItem>? BuildPlan(PlannedItem seed, Vector3 position, Func<List<PlannedItem>, PlannedItem?> next,
+        Func<PlannedItem,bool>? confirmRoad = null)
+    {
+        var items = new List<PlannedItem> { seed };
+        var visited = new HashSet<ulong> { seed.startNode.Uid, seed.endNode.Uid };
+        while (items.Count <= 4)
+        {
+            var previous = items[^1];
+            var following = next(items);
+            if (following == null || following.startNode.Uid != previous.endNode.Uid || !visited.Add(following.endNode.Uid))
+                return null;
+            items.Add(following);
+            var data = new PlannedPathData { HasError = false, PlannedPath = items };
+            if (following.item is ParsedRoad or ParsedRoadList)
+            {
+                int direction = following.direction == Direction.Forward ? 1 : -1;
+                if (Math.Sign(following.laneIndex) != direction)
+                {
+                    if (confirmRoad != null && ExitHandoff.Align(data,items.Count-2,position,out _) && confirmRoad(following))
+                        return items;
+                    if (items.Count == 2) return null;
+                    // Treat the native lane guess as unverified. Align must
+                    // establish a unique physical match on the travel side.
+                    following.laneIndex = direction;
+                    following.targetLaneIndex = 0;
+                }
+                return ExitHandoff.Align(data, items.Count - 2, position, out _) ? items : null;
+            }
+            if (!ExitHandoff.Align(data, items.Count - 2, position, out _) ||
+                following.prefabPath is not { } path || !IsTruckConnector(path) ||
+                !(path.Length >= 1 && path.Length <= 350))
+                return null;
+        }
+        return null;
+    }
 
     public static List<PlannedItem>? Find(IReadOnlyList<Node> nodes, Vector3 position, double heading,
-        Func<PlannedItem, PlannedItem?> next, IReadOnlyList<Vector3>? history = null)
+        Func<List<PlannedItem>, PlannedItem?> next, IReadOnlyList<Vector3>? history = null,
+        Func<PlannedItem,bool>? confirmRoad = null)
     {
         if (!double.IsFinite(heading) || !float.IsFinite(position.LengthSquared())) return null;
         var forward = TrackingGuard.TruckForward(heading);
@@ -74,23 +194,23 @@ public static class ConnectorStart
             foreach (var entry in ends)
             foreach (var exit in ends)
             {
-                if (entry.Uid == exit.Uid || Vector3.Dot(exit.Position - position, forward) < 3) continue;
-                var exitRoad = exit.ForwardItem is Road ? exit.ForwardItem : exit.BackwardItem;
-                if (exitRoad is not Road) continue;
+                if (entry.Uid == exit.Uid) continue;
+                var exitItem = exit.ForwardItem?.Uid == prefab.Uid ? exit.BackwardItem : exit.ForwardItem;
+                if (exitItem is not (Road or Prefab)) continue;
                 var (primary, alternatives) = parsed.GetPathsFromNodeToNode(entry, exit, entry.Position);
                 foreach (var original in primary.Concat(alternatives))
                 {
-                    if (original.Curves.Any(c => c.SemaphoreId >= 0 ||
-                        c.AllowedVehicles is not (AllowedVehicles.AllVehicles or AllowedVehicles.LargeVehicles))) continue;
-                    if (original.Length < 8 || original.Length > 350) continue;
+                    if (!IsTruckConnector(original)) continue;
+                    if (original.Length < 2 || original.Length > 350) continue;
                     var path = PrefabRefinement.Refine(original);
-                    float factor = path.GetFactorForPoint(position);
+                    float factor = Math.Clamp(path.GetFactorForPoint(position),.00001f,.99999f);
                     var point = path.Interpolate(factor, 0)?.Position;
-                    if (!point.HasValue || factor <= 0 || factor >= 1 || (1-factor)*path.Length < 8) continue;
+                    if (!point.HasValue) continue;
                     float offset = Vector3.Distance(point.Value, position);
-                    var ahead = path.Interpolate(factor + 1/path.Length, 0)?.Position;
-                    if (!ahead.HasValue || offset > 1.25f ||
-                        Vector3.Dot(Vector3.Normalize(ahead.Value - point.Value), forward) < .9f) continue;
+                    var ahead = path.Interpolate(Math.Min(.99999f,factor+.5f/path.Length), 0)?.Position;
+                    var behind = path.Interpolate(Math.Max(.00001f,factor-.5f/path.Length), 0)?.Position;
+                    if (!ahead.HasValue || !behind.HasValue || offset > 1.25f ||
+                        !(Vector3.Dot(Vector3.Normalize(ahead.Value - behind.Value), forward) >= .9f)) continue;
 
                     var seed = new PlannedItem {
                         item=parsed, startNode=entry, endNode=exit, laneIndex=0,
@@ -99,12 +219,11 @@ public static class ConnectorStart
                     };
                     var nativePoint = seed.Interpolate(seed.GetFactorFor(position), 0, false)?.Position;
                     if (!nativePoint.HasValue || Vector3.Distance(nativePoint.Value, position) > 1.25f) continue;
-                    var following = next(seed);
-                    if (following?.item is not (ParsedRoad or ParsedRoadList) || following.startNode.Uid != exit.Uid ||
-                        following.direction != (following.laneIndex > 0 ? Direction.Forward : Direction.Backward)) continue;
-                    var route = new PlannedPathData { PlannedPath=[seed, following], HasError=false };
-                    if (!ExitHandoff.Align(route, 0, position, out _)) continue;
-                    var trace = RouteMatcher.Sample(route);
+                    var plan = BuildPlan(seed, position, next, confirmRoad);
+                    if (plan == null) continue;
+                    RouteTrace trace;
+                    try { trace = RouteMatcher.Sample(new() { PlannedPath=plan, HasError=false }); }
+                    catch (InvalidOperationException) { continue; }
                     var local = trace.Project(position);
                     if (local.Offset > 1.25 || trace.Length - local.Along < 25 ||
                         new TrackingGuard().Check(trace, position, heading, 0) != null) continue;
@@ -116,7 +235,7 @@ public static class ConnectorStart
                         double fit = history is { Count: >= 7 }
                             ? ConnectorHistory.Fit(RouteMatcher.Sample(new() { HasError=false, PlannedPath=[seed] }), history)
                             : double.PositiveInfinity;
-                        candidates.Add(new(seed, following, offset, samples.Select(p => p!.Value).ToArray(), fit));
+                        candidates.Add(new(plan, offset, samples.Select(p => p!.Value).ToArray(), fit));
                     }
                 }
             }
@@ -124,8 +243,9 @@ public static class ConnectorStart
 
         if (candidates.Count == 0) return null;
         var best = candidates.MinBy(c => c.Offset)!;
-        if (candidates.Any(c => c.First.endNode.Uid != best.First.endNode.Uid)) return null;
-        bool DifferentPath(Candidate a, Candidate b) => a.Next.laneIndex != b.Next.laneIndex ||
+        if (candidates.Any(c => c.Plan[0].endNode.Uid != best.Plan[0].endNode.Uid)) return null;
+        bool DifferentPath(Candidate a, Candidate b) => a.Plan[^1].laneIndex != b.Plan[^1].laneIndex ||
+            !a.Plan.Select(i => i.endNode.Uid).SequenceEqual(b.Plan.Select(i => i.endNode.Uid)) ||
             a.Ahead.Zip(b.Ahead).Any(pair => Vector3.Distance(pair.First, pair.Second) > .75f);
         if (candidates.Any(c => c.Offset - best.Offset < .6f && DifferentPath(c, best)))
         {
@@ -134,6 +254,6 @@ public static class ConnectorStart
                 (!double.IsFinite(c.HistoryFit) || c.HistoryFit - traced.HistoryFit < .6))) return null;
             best = traced;
         }
-        return [best.First, best.Next];
+        return best.Plan;
     }
 }

@@ -4,6 +4,17 @@ namespace MautAssistent;
 public static class ApproachStop
 {
     public const double BufferMetres = 15;
+    public static float BeforeRouteGap(double speed, double connectedAhead)
+    {
+        if (!double.IsFinite(speed) || !double.IsFinite(connectedAhead))
+            throw new InvalidOperationException("Ungültige Daten zur Planungslücke.");
+        // Leave space between the planned stop and the emergency threshold.
+        double remaining = Math.Max(0, connectedAhead - TrackingGuard.RequiredLookahead(0) - 10 - Math.Max(0, speed) * 1.5);
+        double cap = Math.Min(Math.Sqrt(1.8 * remaining), .45 * remaining);
+        if (cap < .1 && speed < .1) return -.35f;
+        return (float)Math.Clamp((cap - speed) * .8, -2, .35);
+    }
+
     public static TollDecision Evaluate(double speed, double distance)
     {
         if (!double.IsFinite(speed) || !double.IsFinite(distance) || speed < -.1)

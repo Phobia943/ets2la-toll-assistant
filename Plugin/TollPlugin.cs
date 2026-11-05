@@ -19,7 +19,7 @@ public sealed class TollPlugin : Plugin
 {
     public static TollPlugin? Current { get; private set; }
     public override PluginInformation Info => new() {
-        Id = "local.mautassistent", Name = "Mautassistent", Version = "0.2.15",
+        Id = "local.mautassistent", Name = "Mautassistent", Version = typeof(TollPlugin).Assembly.GetName().Version!.ToString(3),
         Description = "Langsame Mautdurchfahrt. Bereitet sich im Stand automatisch vor; Fahrt startet erst mit F8.",
         AuthorName = "Lokale Anpassung", Dependencies = ["tumppi066.pathlib"],
         PluginPageButtonName = "Einstellungen"
@@ -41,8 +41,11 @@ public sealed class TollPlugin : Plugin
     object? routeTransition;
     readonly PreferenceStore preferences = new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"ETS2LA-Mautassistent","settings.json"));
     readonly TollRouter router;
+    readonly Func<ETS2LA.Game.Data.ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments;
     readonly Func<ApplicationState> readState;
     readonly Func<IPlugin?> readAcc;
+    readonly Func<IPlugin?> readPlanner;
+    readonly Func<IPlugin,Vector3,double,Vector3[],PlannedPathData?> probeRoute;
     readonly Action<string,string> notify;
     readonly FaultBrake faultBrake;
     readonly TrackingGuard trackingGuard=new();
@@ -53,8 +56,12 @@ public sealed class TollPlugin : Plugin
         output=>Events.Current.Publish(GameOutput.Current.EventString,output),
         readPayments: new TollModelEvidence(() => ApplicationState.Current.RunningGame?.GetFileSystem()).Read) { }
     internal TollPlugin(Func<ApplicationState> readState, Action<string,string> notify,Action<ControlEvent>? output=null,Func<IPlugin?>? readAcc=null,
-        Func<ETS2LA.Game.Data.ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments=null) {
-        this.readState=readState;this.readAcc=readAcc??FindAcc;this.notify=notify;router=new(preferences,readPayments);faultBrake=new(output??(_=>{}));
+        Func<ETS2LA.Game.Data.ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments=null, Func<IPlugin?>? readPlanner=null,
+        Func<IPlugin,Vector3,double,Vector3[],PlannedPathData?>? probeRoute=null) {
+        this.readState=readState;this.readAcc=readAcc??FindAcc;this.notify=notify;this.readPayments=readPayments;
+        this.readPlanner=readPlanner??FindPlanner;
+        this.probeRoute=probeRoute??ConnectorStart.Probe;
+        router=new(preferences,readPayments);faultBrake=new(output??(_=>{}));
     }
     string preparationReason="Automatische Vorbereitung wartet auf Stillstand und verbundene Module.";
     double lastStartWarning=double.NegativeInfinity;
@@ -68,23 +75,46 @@ public sealed class TollPlugin : Plugin
     // restart interlock, not an atomic veto in the host's input/output system.
     bool RejectUnpreparedStart()
     {
-        if(active || preview || !State.EnableAssists)return false;
+        if(!State.EnableAssists)return false;
+        if(active && !preview && (supervisor.Checkpoint.Started.HasValue || CanStartNow(clock.Elapsed.TotalSeconds)))return false;
         State.EnableAssists=false;
+        if (active && !preview)
+        {
+            active=false;
+            automaticPreparation.Request();
+            preparationReason="Die Startroute muss im Stand erneut geprüft werden.";
+        }
         if(clock.Elapsed.TotalSeconds-lastStartWarning>=5) {
             lastStartWarning=clock.Elapsed.TotalSeconds;
-            notify("Fahrassistenz nicht gestartet",preparationReason+" Im Stand auf Bereitschaft warten; danach F8.");
+            notify("Fahrassistenz nicht gestartet",preview ? "Routenprobe läuft. Danach im Stand erneut F8 drücken."
+                : preparationReason+" Im Stand auf Bereitschaft warten; danach F8.");
         }
         return true;
     }
-    public TollRouter.LaneChoice[] LaneChoices {get {lock(sync)return router.Choices.ToArray();}}
-    public int SelectedLane => router.SelectedGate ?? -1;
+    public TollRouter.LaneChoice[] LaneChoices {get {lock(sync)return (previewRouter ?? router).Choices.ToArray();}}
+    public int SelectedLane {get {lock(sync)return (previewRouter ?? router).SelectedGate ?? -1;}}
     string? routeFault;
     object? lastFault;
     string? warnedStopKey;
     bool preview;
+    bool previewCalculating;
+    int previewGeneration;
+    Vector3 previewPosition;
+    TollRouter? previewRouter;
+    internal sealed record StartCheck(Vector3 Position,double Heading,ulong Navigation,string? Failure);
+    StartCheck? startCheck;
+    ulong previewNavigation;
+
+    bool CheckMatches() => startCheck is { } check &&
+        Vector3.DistanceSquared(position,check.Position)<=.0625f &&
+        Vector3.Dot(TrackingGuard.TruckForward(headingTurns),TrackingGuard.TruckForward(check.Heading))>=.995f &&
+        check.Navigation==ConnectorStart.NavigationKey(readPlanner());
+
+    bool CanStartNow(double now) => _IsRunning && active && !preview && !faultBrake.Latched && SensorsFresh(now) &&
+        Math.Abs(speed)<=.1 && CheckMatches() && startCheck!.Failure==null;
     double previewAt;
     string previewStatus="Noch keine Routenprobe";
-    public string RouteStatus {get {lock(sync)return previewStatus+" · "+router.Status;}}
+    public string RouteStatus {get {lock(sync)return previewStatus+" · "+(previewRouter ?? router).Status;}}
     TollOptions options = new();
     TollController controller = new(new());
     TollDecision decision = TollDecision.Idle("Plugin ausgeschaltet");
@@ -107,7 +137,7 @@ public sealed class TollPlugin : Plugin
         DriveAction.Recover => "Kurze Datenlücke – kein Gas",
         DriveAction.Paused => "Spiel pausiert",
         _ => "Bremsbegrenzung: "+decision.Phase
-    } : "Bereit – F8 startet die Fahrassistenz") : "Nicht vorbereitet – F8 gesperrt: "+preparationReason; } }
+    } : CanStartNow(clock.Elapsed.TotalSeconds) ? "Bereit – F8 startet die Fahrassistenz" : "Warte auf bestätigte Startroute und aktuelle Spieldaten") : "Nicht vorbereitet – F8 gesperrt: "+preparationReason; } }
     public string Details { get { lock(sync) return $"Tempo {speed*3.6:F1} km/h · Vorschlag {(decision.TargetSpeed is double cap ? (cap*3.6).ToString("F1") : "–")} km/h · Schranke {candidate?.Key ?? tracked ?? "–"} · Abstand {candidate?.Distance.ToString("F1") ?? "–"} m"; } }
     public string DataStatus { get { lock(sync) {
         double now = clock.Elapsed.TotalSeconds;
@@ -139,6 +169,7 @@ public sealed class TollPlugin : Plugin
             connectorSeeded = false;
             connectorHistory.Clear();
             active = false; controller.Reset(); tracked = null; passage.Reset();
+            startCheck=null;
             automaticPreparation.Request();
             preparationReason="Automatische Vorbereitung wartet auf Stillstand und verbundene Module.";
             telemetryAt = gatesAt = pathAt = gameTimeChangedAt = -100;
@@ -157,12 +188,14 @@ public sealed class TollPlugin : Plugin
     {
         lock(sync)
         {
-            RejectUnpreparedStart();
             telemetryAt = clock.Elapsed.TotalSeconds;
             if (gameTime != data.time) { gameTimeChangedAt = telemetryAt; gameTime = data.time; }
             sdk = data.sdkActive; paused = data.paused; speed = data.truckFloat.speed;
             position = data.truckPlacement.coordinate.ToVector3();
             headingTurns=data.truckPlacement.rotation.X;
+            RejectUnpreparedStart();
+            if (previewRouter != null && (Math.Abs(speed) > .1 || Vector3.DistanceSquared(position, previewPosition) > 1))
+                previewRouter = null;
             if (!sdk || paused || (State.EnableAssists && Math.Abs(speed) > .1)) connectorHistory.Clear();
             else if (!State.EnableAssists) connectorHistory.Observe(telemetryAt, position, speed);
             SafetyWatchdog(telemetryAt);
@@ -174,6 +207,11 @@ public sealed class TollPlugin : Plugin
         if(e.NewValue is not false)return;
         lock(sync) {
             faultBrake.Release();ResetDriving();
+            startCheck=null;
+            active=false;
+            preview=previewCalculating=false;
+            previewRouter=null;
+            previewGeneration++;
             connectorAttempted = connectorPending = false;
             router.CancelPlannedStop();warnedStopKey=null;
             if(!active) {
@@ -212,7 +250,8 @@ public sealed class TollPlugin : Plugin
             null => RouteFeed.Waiting,
             { HasError: false } when safetyTrace != null && routeAge < 1 => RouteFeed.Valid,
             { HasError: false } => RouteFeed.Waiting,
-            { ErrorMessage: "Assists are disabled." or "Game is paused." } => RouteFeed.Waiting,
+            { ErrorMessage: "Assists are disabled." } => RouteFeed.AssistsOff,
+            { ErrorMessage: "Game is paused." } => RouteFeed.Waiting,
             { ErrorMessage: ConnectorStart.MissingRoad } when connectorPending => RouteFeed.Loading,
             { ErrorMessage: "Waiting for map data..." } when routeAge < 1 => RouteFeed.Loading,
             _ => RouteFeed.Rejected
@@ -229,7 +268,9 @@ public sealed class TollPlugin : Plugin
                 Disarm(fault);
                 return DriveAction.EmergencyStop;
             }
-            mayRecover = !laneOnly && !controller.Tracking && candidate == null && !router.StopBoundary.HasValue &&
+            bool gateApproach = candidate != null && candidate.Distance <= controller.ApproachHorizon(speed);
+            mayRecover = !laneOnly && !trace.EndsAtGap && !controller.Tracking && !gateApproach &&
+                !router.StopBoundary.HasValue && !router.HasShortChange &&
                 trace.Length - trace.Project(position).Along > TrackingGuard.RequiredLookahead(speed);
         }
 
@@ -244,11 +285,13 @@ public sealed class TollPlugin : Plugin
         if (action is DriveAction.RejectStart or DriveAction.EmergencyStop)
         {
             string reason = !telemetryFresh ? "Spieltelemetrie verloren."
+                : action == DriveAction.RejectStart && route == RouteFeed.AssistsOff && Math.Abs(speed) > .1
+                    ? "Start während der Fahrt abgelehnt. Bitte im Stand erneut einschalten."
                 : path?.HasError == true && route is RouteFeed.Rejected or RouteFeed.Loading
                     ? "Routenplanung: " + path.ErrorMessage
                     : route != RouteFeed.Valid || routeAge >= .5 ? "Keine aktuelle verfolgte Route verfügbar."
                     : !SensorsFresh(now) ? DataStatus : "Keine stabile Fahrentscheidung verfügbar.";
-            StopDriving(reason, action);
+            StopDriving(reason, action, action == DriveAction.RejectStart && route == RouteFeed.AssistsOff && Math.Abs(speed) > .1);
         }
         return action;
     }
@@ -264,6 +307,7 @@ public sealed class TollPlugin : Plugin
     }
     void OnPath(PlannedPathData data)
     {
+        int probe = 0;
         IPlugin? planner = null;
         Vector3 startPosition = default;
         double startHeading = 0;
@@ -275,13 +319,21 @@ public sealed class TollPlugin : Plugin
             if (!State.EnableAssists) connectorAttempted = false;
             connectorPending = false;
             if (RejectUnpreparedStart()) return;
+            if (preview && !previewCalculating && data is { HasError: true, ErrorMessage: "Assists are disabled." })
+            {
+                previewCalculating = true;
+                probe = previewGeneration;
+                planner = readPlanner();
+                startPosition = position;
+                startHeading = headingTurns;
+                history = connectorHistory.Snapshot(pathAt, position);
+            }
             if (data.HasError && data.ErrorMessage == ConnectorStart.MissingRoad && !connectorAttempted &&
-                (preview || active && !supervisor.Checkpoint.Drove && safetyTrace == null) &&
+                active && !supervisor.Checkpoint.Drove && safetyTrace == null &&
                 State.EnableAssists && State.DrivingMode != DrivingMode.LaneAssistOnly &&
                 SensorsFresh(pathAt) && Math.Abs(speed) <= .1)
             {
-                planner = PluginBackend.Current?.PluginHandler?.LoadedPlugins.FirstOrDefault(p =>
-                    p._IsRunning && p.Info.Id == "tumppi066.pathfinding");
+                planner = readPlanner();
                 if (planner != null)
                 {
                     connectorAttempted = connectorPending = true;
@@ -291,8 +343,18 @@ public sealed class TollPlugin : Plugin
                     history = connectorHistory.Snapshot(pathAt, position);
                 }
             }
+            if (probe == 0 && planner == null)
+            {
+                HandlePath(data);
+                return;
+            }
         }
 
+        if (probe != 0)
+        {
+            CompletePreview(probe, planner, startPosition, startHeading, history);
+            return;
+        }
         bool seeded = false;
         if (planner != null)
         {
@@ -303,7 +365,7 @@ public sealed class TollPlugin : Plugin
                     lock (sync)
                     {
                         return ReferenceEquals(path, data) && connectorPending && State.EnableAssists &&
-                            (preview || active) && SensorsFresh(clock.Elapsed.TotalSeconds) && Math.Abs(speed) <= .1 &&
+                            active && SensorsFresh(clock.Elapsed.TotalSeconds) && Math.Abs(speed) <= .1 &&
                             Vector3.Distance(position, startPosition) <= .25 && commit();
                     }
                 });
@@ -343,6 +405,7 @@ public sealed class TollPlugin : Plugin
                 if (previousGate != router.SelectedGate || previousPlaza != router.CurrentKey)
                 {
                     controller.Reset();passage.Reset();tracked=null;candidate=null;
+                    decisionArmed=false;
                     if (active && State.EnableAssists && !preview && router.SelectedGate is int gate &&
                         router.PaymentFor(gate)==TollPayment.Manual)
                         notify("Lkw-Mautspur gewählt", "Hier ist eine manuelle Zahlung nötig. Die Assistenz hält vor der Schranke. Wenn der Zahlpunkt noch nicht erreichbar ist, mit F9 übernehmen.");
@@ -350,7 +413,7 @@ public sealed class TollPlugin : Plugin
             }
             catch(Exception ex) {routeFault="Mautspuren konnten nicht geprüft werden: "+ex.Message;if(active)Disarm(routeFault);}
         }
-        if((active || preview) && !data.HasError) {
+        if(active && !data.HasError) {
             try {router.Apply(data,position,out routeFault,speed);}
             catch(Exception ex){routeFault="Maut-Spurwahl: "+ex.Message;}
             if(routeFault!=null) Disarm(routeFault);
@@ -361,6 +424,7 @@ public sealed class TollPlugin : Plugin
                     decision=ApproachStop.Evaluate(speed,router.UpdateStopDistance(data,position,speed)!.Value);
                     evaluatedAt=clock.Elapsed.TotalSeconds;decisionArmed=true;
                     if(warnedStopKey!=router.StopKey) {
+                        controller.Reset();passage.Reset();tracked=null;candidate=null;
                         warnedStopKey=router.StopKey;
                         notify("Mautspur noch nicht bestätigt", "Der Lkw bremst auf der Zufahrt zum Halt ab. F9 drücken und die geeignete Spur selbst wählen oder im Stand bestätigen.");
                     }
@@ -368,46 +432,100 @@ public sealed class TollPlugin : Plugin
             }
             if(active&&State.EnableAssists&&!preview&&sdk&&!paused) {
                 try {
+                    if (ExitHandoff.RepairRoadConnections(data,position)>0)
+                        Logger.Info("Eindeutig anschließende Straßenspur am Kartenübergang wiederhergestellt.");
                     var trace=RouteMatcher.SampleForTracking(data,position,speed);
                     var fault=trackingGuard.Check(trace,position,headingTurns,speed,State.DrivingMode!=DrivingMode.AdaptiveCruiseControlOnly);
                     if(fault!=null)Disarm(fault);else safetyTrace=trace;
                 } catch(Exception ex) {Disarm("Routenverfolgung nicht möglich: "+ex.Message);}
             }
-            if(preview && (routeFault!=null || clock.Elapsed.TotalSeconds-previewAt>1)) {
-                try {
-                    var selected=RouteMatcher.Select(data,position,gates,null);
-                    previewStatus=routeFault ?? (selected!=null?$"Routenprobe: Schranke {selected.Key}, {selected.Distance:F1} m":"Routenprobe: Route vorhanden, keine zugeordnete Mautschranke");
-                    if (routeFault == null && connectorSeeded) previewStatus += " · Start auf geprüftem Kartenverbinder";
-                    var report=new {utc=DateTimeOffset.UtcNow,routeFault,selected,router.Status,
-                        geometry=RouteMatcher.Diagnose(data,position,gates),
-                        sampledTruckProjection=RouteMatcher.SampleForTracking(data,position,speed).Project(position),
-                        tracking=RouteMatcher.SampleForTracking(data,position,speed).Diagnose(position),headingTurns,
-                        items=data.PlannedPath.Select(i=>new{kind=i.item.GetType().Name,length=i.GetLength(),
-                            prefab=i.prefabPath?.Prefab.Prefab.Uid.ToString(),
-                            curves=i.prefabPath?.Curves.Select(c=>new {id=i.prefabPath.Prefab.Descriptor!.NavCurves.IndexOf(c),gate=c.SemaphoreId}),
-                            direction=i.direction.ToString()})};
-                    File.WriteAllText(Path.Combine(Path.GetDirectoryName(DiagnosticPath)!,"preview.json"),JsonSerializer.Serialize(report,new JsonSerializerOptions{WriteIndented=true}));
-                } catch(Exception ex) {previewStatus="Routenprobe: "+ex.Message;}
-                finally {preview=false;State.EnableAssists=false;}
-            }
         }
     }
+
+    static IPlugin? FindPlanner() => PluginBackend.Current?.PluginHandler?.LoadedPlugins.FirstOrDefault(p =>
+        p._IsRunning && p.Info.Id == "tumppi066.pathfinding");
+
+    void CompletePreview(int request, IPlugin? planner, Vector3 origin, double heading, Vector3[] history)
+    {
+        PlannedPathData? data = null;
+        string? failure = null;
+        try { if (planner != null) data = probeRoute(planner, origin, heading, history); }
+        catch (Exception ex) { failure = ex.GetBaseException().Message; }
+
+        lock (sync)
+        {
+            if (!preview || request != previewGeneration) return;
+            preview = previewCalculating = false;
+            if (!SensorsFresh(clock.Elapsed.TotalSeconds) || State.EnableAssists || Math.Abs(speed) > .1 ||
+                Vector3.DistanceSquared(position, origin) > .0625f ||
+                Vector3.Dot(TrackingGuard.TruckForward(headingTurns), TrackingGuard.TruckForward(heading)) < .995f ||
+                previewNavigation!=ConnectorStart.NavigationKey(readPlanner()))
+            {
+                previewStatus = "Routenprobe abgebrochen. Bitte im Stand erneut prüfen.";
+                return;
+            }
+            if (data == null)
+            {
+                FailStartCheck(origin,heading,failure ?? "Keine sichere Startroute gefunden.");
+                return;
+            }
+            try
+            {
+                var testRouter = new TollRouter(preferences, readPayments);
+                testRouter.Discover(data, origin, gates);
+                testRouter.Apply(data, origin, out var issue);
+                ExitHandoff.RepairRoadConnections(data,origin);
+                var trace = RouteMatcher.SampleForTracking(data, origin, 0);
+                issue ??= new TrackingGuard().Check(trace, origin, heading, 0);
+                var projection = trace.Project(origin);
+                if (trace.Length - projection.Along < TrackingGuard.RequiredLookahead(0))
+                    issue ??= "Zu wenig zusammenhängende Strecke für den Start.";
+                var selected = RouteMatcher.Select(data, origin, gates, null);
+                previewStatus = issue ?? (selected == null ? "Routenprobe: Route vorhanden, keine zugeordnete Mautschranke"
+                    : $"Routenprobe: Schranke {selected.Key}, {selected.Distance:F1} m");
+                if (issue == null) {
+                    previewRouter = testRouter; previewPosition = origin;
+                    startCheck=new(origin,heading,previewNavigation,null);
+                }
+                else FailStartCheck(origin,heading,issue);
+                var report = new { utc=DateTimeOffset.UtcNow, routeFault=issue, selected, testRouter.Status,
+                    geometry=RouteMatcher.Diagnose(data,origin,gates), sampledTruckProjection=projection,
+                    tracking=trace.Diagnose(origin), headingTurns=heading,
+                    items=data.PlannedPath.Select(i=>new{kind=i.item.GetType().Name,length=i.GetLength(),
+                        prefab=i.prefabPath?.Prefab.Prefab.Uid.ToString(),
+                        curves=i.prefabPath?.Curves.Select(c=>new {id=i.prefabPath.Prefab.Descriptor!.NavCurves.IndexOf(c),gate=c.SemaphoreId}),
+                        direction=i.direction.ToString()}) };
+                Directory.CreateDirectory(Path.GetDirectoryName(DiagnosticPath)!);
+                File.WriteAllText(Path.Combine(Path.GetDirectoryName(DiagnosticPath)!,"preview.json"),
+                    JsonSerializer.Serialize(report,new JsonSerializerOptions{WriteIndented=true}));
+            }
+            catch (Exception ex) { FailStartCheck(origin,heading,ex.GetBaseException().Message); }
+        }
+    }
+
+    void FailStartCheck(Vector3 origin,double heading,string reason)
+    {
+        if (active) automaticPreparation.Request();
+        active=false;
+        startCheck=new(origin,heading,previewNavigation,reason);
+        preparationReason=reason;
+        previewStatus="Routenprobe: "+reason;
+    }
+
     public string PreviewRoute()
     {
         lock(sync) {
             if(faultBrake.Latched)return "Zuerst mit F9 die Fehlerbremsung quittieren und selbst die Bremse halten.";
             if(!_IsRunning || !SensorsFresh(clock.Elapsed.TotalSeconds) || Math.Abs(speed)>.1 || State.EnableAssists)
                 return "Für die Routenprobe muss der Lkw stehen und die Fahrassistenz aus sein.";
-            var plugins=PluginBackend.Current!.PluginHandler!.LoadedPlugins;
-            if(plugins.Any(p=>p._IsRunning && (p.Info.Id is "tumppi066.laneassist" or "tumppi066.adaptivecruisecontrol")))
-                return "Für die reine Routenprobe Lane Assist und ACC im Manager ausschalten.";
-            if(!plugins.Any(p=>p._IsRunning && p.Info.Id=="tumppi066.pathfinding"))return "Zuerst Pathfinding einschalten.";
-            active=false;bridge.Detach();controller.Reset();tracked=null;
-            connectorAttempted = connectorPending = false;
-            connectorSeeded = false;
-            automaticPreparation.Request();
+            if (preview) return previewStatus;
+            if (readPlanner() == null) return "Zuerst Pathfinding einschalten.";
+            previewRouter=null;
+            startCheck=null;
+            previewCalculating=false;
+            previewGeneration++;
+            previewNavigation=ConnectorStart.NavigationKey(readPlanner());
             preview=true;previewAt=clock.Elapsed.TotalSeconds;previewStatus="Routenprobe läuft ohne Gas und Lenkung";
-            State.EnableAssists=true;
             return previewStatus;
         }
     }
@@ -418,7 +536,11 @@ public sealed class TollPlugin : Plugin
     {
         lock(sync) {
             if(Math.Abs(speed)>.1 || State.EnableAssists)return "Bitte zuerst anhalten und F9 drücken.";
-            try {router.Confirm(gate,payment);return payment==TollPayment.Automatic?
+            try {
+                (previewRouter ?? router).Confirm(gate,payment);
+                if (previewRouter != null) router.ResetSelection();
+                startCheck=null;active=false;automaticPreparation.Request();
+                return payment==TollPayment.Automatic?
                 "Automatische Lkw-Mautspur gespeichert. Im Stand auf Bereitschaft warten, dann F8.":
                 "Zahlart gespeichert. Manuelle oder unbekannte Zahlspuren werden selbst gefahren; bei Bedarf F9 drücken und bis zur Zahlungsaufforderung vorrollen.";}
             catch(Exception ex) {return "Spur nicht gespeichert: "+ex.Message;}
@@ -433,6 +555,7 @@ public sealed class TollPlugin : Plugin
             try { newOptions.Validate(); } catch (ArgumentException e) { return e.Message; }
             try {preferences.Save(newOptions,preferences.Gates);} catch(Exception ex) {return "Einstellungen nicht gespeichert: "+ex.Message;}
             options = newOptions; controller = new(options); tracked = null; active = false;  bridge.Detach();
+            startCheck=null;
             automaticPreparation.Request();
             preparationReason="Einstellungen gespeichert. Automatische Vorbereitung wartet auf verbundene Module.";
             return "Einstellungen dauerhaft gespeichert; Vorbereitung erfolgt automatisch im Stand.";
@@ -445,11 +568,18 @@ public sealed class TollPlugin : Plugin
         if(preview)return "Routenprobe läuft noch.";
         if(!double.IsFinite(speed)||Math.Abs(speed)>.1||State.EnableAssists)return "Warte auf Stillstand mit ausgeschalteter Fahrassistenz.";
         if(!SensorsFresh(now)||now-pathAt>=1||path==null)return "Warte auf frische Spiel-, Routen- und Schrankendaten.";
+        if(readPlanner() is { } planner && ConnectorStart.IsLoadingMap(planner))return "Warte, bis Pathfinding die lokale Karte geladen hat.";
         if(path.HasError&&path.ErrorMessage!="Assists are disabled.")return "Warte auf Routenbereitschaft: "+path.ErrorMessage;
+        if(CheckMatches() && startCheck!.Failure is { } failure)return failure+" Für einen erneuten Versuch die Routenprobe starten.";
         return null;
     }
     void TryAutomaticPreparation(double now)
     {
+        if(active && !State.EnableAssists && !preview && !CanStartNow(now))
+        {
+            active=false;
+            automaticPreparation.Request();
+        }
         if(active||!automaticPreparation.Requested)return;
         var blocked=PreparationBlock(now);
         if(!automaticPreparation.ShouldAttempt(now,blocked==null)) {
@@ -463,11 +593,17 @@ public sealed class TollPlugin : Plugin
     {
         lock(sync)
         {
-            if (!value) { router.CancelPlannedStop();warnedStopKey=null; automaticPreparation.Cancel(); active = false; State.EnableAssists=false; faultBrake.Release(); ResetDriving(); preparationReason="Beobachtungsmodus. F9 gibt die automatische Vorbereitung wieder frei."; bridge.Detach();  controller.Reset(); tracked = null; passage.Reset(); return "Manuelle Übernahme, Fehlerbremsung gelöst. Automatische Vorbereitung pausiert; mit F9 wieder freigeben."; }
+            if (!value) { startCheck=null;preview=previewCalculating=false; router.CancelPlannedStop();warnedStopKey=null; automaticPreparation.Cancel(); active = false; State.EnableAssists=false; faultBrake.Release(); ResetDriving(); preparationReason="Beobachtungsmodus. F9 gibt die automatische Vorbereitung wieder frei."; bridge.Detach();  controller.Reset(); tracked = null; passage.Reset(); return "Manuelle Übernahme, Fehlerbremsung gelöst. Automatische Vorbereitung pausiert; mit F9 wieder freigeben."; }
             var blocked=PreparationBlock(clock.Elapsed.TotalSeconds);
             if(blocked!=null)return blocked;
             var acc = readAcc();
             if (acc == null) return "Eine geprüfte Adaptive-Cruise-Control-Version (2.1.0 oder 2.1.1) muss eingeschaltet sein.";
+            if (!CheckMatches())
+            {
+                var result=PreviewRoute();
+                preparationReason=result;
+                return result;
+            }
             try { bridge.Attach(acc, Evaluate, () => Status); }
             catch(Exception ex) { return "ACC-Verbindung fehlgeschlagen: " + ex.Message; }
             if (bridge.Constraint == null) return "ACC wird noch initialisiert. Bitte erneut versuchen.";
@@ -483,13 +619,14 @@ public sealed class TollPlugin : Plugin
 
     void Disarm(string reason) => StopDriving(reason, DriveAction.EmergencyStop);
 
-    void StopDriving(string reason, DriveAction action)
+    void StopDriving(string reason, DriveAction action, bool retryAtStandstill = false)
     {
-        automaticPreparation.Cancel();
+        if (retryAtStandstill) automaticPreparation.Request(); else automaticPreparation.Cancel();
         driveAction = action;
         bool brake=action==DriveAction.EmergencyStop && active&&State.EnableAssists&&!preview;
         preparationReason=reason;
         active=false; State.EnableAssists=false;
+        startCheck=null;
         if(brake)faultBrake.Trip();
         object? geometry;
         try {geometry=path!=null&&!path.HasError?RouteMatcher.Diagnose(path,position,gates):null;}
@@ -522,11 +659,19 @@ public sealed class TollPlugin : Plugin
             if (action != DriveAction.Drive) return float.NaN;
             if (decision.RequiresTakeover) { Disarm(decision.Phase); return -5f; }
 
-            if(router.StopBoundary.HasValue) {
-                try {return ApproachStop.Evaluate(speed,router.UpdateStopDistance(path!,position,speed)!.Value).MaxAcceleration;}
-                catch(Exception ex) {Disarm(ex.Message);return -5f;}
+            try
+            {
+                float limit = router.StopBoundary.HasValue
+                    ? ApproachStop.Evaluate(speed,router.UpdateStopDistance(path!,position,speed)!.Value).MaxAcceleration
+                    : decision.MaxAcceleration;
+                if (safetyTrace is { EndsAtGap: true } trace)
+                {
+                    float routeLimit = ApproachStop.BeforeRouteGap(speed, trace.Length - trace.Project(position).Along);
+                    limit = float.IsFinite(limit) ? Math.Min(limit, routeLimit) : routeLimit;
+                }
+                return limit;
             }
-            return decision.MaxAcceleration;
+            catch(Exception ex) {Disarm(ex.Message);return -5f;}
         }
     }
 
@@ -538,7 +683,10 @@ public sealed class TollPlugin : Plugin
             SafetyWatchdog(clock.Elapsed.TotalSeconds);
             RejectUnpreparedStart();
             double now = clock.Elapsed.TotalSeconds;
-            if(preview && now-previewAt>(connectorPending ? 8 : 5)) {preview=false;State.EnableAssists=false;previewStatus="Routenprobe abgebrochen: "+(path?.ErrorMessage??"Keine Route");}
+            if(preview && now-previewAt>8) {
+                preview=false;previewCalculating=false;
+                FailStartCheck(position,headingTurns,"Pathfinding antwortet nicht auf die Routenprobe.");
+            }
             TryAutomaticPreparation(now);
             try
             {
@@ -590,12 +738,13 @@ public sealed class TollPlugin : Plugin
                     Directory.CreateDirectory(Path.GetDirectoryName(DiagnosticPath)!);
                     if (sdk && lastMapWrite < 0) { lastMapWrite=now; try { MapDiagnostics.Write(position,Path.GetDirectoryName(DiagnosticPath)!); } catch(Exception ex) { Logger.Warn("Maut-Kartenprüfung: " + ex.Message); } }
                     File.WriteAllText(DiagnosticPath, JsonSerializer.Serialize(new {
-                        version="0.2.15", utc=DateTimeOffset.UtcNow, active, fresh=Fresh(now), speedKph=speed*3.6,
+                        version=Info.Version, utc=DateTimeOffset.UtcNow, active, fresh=Fresh(now), speedKph=speed*3.6,
                         connectorAttempted, connectorPending, connectorSeeded,
                         driveAction=driveAction.ToString(),
                         plannedStop=router.StopBoundary.HasValue,stopDistance=router.StopDistance,
                         automaticPreparationPending=automaticPreparation.Requested,
-                        startBlocked=!active&&!preview,preparationReason,selectedLane=router.SelectedGate,plaza=router.CurrentKey,
+                        startBlocked=!(active&&State.EnableAssists)&&!CanStartNow(now), readyToStart=CanStartNow(now),
+                        startRouteFailure=startCheck?.Failure,preparationReason,selectedLane=(previewRouter??router).SelectedGate,plaza=(previewRouter??router).CurrentKey,
                         selectedPayment=router.SelectedGate is int gateId ? router.PaymentFor(gateId).ToString() : null,
                         faultBraking=faultBrake.Latched,headingTurns,
                         pendingRouteGap=safetyTrace?.EndReason,
@@ -631,7 +780,9 @@ public sealed class TollPlugin : Plugin
             active = false;
             automaticPreparation.Cancel();
             faultBrake.Release();ResetDriving();
-            preview=false;
+            preview=previewCalculating=false;
+            previewRouter=null;
+            startCheck=null;
             base.OnDisable();
             if (subscribed)
             {

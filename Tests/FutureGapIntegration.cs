@@ -59,6 +59,8 @@ public static class FutureGapIntegration
         telemetry.truckFloat.speed=(float)speed;telemetry.truckPlacement.rotation=new(.5,0,0);
         telemetry.truckPlacement.coordinate=new(truck.X,truck.Y,truck.Z);
         Call("OnTelemetry",telemetry);Set("active",true);state.EnableAssists=true;
+        ((DriveSupervisor)typeof(TollPlugin).GetField("supervisor",hidden)!.GetValue(plugin)!).Step(
+            new(0,speed,true,false,true,RouteFeed.Valid,0,true,true));
         Call("OnPath",route);
         assert(plugin.Active&&state.EnableAssists&&!plugin.FaultBraking&&sent.Count==0,"Live route callback must accept the distant gap");
         telemetry.truckPlacement.coordinate=new(near.X,near.Y,near.Z);

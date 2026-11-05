@@ -1,6 +1,6 @@
 namespace MautAssistent;
 
-public enum RouteFeed { Waiting, Loading, Valid, Rejected }
+public enum RouteFeed { Waiting, Loading, Valid, Rejected, AssistsOff }
 public enum DriveAction { Idle, Paused, AwaitRoute, Drive, Recover, RejectStart, EmergencyStop }
 
 public readonly record struct DriveFrame(
@@ -43,6 +43,9 @@ public sealed class DriveSupervisor(DriveCheckpoint initialState = default)
 
         started ??= frame.Time;
         bool stationary = Math.Abs(frame.Speed) <= .1;
+        // The planner can still report its last disabled frame after F8.
+        if (!drove && !stationary && frame.Route == RouteFeed.AssistsOff)
+            return DriveAction.RejectStart;
         if (frame.Route == RouteFeed.Rejected || (drove && frame.Route != RouteFeed.Valid))
             return !drove && stationary ? DriveAction.RejectStart : DriveAction.EmergencyStop;
 
@@ -63,7 +66,13 @@ public sealed class DriveSupervisor(DriveCheckpoint initialState = default)
             return stationary ? DriveAction.RejectStart : DriveAction.EmergencyStop;
         }
 
-        if (ready && interrupted == null) return DriveAction.Drive;
+        // A fresh toll decision can end recovery before the comfort window
+        // expires. Use that decision immediately when recovery is no longer allowed.
+        if (ready && (interrupted == null || (!frame.CanRecover && frame.Time - interrupted.Value < .5)))
+        {
+            interrupted = stableSince = null;
+            return DriveAction.Drive;
+        }
         if (!frame.CanRecover || frame.RouteAge >= 1) return DriveAction.EmergencyStop;
         interrupted ??= frame.Time;
         if (frame.Time - interrupted.Value >= .5) return DriveAction.EmergencyStop;

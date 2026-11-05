@@ -50,7 +50,12 @@ public static class PreparationIntegration
         assert(!state.EnableAssists,"Repeated F8 must remain blocked after failed preparation");
 
         // F9 is an ordinary pause, not a fault. An already prepared plugin may resume.
+        plugin._IsRunning=true;
         Set(plugin,"active",true);
+        Set(plugin,"startCheck",new TollPlugin.StartCheck(System.Numerics.Vector3.Zero,0,0,null));
+        double now=((System.Diagnostics.Stopwatch)typeof(TollPlugin).GetField("clock",Hidden)!.GetValue(plugin)!).Elapsed.TotalSeconds;
+        foreach(var name in new[]{"telemetryAt","gatesAt","gameTimeChangedAt"})Set(plugin,name,now);
+        Set(plugin,"sdk",true);Set(plugin,"paused",false);Set(plugin,"speed",0d);
         state.EnableAssists=false;
         assert(!(bool)Call(plugin,"RejectUnpreparedStart")!,"F9 must remain available");
         state.EnableAssists=true;
@@ -60,9 +65,9 @@ public static class PreparationIntegration
         state.EnableAssists=true;plugin.Tick();
         assert(!state.EnableAssists,"Observation must not silently become unprotected FSD");
 
-        // The dedicated preview has independently checked that output plugins are off.
+        // An isolated preview has no need to turn on the host assist switch.
         Set(plugin,"preview",true);state.EnableAssists=true;
-        assert(!(bool)Call(plugin,"RejectUnpreparedStart")!&&state.EnableAssists,"Route-only preview must remain possible");
+        assert((bool)Call(plugin,"RejectUnpreparedStart")!&&!state.EnableAssists,"F8 must not activate outputs during the probe");
         Set(plugin,"preview",false);plugin.Tick();
         assert(!state.EnableAssists,"Ending preview restores preparation requirement");
     }

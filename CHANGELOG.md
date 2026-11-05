@@ -1,5 +1,15 @@
 # Änderungen
 
+## 0.3.2 – Startfreigabe nach bestätigter Route
+
+- Die automatische Vorbereitung prüft die Startroute bei ausgeschalteter Fahrassistenz. Eine fehlgeschlagene Routenprobe sperrt F8 und zeigt den Grund an. Die Fahrmodule bleiben eingeschaltet.
+- Die Freigabe gilt für die geprüfte Position, Richtung und Navi-Knoten. Manuelles Versetzen oder ein geändertes Ziel verlangt eine neue Prüfung. F9 löst die Fehlerbremsung und fordert eine neue Vorbereitung an.
+- Die Verbindersuche berücksichtigt Übergangsgrenzen und kurze verbleibende Teilstücke. Die gesamte bestätigte Route muss weiterhin mindestens 25 Meter nutzbare Strecke enthalten.
+- Normale Verbinder können eine eindeutig anschließende Straßenspur vor der Trackingprüfung wiederherstellen. Die Prüfung verlangt denselben Routenknoten, passende Richtung und Geometrie. Bereits belegte Fahrspuren und unklare Anschlüsse werden abgelehnt.
+- Die Freigabe beim Rollen und die Erholung nach kurzen Datenlücken sind getrennt von tatsächlichem Trackingverlust. Eine entfernte Schranke allein beendet die Erholung nicht. Die Mautanfahrt verwendet den verbleibenden Bremsweg.
+- Reale Fahrprüfungen der neuen Fassung stehen aus. Eine allgemeine Erkennung von Verkehrsschildern und die Messung der Durchfahrtshöhe sind weiterhin offen.
+- 49 vollständige lokale Prüfungen und 39 unabhängige Logikprüfungen bestanden. Bei der Wiedergabe des aufgezeichneten Entscheidungsverlaufs mit 512 Schritten ändert sich die beanstandete Notbremsung zur regulären Fahrentscheidung.
+
 ## 0.2.11 – Richtungsprüfung an kurzen Abschnittsübergängen
 
 - Anlass: Gegenrichtungsbremsung bei rund 56,6 km/h, laut Fahrer auf gerader Straße in korrekter Fahrtrichtung. Die gespeicherte native Projektion liegt an einer Abschnittsgrenze; die folgenden Routenproben zeigen eine gültige Spur. Die damaligen Richtungsvektoren fehlen, deshalb ist die konkrete Ursache nicht abschließend nachgewiesen.

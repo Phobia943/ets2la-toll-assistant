@@ -56,7 +56,43 @@ public static class ExitHandoffIntegration
         assert(nativeRoadPoint.HasValue&&Vector3.Distance(nativeRoadPoint.Value.Position,entry+forward*5)<.05,"Native planner sees the corrected exit lane on the next frame");
         assert(ExitHandoff.Align(data,0,entry+forward*5,out _),"Repeated frames preserve aligned route");
         data.PlannedPath[1]=Following();
+        assert(ExitHandoff.RepairRoadConnections(data,entry-forward*10)==1 && data.PlannedPath[1].laneIndex==sign,
+            "Normal route handoff must repair the connected lane before the gap watchdog");
+        assert(ExitHandoff.RepairRoadConnections(data,entry-forward*10)==0,
+            "Do not modify an already connected route again");
+
+        var seam = new Node { Uid = 407 };
+        PlannedItem Connector(Node from, Node to, Vector3 a, Vector3 b)
+        {
+            var nav = new NavCurve { StartPosition=a,EndPosition=b,StartRotation=tollRotation,EndRotation=tollRotation,
+                Length=Vector3.Distance(a,b),SemaphoreId=-1,AllowedVehicles=AllowedVehicles.AllVehicles };
+            return new PlannedItem { item=prefab, startNode=from, endNode=to, direction=Direction.Forward, laneIndex=0,
+                prefabPath=new PrefabPath(prefab,from,to,[nav],Direction.Forward,Matrix4x4.Identity,Vector3.Zero) };
+        }
+        var seed=Connector(tollStart,seam,entry-forward*45,entry-forward*20);
+        var link=Connector(seam,junction,entry-forward*20,entry);
+        var wrongGuess=Following();
+        wrongGuess.laneIndex=-sign;
+        var chain=ConnectorStart.BuildPlan(seed,entry-forward*40,items=>items.Count==1?link:wrongGuess);
+        assert(chain is { Count: 3 } && chain[^1].laneIndex==sign,"Validate connected prefabs and find the unique legal road lane");
+        assert(RouteMatcher.Sample(new() { PlannedPath=chain!, HasError=false }).Project(entry+forward*5).Offset<.05,
+            "The chain must connect to the correct physical exit");
+        var broken=Connector(seam,junction,entry-forward*14,entry);
+        assert(ConnectorStart.BuildPlan(seed,entry-forward*40,items=>items.Count==1?broken:Following())==null,
+            "A shared node does not justify crossing a geometric gap");
+        broken.otherPrefabPaths=[link.prefabPath!];
+        var handoff=new PlannedPathData { PlannedPath=[seed,broken], HasError=false };
+        assert(ExitHandoff.Align(handoff,0,entry-forward*30,out _),
+            "A toll exit can reconnect to the unique valid continuation through another prefab");
+        assert(RouteMatcher.Sample(handoff).Project(entry-forward*18).Offset<.05,
+            "The chosen connector must follow the existing exit without a gap");
+        link.prefabPath!.Curves[0].AllowedVehicles=AllowedVehicles.SmallVehicles;
+        assert(ConnectorStart.BuildPlan(seed,entry-forward*40,items=>items.Count==1?link:Following())==null,
+            "Every connector must permit trucks");
+
+        data.PlannedPath[1]=Following();
         var occupied=road.InterpolateLane(backward?.9f:.1f,side,1).Position;
+        assert(ExitHandoff.RepairRoadConnections(data,occupied)==0,"Live seam repair must not jump out of an occupied lane");
         assert(!ExitHandoff.Align(data,0,occupied,out error)&&error!=null,"Never jump lanes after entering the other road lane");
         assert(data.PlannedPath[1].laneIndex==sign*2,"Rejected handoff leaves lane unchanged");
         data.PlannedPath[1]=Following();data.PlannedPath[1].startNode=new Node {Uid=999};

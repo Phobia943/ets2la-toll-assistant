@@ -93,6 +93,12 @@ public static class RouteIntegration
         byModel.Discover(data,truck,sdk);
         assert(byModel.SelectedGate==12 && byModel.Apply(data,truck,out _) && !byModel.StopBoundary.HasValue,
             "Choose explicit AutoPASS without a plaza confirmation");
+        var lateRouter = new TollRouter(new PreferenceStore(filename), _ => marks);
+        item.prefabPath=source;
+        lateRouter.Discover(data,truck,sdk);
+        var pastSplit = source.Interpolate(.82f,0)!.Value.Position;
+        assert(!lateRouter.Apply(data,pastSplit,out _) && ReferenceEquals(item.prefabPath,source),
+            "A truck already committed to a different booth must never get a late route rewrite");
         curves[5].AllowedVehicles=AllowedVehicles.SmallVehicles;
         var truckOnly = new TollRouter(new PreferenceStore(filename), _ => marks);
         item.prefabPath=source;
@@ -120,17 +126,17 @@ public static class RouteIntegration
         Call("OnTelemetry",telemetry);
         Call("OnGates",new ETS2LA.Game.SDK.SemaphoreData {semaphores=sdk});
         Set("active",true);state.EnableAssists=true;
+        ((DriveSupervisor)typeof(TollPlugin).GetField("supervisor",hidden)!.GetValue(plugin)!).Step(
+            new(0,25,true,false,true,RouteFeed.Valid,0,true,true));
         Call("OnPath",data);
         assert(plugin.Active&&state.EnableAssists&&!plugin.FaultBraking&&output.Count==0,"Unknown toll must retain steering and avoid emergency output");
         var acceleration=(float)Call("Evaluate")!;
         assert(acceleration<-.5f&&acceleration>-2.5f,"ACC must receive a bounded planned deceleration");
         Call("OnPath",data);
         assert(notices.Count==1,"One takeover warning, not a warning every frame");
-        state.EnableAssists=false;
-        Call("OnCancel",null,new ETS2LA.Controls.ControlChangeEventArgs(false,null!));
-        assert(float.IsNaN((float)Call("Evaluate")!),"F9 releases planned braking immediately");
-        state.EnableAssists=true;
         Call("OnPath",new PlannedPathData {HasError=true,ErrorMessage="No suitable road",PlannedPath=[]});
         assert(plugin.FaultBraking&&!state.EnableAssists&&output[^1].Variables.abackward==-1,"Real tracking loss during planned halt must still brake immediately");
+        Call("OnCancel",null,new ETS2LA.Controls.ControlChangeEventArgs(false,null!));
+        assert(float.IsNaN((float)Call("Evaluate")!),"F9 releases planned braking immediately");
     }
 }

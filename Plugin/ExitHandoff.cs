@@ -1,21 +1,56 @@
 using System.Numerics;
 using ETS2LA.Game.Data;
 using PathLib;
+using TruckLib.Models.Ppd;
 
 namespace MautAssistent;
 
-/// <summary>Join a confirmed toll path to the existing following road, without changing road topology.</summary>
+/// <summary>Join a confirmed toll path to an existing continuation of the same route.</summary>
 public static class ExitHandoff
 {
+    internal static int RepairRoadConnections(PlannedPathData data, Vector3 truck)
+    {
+        int repairs = 0;
+        for (int index=0; index+1<data.PlannedPath.Count; index++)
+        {
+            var before = data.PlannedPath[index];
+            var next = data.PlannedPath[index+1];
+            if (before.prefabPath is not { } connector || before.endNode.Uid != next.startNode.Uid ||
+                next.laneIndex == 0 || next.item is not (ParsedRoad or ParsedRoadList)) continue;
+            var end = connector.Interpolate(.99999f,0)?.Position;
+            if (end == null) continue;
+
+            float factor = next.direction == Direction.Backward ? 1 : 0;
+            var side = next.laneIndex > 0 ? Side.Right : Side.Left;
+            int count = next.item is ParsedRoadList roads ? roads.GetLaneCount(side) : ((ParsedRoad)next.item).GetLaneCount(side);
+            if (Math.Abs((long)next.laneIndex) > count) continue;
+            int lane = Math.Abs(next.laneIndex)-1;
+            var entry = next.item is ParsedRoadList list ? list.InterpolateLane(factor,side,lane).Position
+                : ((ParsedRoad)next.item).InterpolateLane(factor,side,lane).Position;
+            int originalLane = next.laneIndex;
+            if (Vector3.Distance(end.Value,entry)>2 && Align(data,index,truck,out _) && next.laneIndex!=originalLane)
+                repairs++;
+        }
+        return repairs;
+    }
+
     public static bool Align(PlannedPathData data,int index,Vector3 truck,out string? error)
     {
         error=null;
         if(index+1>=data.PlannedPath.Count)return true; // Host has not extended the plan yet.
         var toll=data.PlannedPath[index];var road=data.PlannedPath[index+1];
-        if(toll.prefabPath==null || road.item is not (ParsedRoad or ParsedRoadList))return true;
+        if(toll.prefabPath==null)return true;
         if(toll.endNode.Uid!=road.startNode.Uid) {error="Mautausfahrt und Anschlussstraße haben keinen gemeinsamen Routenknoten.";return false;}
         var exit=toll.prefabPath.Interpolate(.99999f,0)?.Position;
         var before=toll.prefabPath.Interpolate(.999f,0)?.Position;
+        if (road.prefabPath is { } connector)
+        {
+            if (exit.HasValue && before.HasValue && AlignConnector(road,connector,exit.Value,exit.Value-before.Value,truck))
+                return true;
+            error="Kein eindeutiger Anschluss am Verbindungsstück hinter der Mautstelle.";
+            return false;
+        }
+        if(road.item is not (ParsedRoad or ParsedRoadList))return true;
         if(!exit.HasValue||!before.HasValue||road.laneIndex==0||!float.IsFinite(road.GetLength())||road.GetLength()<=0) {error="Mautausfahrt oder Fahrtrichtung der Anschlussstraße ist unklar.";return false;}
         bool backward=road.direction==Direction.Backward;
         float entry=backward?1:0;
@@ -62,6 +97,40 @@ public static class ExitHandoff
         road.targetLaneIndex=chosen;
         road.GenerateLaneChange(entry,false);
         road.targetLaneIndex=target;
+        return true;
+    }
+
+    static bool AlignConnector(PlannedItem item, PrefabPath current, Vector3 exit, Vector3 heading, Vector3 truck)
+    {
+        double Gap(PrefabPath path)
+        {
+            if (path.StartNode.Uid != item.startNode.Uid || path.EndNode.Uid != item.endNode.Uid)
+                return double.PositiveInfinity;
+            var entry=path.Interpolate(.00001f,0)?.Position;
+            var ahead=path.Interpolate(.01f,0)?.Position;
+            if (entry is not { } start || ahead is not { } next ||
+                !(Vector3.Dot(Vector3.Normalize(next-start),Vector3.Normalize(heading)) >= .8f))
+                return double.PositiveInfinity;
+            return Vector3.Distance(start,exit);
+        }
+
+        bool TruckAllowed(PrefabPath path) => path.Curves.Count>0 && path.Curves.All(c=>
+            (c.AllowedVehicles is AllowedVehicles.AllVehicles or AllowedVehicles.LargeVehicles) &&
+            c.TrafficRule.ToString()!="escort_only");
+        if (TruckAllowed(current) && Gap(current) <= 1.5) return true;
+        float factor = current.GetFactorForPoint(truck);
+        var occupied = current.Interpolate(factor,0)?.Position;
+        if (!float.IsFinite(factor) || (factor*current.Length > 2 && occupied is { } point && Vector3.Distance(truck,point) < 3) ||
+            current.Curves.Any(c => c.SemaphoreId >= 0))
+            return false;
+
+        var candidates=(item.otherPrefabPaths ?? []).Where(path=>TruckAllowed(path) && path.Curves.All(c=>c.SemaphoreId<0))
+            .Select(path=>(Path:PrefabRefinement.Refine(path),Gap:Gap(path))).Where(option=>option.Gap<=1.5)
+            .DistinctBy(option=>option.Path).OrderBy(option=>option.Gap).Take(2).ToArray();
+        if (candidates.Length==0 || (candidates.Length==2 && candidates[1].Gap-candidates[0].Gap<.75)) return false;
+        item.prefabPath=candidates[0].Path;
+        item.otherPrefabPaths=[item.prefabPath];
+        item.allowedToLaneChange=false;
         return true;
     }
 }

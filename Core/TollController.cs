@@ -38,6 +38,8 @@ public sealed class TollController(TollOptions options)
     bool released;
     bool crossed;
     public bool Tracking => tracked != null;
+    public double ApproachHorizon(double speed)
+        => Math.Max(200, speed * speed / (2 * options.ComfortableDeceleration) + Math.Max(0,speed) * 1.5 + 40);
     public void Reset() { tracked = null; openSince = null; released = false; crossed=false; lastTime = double.NaN; }
 
     public TollDecision Step(TollInput input)
@@ -55,8 +57,8 @@ public sealed class TollController(TollOptions options)
         if (tracked == null)
         {
             // Include 1.5 seconds of reaction margin for the host controller's smoothing.
-            var horizon = Math.Max(200, input.Speed * input.Speed / (2 * options.ComfortableDeceleration) + input.Speed * 1.5 + 40);
-            if (gate.Distance < 0 || gate.Distance > horizon) return TollDecision.Idle("Außerhalb der Mautzone");
+            if (gate.Distance < 0 || gate.Distance > ApproachHorizon(input.Speed))
+                return TollDecision.Idle("Außerhalb der Mautzone");
             tracked = gate.Key;
         }
         if(released && gate.Distance < -1)crossed=true;
@@ -69,11 +71,18 @@ public sealed class TollController(TollOptions options)
 
         double speed = Math.Max(0, input.Speed);
         double remaining = Math.Max(0, gate.Distance - options.StopOffsetMetres - speed * 1.5);
+        double approach = options.ApproachSpeedKph / 3.6;
+        double passage = options.PassageSpeedKph / 3.6;
         double cap;
         string phase;
         if (!released)
         {
-            cap = Math.Min(options.ApproachSpeedKph / 3.6, Math.Sqrt(2 * options.ComfortableDeceleration * remaining));
+            // Reach approach speed before the booth. At entry to the horizon,
+            // cap at current speed so the limiter can coast into the ramp.
+            double toApproach = Math.Max(0, remaining - 50);
+            double approachCap = Math.Sqrt(approach * approach + 2 * options.ComfortableDeceleration * toApproach);
+            cap = Math.Min(Math.Min(Math.Max(speed, approach), approachCap),
+                Math.Sqrt(2 * options.ComfortableDeceleration * remaining));
             phase = gate.State == BarrierState.Open ? "Wartezeit nach Öffnung" : "Anfahrt / Schranke nicht frei";
             if (remaining < .5) { cap = 0; phase = gate.State == BarrierState.Open ? "Warten vor offener Schranke" : "Halten vor Schranke"; }
             if (cap == 0 && input.ManualPayment && gate.State == BarrierState.Closed)
@@ -81,7 +90,8 @@ public sealed class TollController(TollOptions options)
         }
         else
         {
-            cap = options.PassageSpeedKph / 3.6;
+            cap = speed <= approach ? passage : Math.Min(speed,
+                Math.Sqrt(passage * passage + 2 * options.ComfortableDeceleration * remaining));
             phase = "Langsame Durchfahrt";
         }
         // This is an upper bound consumed by ACC's minimum-of-constraints rule.

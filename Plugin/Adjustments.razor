@@ -27,7 +27,7 @@
     }
     <p>Die Spurwahl nutzt die Zahlart im Spielmodell und prüft den gesamten Lkw-Weg. Sie bevorzugt automatische Abrechnung. Bei einer manuellen Zahlspur hält die Assistenz vor der Schranke. Fehlt eine passende Spur, nähert sich der Lkw dem Haltepunkt vor der Aufteilung. F9 gibt die Steuerung zurück.</p>
     <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="Preview">Route im Stand prüfen (ohne Gas und Lenkung)</button>
-    <p>Bereitet sich im Stand automatisch vor, sobald Spiel, Pathfinding und Tempomat bereit sind. Die Fahrt startet erst mit F8; F9 gibt die Steuerung zurück. Spurwahl und Halteabstand müssen für die jeweilige Mautstelle und den Lkw geprüft werden.</p>
+    <p>Prüft im Stand automatisch die Startroute und bereitet sich bei erfolgreicher Prüfung vor. Die Fahrt startet mit F8. F9 gibt die Steuerung zurück. Nach manuellem Versetzen oder einem geänderten Navi-Ziel wird die Startroute erneut geprüft.</p>
     <label>Anfahrt (km/h) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="5" max="30" @bind="approach" /></label>
     <label>Durchfahrt (km/h) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="3" max="15" @bind="passage" /></label>
     <label>Halteabstand zum Lkw-Messpunkt (m) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="4" max="15" @bind="offset" /></label>

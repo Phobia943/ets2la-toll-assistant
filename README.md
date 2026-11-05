@@ -6,12 +6,12 @@ Die Erweiterung ergänzt Pathfinding, Lane Assist und Adaptive Cruise Control. S
 
 ## Funktionen
 
-- Anfahrt standardmäßig mit höchstens 20 km/h; Überwachung mindestens 200 m vor der zugeordneten Schranke.
+- Standardmäßig auf 20 km/h vor der Schranke abbremsen. Die Überwachung beginnt mindestens 200 m vor der zugeordneten Schranke.
 - Automatische Wahl einer erreichbaren Lkw-Spur mit bevorzugter automatischer Abrechnung.
 - Freigabe erst nach zwei Sekunden durchgehend vollständig geöffneter Schranke.
 - Durchfahrt mit höchstens 10 km/h bis 30 m hinter der Schranke.
 - Speicherung der Spur und Zahlart pro Mautanlage, Einfahrt und Ausfahrt.
-- Automatische Vorbereitung nach dem Start: mindestens eine Sekunde Stillstand, frische Spieldaten und geprüfte ACC-Anbindung; Fahrt beginnt erst mit F8.
+- Automatische Vorbereitung nach dem Start mit mindestens einer Sekunde Stillstand, frischen Spieldaten, erfolgreicher Routenprobe und geprüfter ACC-Anbindung. Die Fahrt beginnt mit F8.
 - Startversuche ohne Vorbereitung werden bei eingeschaltetem Plugin zurückgewiesen, auch nach einer Störung. F9 bleibt für die manuelle Übernahme verfügbar.
 - Fehlerbremsung bei Trackingverlust; Gegenrichtungsprüfung während der Lenkassistenz, auch außerhalb von Mautstellen.
 - F9 gibt die Steuerung zurück und löst eine aktive Fehlerbremsung ausdrücklich zur manuellen Übernahme.
@@ -22,7 +22,15 @@ Wenn eine passende manuelle Lkw-Spur die einzige erkennbare Option ist, wählt d
 
 ## Entwicklungsstand
 
-Quellstand **0.2.15 in Erprobung**. Anfahrt, Spurwahl, langsame Durchfahrt und Rückgabe an den Controller wurden mit einer früheren Version an einer ausgewählten Mautstelle praktisch geprüft. Die normale Straßenlenkung wurde mit 0.2.3 nach einem Neustart ebenfalls erfolgreich geprüft. Version 0.2.4 isolierte die Routenmessung vom veränderlichen Spurwechselzustand der Lenkroute.
+Quellstand **0.3.2 in Erprobung**. Die Standprobe berechnet eine separate Route und lässt Spurführung und Tempomat eingeschaltet. Die automatische Vorbereitung führt diese Prüfung vor der Startfreigabe aus. Ein fehlender, fehlerhafter oder veralteter Nachweis sperrt F8. Manuelles Versetzen, eine geänderte Fahrtrichtung und geänderte Navi-Knoten erfordern eine neue Prüfung im Stand. Ein fehlgeschlagener Haltepunkt wird nach Bewegung oder einer ausdrücklichen neuen Routenprobe erneut geprüft.
+
+Die Startsuche berücksichtigt auf geprüften Pathfinding-Builds auch die Grenzen zusammenhängender Kartenverbinder. Dort gelten weiterhin die Prüfung von Lkw-Freigabe, lokaler Richtung, geometrischer Verbindung und mindestens 25 Metern zusammenhängender Strecke. An einzelnen Kartenübergängen sind Richtung und Vorzeichen der Spurnummer unabhängig. Diese Kombination wird nur übernommen, wenn Verkehrsseite und Fahrbahngeometrie übereinstimmen und zwei native Startproben hinter dem Übergang dieselbe Spur bestätigen.
+
+Die Mautregelung reduziert das Tempo über den verfügbaren Weg. Unter gleichwertigen Zahlarten bevorzugt sie eine erreichbare Spur mit weniger Änderungen an der Route. Wenn die gewählte Spur unerreichbar wird, versucht sie vor der Aufteilung zu halten, solange der geprüfte Bremsweg reicht. Bei einer früh sichtbaren Routenlücke bremst sie auf dem zusammenhängenden Teil der Route ab. Bei verlorener oder falsch gerichteter Spur greift weiterhin die Fehlerbremsung.
+
+49 vollständige lokale Prüfungen und 39 unabhängige Logikprüfungen bestehen. Zusätzlich wurden gespeicherte Haltepunkte mit der Originalkarte wiedergegeben. Das prüft die Routenberechnung. Der Bremsweg und die Lenkung des beladenen Lkw müssen in der Fahrt geprüft werden.
+
+Anfahrt, Spurwahl, langsame Durchfahrt und Rückgabe an den Controller wurden mit einer früheren Version an einer ausgewählten Mautstelle praktisch geprüft. Die Fahrvalidierung von 0.3.2 steht aus. Die normale Straßenlenkung wurde mit 0.2.3 nach einem Neustart ebenfalls erfolgreich geprüft. Version 0.2.4 isolierte die Routenmessung vom veränderlichen Spurwechselzustand der Lenkroute.
 
 Bei der weiteren Fahrt mit 0.2.4 trat ein nativer Routenfehler auf. Danach konnte F8 die Fahrassistenz ohne aktive Mautbegrenzung erneut starten; eine zu niedrige Spur wurde gemeldet. Version 0.2.5 verlangt bei eingeschaltetem Mautassistenten eine erfolgreiche Vorbereitung, bevor Fahrassistenz eingeschaltet bleiben darf. Nach einer Störung zuerst mit F9 manuell übernehmen und anhalten; ab 0.2.10 erfolgt die erneute Vorbereitung dann automatisch. Ein normaler Stopp mit F9 löscht die Vorbereitung nicht. Die Rückweisung wird in Daten-Callbacks und im Plugin-Tick geprüft; sie ist keine atomare Sperre sämtlicher Ausgabethreads des Hostprogramms. Bei deaktiviertem Plugin kann diese Prüfung nicht wirken. Die Korrektur ist automatisiert geprüft, eine erneute vollständige Mautfahrt steht aus.
 

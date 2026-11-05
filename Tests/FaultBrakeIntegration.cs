@@ -39,12 +39,17 @@ public static class FaultBrakeIntegration
             plugin.SetActive(false);state.EnableAssists=false;
             Call(plugin,"OnTelemetry",telemetry);
             Set(plugin,"active",true);state.EnableAssists=true;
+            ((DriveSupervisor)typeof(TollPlugin).GetField("supervisor",Hidden)!.GetValue(plugin)!).Step(
+                new(clock.Elapsed.TotalSeconds,10,true,false,true,RouteFeed.Valid,0,true,true));
             Call(plugin,"OnPath",route);
             assert(plugin.Active&&!plugin.FaultBraking,"Straight forward route must be accepted");
         }
         telemetry.truckFloat.speed=0;
         Call(plugin,"OnTelemetry",telemetry);
         Set(plugin,"active",true);state.EnableAssists=true;
+        Set(plugin,"startCheck",new TollPlugin.StartCheck(point,.5,0,null));
+        double initial=clock.Elapsed.TotalSeconds;
+        foreach(var name in new[]{"gatesAt","gameTimeChangedAt"})Set(plugin,name,initial);
         Call(plugin,"OnPath",new PlannedPathData {HasError=true,ErrorMessage="Waiting for map data...",PlannedPath=[]});
         assert((float)Call(plugin,"Evaluate")! == -.35f && sent.Count==0,"Loading map at standstill only requests an ACC hold");
         Call(plugin,"OnPath",new PlannedPathData {HasError=true,ErrorMessage="No suitable starting road found for path planning.",PlannedPath=[]});
@@ -81,7 +86,7 @@ public static class FaultBrakeIntegration
         Prepare();state.EnableAssists=false;
         Call(plugin,"OnCancel",null,new ControlChangeEventArgs(false,null!));
         Call(plugin,"OnPath",new PlannedPathData {HasError=true,ErrorMessage="Assists are disabled.",PlannedPath=[]});
-        assert(!plugin.FaultBraking&&plugin.Active,"Ordinary F9 must not be mistaken for tracking failure");
+        assert(!plugin.FaultBraking&&!plugin.Active,"Ordinary F9 requests a new checked start without a tracking failure");
         Prepare();Set(plugin,"headingTurns",0d);
         var reversed=new PlannedPathData {HasError=false,PlannedPath=[new PlannedItem {item=route.PlannedPath[0].item,startNode=end,endNode=start,direction=Direction.Backward,laneIndex=1}]};
         Call(plugin,"OnPath",reversed);

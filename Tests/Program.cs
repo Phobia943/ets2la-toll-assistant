@@ -281,6 +281,20 @@ void Run()
             bool thrown=false;try{o.Validate();}catch(ArgumentException){thrown=true;}Assert(thrown);
         }
     });
+    Check("A distant booth and a distant route gap slow the truck before they become urgent",()=>{
+        double speed=25;
+        var decision=new TollController(new()).Step(Input(0,speed:speed,distance:330));
+        Assert(decision.MaxAcceleration is >= -.65f and <= 0);
+        double ahead=410;
+        var delayed=new Queue<float>(Enumerable.Repeat(0f,20));
+        for(int i=0;i<4000 && speed>.01;i++) {
+            Assert(ahead>TrackingGuard.RequiredLookahead(speed),"A planned slowdown must stay ahead of the hard-stop threshold");
+            delayed.Enqueue(ApproachStop.BeforeRouteGap(speed,ahead));
+            speed=Math.Max(0,speed+delayed.Dequeue()*.05);
+            ahead-=speed*.05;
+        }
+        Assert(speed<=.01 && ahead is > 25 and < 40);
+    });
     Check("Simulated approaches stop ahead of barrier from 30/60/90 km/h",()=>{
         foreach(double initial in new[]{30d,60d,90d}) {
             var c=new TollController(new());double v=initial/3.6, d=400;var delayed=new Queue<float>(Enumerable.Repeat(0f,20));
@@ -332,6 +346,16 @@ void Run()
         Assert(control.Step(frame with { Route = RouteFeed.Rejected }) == DriveAction.RejectStart);
         Assert(control.Step(frame with { Speed = 10, Route = RouteFeed.Rejected }) == DriveAction.EmergencyStop);
     });
+    Check("Stale disabled path rejects a rolling start without braking",()=>{
+        var input = new DriveFrame(0, 29.4 / 3.6, true, false, true, RouteFeed.AssistsOff, .031, false, false);
+        var control = new DriveSupervisor();
+        Assert(control.Step(input) == DriveAction.RejectStart);
+        control.Reset();
+        Assert(control.Step(input with { Speed = 0 }) == DriveAction.AwaitRoute);
+        var ready = input with { Time = .1, Route = RouteFeed.Valid, DecisionReady = true };
+        Assert(control.Step(ready) == DriveAction.Drive);
+        Assert(control.Step(input with { Time = .2 }) == DriveAction.EmergencyStop);
+    });
     Check("Brief input loss requires continuous recovery and resets after manual cancellation",()=>{
         var ready = new DriveFrame(0, 16, true, false, true, RouteFeed.Valid, .01, true, true);
         var control = new DriveSupervisor();
@@ -348,6 +372,24 @@ void Run()
         }
         Assert(control.Step(ready with { Time = .40, Enabled = false, TelemetryFresh = false }) == DriveAction.Idle);
         Assert(control.Step(ready with { Time = .41, Speed = 0, Route = RouteFeed.Waiting }) == DriveAction.AwaitRoute);
+    });
+    Check("A fresh toll decision ends recovery immediately and applies the normal constraint",()=>{
+        var ready = new DriveFrame(0, 81.4 / 3.6, true, false, true, RouteFeed.Valid, .030, true, true);
+        var gap = ready with { Time = .320, RouteAge = .001, DecisionReady = false };
+        var approach = ready with { Time = .323, RouteAge = .003, CanRecover = false };
+        var control = new DriveSupervisor();
+        Assert(control.Step(ready) == DriveAction.Drive);
+        Assert(control.Step(gap) == DriveAction.Recover);
+        var interrupted = control.Checkpoint;
+        Assert(control.Step(approach) == DriveAction.Drive);
+        Assert(control.Checkpoint.Interrupted == null);
+        foreach (var fault in new[]{
+            approach with { DecisionReady = false },
+            approach with { Route = RouteFeed.Rejected },
+            approach with { RouteAge = 1 },
+            approach with { Time = .821 }
+        })
+            Assert(new DriveSupervisor(interrupted).Step(fault) == DriveAction.EmergencyStop);
     });
     Check("Loss of the verified corridor, telemetry, or a toll safety input cannot use the recovery window",()=>{
         var ready = new DriveFrame(0, 25, true, false, true, RouteFeed.Valid, .01, true, true);
