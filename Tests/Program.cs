@@ -108,6 +108,7 @@ void Run()
     Check("Live steering commands remain visible during busy route work without false dropout braking",()=>SteeringSafetyIntegration.BusyHealthyFeed(Assert));
     Check("A newly delivered game pause is honored even before busy route bookkeeping drains it",()=>SteeringSafetyIntegration.PauseDeliveryWhileBusy(Assert));
     Check("Manual brake releases even a pending steering fault before route bookkeeping is available",()=>SteeringSafetyIntegration.BusyManualRelease(Assert));
+    Check("Slow native diagnostics cannot delay fault braking, brake refresh or manual acknowledgement",()=>SteeringSafetyIntegration.SlowDiagnostics(Assert));
     Check("Short item seams do not create false opposite road headings",()=>DirectionSeamIntegration.Run(Assert));
     Check("Automatic preparation attaches only at standstill and preserves fault takeover",()=>AutomaticPreparationIntegration.Run(Assert));
     Check("Rolling F8 validates the latest pose before handoff and can resume after F9",()=>RollingStartIntegration.StartAndTakeover(Assert));

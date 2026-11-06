@@ -111,4 +111,38 @@ public static class SteeringSafetyIntegration
             assert(f.Plugin.FaultBraking,"A fresh resume must restore steering supervision even if the cached route-side pause is still true");
         } finally {Monitor.Exit(sync);}
     }
+
+    public static void SlowDiagnostics(Action<bool,string> assert)
+    {
+        using var entered=new ManualResetEventSlim();using var release=new ManualResetEventSlim();
+        var f=new RollingStartIntegration.Fixture(true,()=> {
+            entered.Set();
+            if(!release.Wait(TimeSpan.FromSeconds(5)))throw new TimeoutException("Diagnostic fixture was not released");
+            return null;
+        });
+        f.Set("steeringMonitoringLive",true);f.F8();f.Probe();
+        f.Call("OnControlOutput",Command(.1f));f.Call("CheckSteeringOutput");Thread.Sleep(190);
+        var check=Task.Run(()=>f.Call("CheckSteeringOutput"));
+        Task? refresh=null,cancel=null;
+        bool diagnosticEntered=false,braked=false,refreshed=false,canceled=false;
+        try {
+            diagnosticEntered=entered.Wait(TimeSpan.FromSeconds(1));
+            braked=f.Plugin.FaultBraking&&!f.State.EnableAssists&&f.Outputs.Count>0&&f.Outputs[^1].Variables.abackward==-1;
+            refresh=Task.Run(()=>f.Call("CheckSteeringOutput"));
+            refreshed=refresh.Wait(TimeSpan.FromMilliseconds(300));
+            cancel=Task.Run(()=>f.Call("OnBrakeInput",null,new ETS2LA.Controls.ControlChangeEventArgs(.5f,TollPlugin.BrakeControl)));
+            canceled=cancel.Wait(TimeSpan.FromMilliseconds(300))&&!f.Plugin.FaultBraking&&!f.State.EnableAssists;
+        } finally {
+            release.Set();
+            if(!Task.WaitAll(new[]{check,refresh??Task.CompletedTask,cancel??Task.CompletedTask},TimeSpan.FromSeconds(3)))
+                throw new Exception("Diagnostic test tasks did not settle");
+        }
+        assert(diagnosticEntered,"Regression must hold the native diagnosis in progress");
+        assert(braked,"Fault braking and assist shutdown must precede a blocked diagnostic lookup");
+        assert(refreshed,"A blocked diagnosis cannot prevent independent brake refresh");
+        assert(canceled,"Manual takeover cannot wait for a diagnostic lookup");
+        f.Fresh();f.Call("Evaluate");f.Call("CheckSteeringOutput");
+        assert(!f.Plugin.FaultBraking&&!f.State.EnableAssists,
+            "A late diagnostic result cannot resurrect a manually acknowledged steering fault");
+    }
 }

@@ -31,4 +31,6 @@ Ein unabhängiger Ausfall um 18:32:36 bei rund 28 km/h bleibt ungeklärt. Der Mo
 
 ## Grenzen
 
+Die vorbereitete 0.3.8 behebt einen zusätzlich reproduzierten Ausführungsfehler: Ein angehaltener nativer Diagnoseaufruf verzögerte bisher sowohl den ersten Fehlerbremsbefehl als auch die manuelle Freigabe der Lenküberwachung. Der neue Test bestätigt Bremsausgabe und physische Übernahme bereits während des angehaltenen Aufrufs sowie das Verwerfen seines verspäteten Ergebnisses. Das ist ein lokaler Schnittstellennachweis; 0.3.8 ist noch nicht installiert oder im Spiel geprüft und erklärt die spontane Aufzeichnungslücke nicht abschließend.
+
 Die Erweiterung misst keine tatsächliche Durchfahrtshöhe. Die Schrankenquelle besitzt keinen eigenen Zeitstempel. Statusbilder mit etwa 1 Hz ersetzen keine hochauflösende Messung jeder Steuerentscheidung. Eine ausgefallene Anwendung kann keine verlässliche Bremsausgabe garantieren. Rohaufnahmen enthalten Spielpositionen und bleiben außerhalb des öffentlichen Repositorys.

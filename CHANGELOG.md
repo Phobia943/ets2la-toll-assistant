@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.3.8 – Bremsausgabe vor nativer Diagnose
+
+- Bei fehlender Lenkausgabe werden Assistenzabschaltung und Fehlerbremsung jetzt vor dem nativen Diagnoseaufruf ausgeführt. Der lesende Aufruf hält die Sperre der Lenküberwachung nicht mehr; weitere Bremsauffrischungen und die physische Übernahme bleiben während einer langsamen Diagnose möglich.
+- Eine währenddessen quittierte, beendete oder neu gestartete Überwachung verwirft das verspätete Diagnoseergebnis. Es darf keine bereits gelöste Fehlerbremsung erneut auslösen.
+- Ein gezielter Integrationstest hält die Diagnose an, prüft bereits ausgegebene Bremsung, unabhängige Auffrischung und physische Bremsübernahme und lässt den alten Aufruf erst danach zurückkehren. Vor der Korrektur scheiterte der Test an der fehlenden sofortigen Bremsung; danach bestehen alle 68 vollständigen lokalen Prüfungen und 42 unabhängigen Logikprüfungen.
+- Die Diagnose bleibt eine nicht atomare Beobachtung und erfolgt nun nach dem Abschalten. Sie beweist keinen exakt gleichzeitigen Zustand des nativen Reglers. Die spontane Lenk-/ACC-Aufzeichnungslücke vom 6. November ist dadurch nicht als behoben nachgewiesen. Abschaltschwellen und Mautregelung wurden nicht gelockert.
+- Vorbereitete Fassung; die laufende Installation bleibt bis zum Austausch bei geschlossenem ETS2LA auf 0.3.7. Tatsächliche SDK-Bremsausgabe und vollständige Mautdurchfahrt bleiben zu prüfen.
+
 ## 0.3.7 – Pausenzustand und native Lenkdiagnose
 
 - Ein weiterer gesicherter Abbruch zeigt bei rund 51 km/h nur etwa 4 cm Abstand zur zuletzt gültigen Linie und frische Lenksignale. Der native Planer verwarf dennoch die Route; das Protokoll enthält zuvor einen abgeschlossenen Spurwechsel und 4,5 m gemeldeten Abstand. Der konkrete Spurwechselzustand vor dem Leeren der Route fehlt in 0.3.6. Die vorbereitete Fehleraufzeichnung behält deshalb eine getrennte Kopie der zuletzt akzeptierten Route mit Alter, ausgewählten Kurven und versionsgeprüftem Spurwechselzustand. Diese Kopie dient nur dem Nachweis und gibt keine Fahrt bei Routenverlust frei.

@@ -35,7 +35,7 @@ public static class RollingStartIntegration
         public Func<PlannedPathData?> Plan;
         public bool InstallSucceeds=true;
         public int Installs;
-        public Fixture(bool monitorSteering=false)
+        public Fixture(bool monitorSteering=false,Func<IPlugin?>? readLaneAssist=null)
         {
             var assembly=AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"../../../../References/AdaptiveCruiseControl.dll")));
             var type=assembly.GetType("AdaptiveCruiseControl.AdaptiveCruiseControlPlugin",true)!;
@@ -62,7 +62,7 @@ public static class RollingStartIntegration
                     Installs++;
                     if(!InstallSucceeds)return false;
                     published.PlannedPath=planned.PlannedPath;published.ErrorMessage=null;published.HasError=false;return true;
-                },monitorSteering:monitorSteering);
+                },monitorSteering:monitorSteering,readLaneAssist:readLaneAssist);
             Plugin._IsRunning=true;
             Set("subscribed",true);Set("lastWrite",double.MaxValue);Set("position",Point);Set("headingTurns",.5d);
             Fresh();Set("path",Disabled());

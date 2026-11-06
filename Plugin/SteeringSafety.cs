@@ -17,7 +17,7 @@ public sealed partial class TollPlugin
         NativeSteeringSnapshot Native);
     SteeringCommand? lastSteeringCommand;
     PedalCommand? lastAccCommand;
-    SteeringFailure? pendingSteeringFailure,lastSteeringFailure;
+    SteeringFailure? collectingSteeringFailure,pendingSteeringFailure,lastSteeringFailure;
 
     void OnControlOutput(ControlEvent output)
     {
@@ -33,6 +33,7 @@ public sealed partial class TollPlugin
     void CheckSteeringOutput()
     {
         if(!monitorSteering)return;
+        SteeringFailure failure;
         lock(steeringSync)
         {
             // Keep an existing stop alive even while route bookkeeping is busy.
@@ -46,12 +47,23 @@ public sealed partial class TollPlugin
                 state.DrivingMode!=DrivingMode.AdaptiveCruiseControlOnly;
             steeringFeedState=steeringGuard.Check(now,command?.At??double.NegativeInfinity,required);
             if(steeringFeedState!=SteeringFeedState.Lost)return;
-            var failure=new SteeringFailure(now,DateTimeOffset.UtcNow,"Lenkausgabe ausgefallen: keine frischen Steuerbefehle der Spurhilfe.",
-                command!=null?now-command.At:null,command?.Value,NativeSteeringDiagnostics.Capture(readLaneAssist));
+            failure=new SteeringFailure(now,DateTimeOffset.UtcNow,"Lenkausgabe ausgefallen: keine frischen Steuerbefehle der Spurhilfe.",
+                command!=null?now-command.At:null,command?.Value,
+                new(false,false,null,null,null,null,null,null,null,null,"CapturePending"));
             state.EnableAssists=false;
             // FaultBrake uses the public output contract; no route or ACC lock.
             faultBrake.Trip();
-            Interlocked.Exchange(ref pendingSteeringFailure,failure);
+            collectingSteeringFailure=failure;
+        }
+        // Native lookup is observational work. Neither the first stop, future
+        // brake refreshes nor manual acknowledgement may wait for it. If the
+        // session is canceled while collecting, discard the late diagnosis.
+        var observed=failure with {Native=NativeSteeringDiagnostics.Capture(readLaneAssist)};
+        lock(steeringSync)
+        {
+            if(!ReferenceEquals(collectingSteeringFailure,failure))return;
+            collectingSteeringFailure=null;
+            if(faultBrake.Latched)Interlocked.Exchange(ref pendingSteeringFailure,observed);
         }
     }
 
@@ -61,7 +73,7 @@ public sealed partial class TollPlugin
         lock(steeringSync)
         {
             steeringGuard.Reset();steeringFeedState=SteeringFeedState.Off;
-            lastSteeringCommand=null;lastAccCommand=null;pendingSteeringFailure=lastSteeringFailure=null;
+            lastSteeringCommand=null;lastAccCommand=null;collectingSteeringFailure=pendingSteeringFailure=lastSteeringFailure=null;
             steeringMonitoringLive=true;
             steeringTimer=new Timer(_=> {
                 CheckSteeringOutput();
@@ -78,7 +90,7 @@ public sealed partial class TollPlugin
         {
             steeringMonitoringLive=false;State.EnableAssists=false;steeringGuard.Reset();
             steeringTimer?.Dispose();steeringTimer=null;
-            pendingSteeringFailure=null;
+            collectingSteeringFailure=pendingSteeringFailure=null;
         }
     }
 
@@ -88,7 +100,7 @@ public sealed partial class TollPlugin
         {
             State.EnableAssists=false;steeringGuard.Reset();steeringFeedState=SteeringFeedState.Off;
             faultBrake.Release();
-            pendingSteeringFailure=null;
+            collectingSteeringFailure=pendingSteeringFailure=null;
         }
     }
 
