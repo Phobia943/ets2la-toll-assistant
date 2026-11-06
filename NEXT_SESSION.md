@@ -1,30 +1,29 @@
 # Nächste Sitzung
 
-Aktualisierung vom 6. November: **0.3.7 läuft im Spiel.** F8 und frische Lenksignale wurden bestätigt. Beim gezielten Deaktivieren von Lane Assist im Stand verriegelte die Überwachung nach 152 ms ohne Signal die Fehlerbremsung und schaltete die Assistenz aus. Der Fahrer bestätigte die anschließende manuelle Übernahme und Controller-Lenkung; Lane Assist wurde wieder eingeschaltet. Die separate SDK-Aufnahme endete vor dem Auslösen und belegt deshalb die tatsächliche Bremsausgabe nicht. Diese Messung im Stand und die vollständige Mautdurchfahrt bleiben offen. Ein unabhängiger Ausfall mit knapp zwei Sekunden fehlenden Lenk- und ACC-Aufzeichnungen ist in VALIDATION.md dokumentiert; seine Ursache bleibt ungeklärt. Keine Plugin- oder Grenzwertänderung aus diesem Befund.
+Stand: 6. November 2026, nach den Standprüfungen.
 
-Vorbereitet ist inzwischen **0.3.8**: Abschaltung und Bremsbefehl gehen der nativen Diagnose voraus; deren Ausführung hält die Lenküberwachung nicht mehr gesperrt. Ein verspätetes Ergebnis nach manueller Übernahme wird verworfen. Vorher reproduziert und danach mit 68 vollständigen lokalen Tests sowie 42 Logikprüfungen geprüft. **Noch nicht installiert.** Austausch erst bei geschlossenem ETS2LA und stehendem Lkw.
+## Gesichert und installiert
 
-Für die nächste Prüfung: 0.3.8 im Stand installieren und über die übliche Verknüpfung laden. Bei Feststellbremse F8 aktivieren, dann eine neue SDK-Aufnahme starten. Vor dem gezielten Abschalten von Lane Assist anhand des laufenden Aufnahmeprozesses und einer frischen Zeile prüfen, dass die Aufnahme tatsächlich noch läuft. Während der Fehlerbremsung bei Spielfokus mehrere SDK-Pedalwerte erfassen, bevor Bremse oder F9 quittieren. Anschließend manuelle Übernahme und fehlenden Neustart nach Loslassen prüfen, Lane Assist wieder bereitstellen und Assistenz aus lassen. Ein abgelaufenes Aufnahmefenster darf nicht als Nachweis der Auslösung gelten.
-## Bisheriger Abschluss und ursprünglicher Prüfplan
+- **Mautassistent 0.3.8** ist installiert und wurde live geladen. SHA256 der DLL: `325A0F71AF26F0E625C6FBA61FD279FC62736FFD6E157DB77B0CC057B65B253A`. Der Plugin-Build stammt aus Commit `db4b0b9`; spätere Änderungen ergänzen Messwerkzeuge und Nachweise.
+- 68 vollständige lokale Prüfungen, 42 unabhängige Logikprüfungen und 21 Prüfungen der Aufnahmeauswertung und Datenformate. Diese Zahlen sind getrennte Suiten, keine addierte Fahrfreigabe.
+- Der Bremsbefehl und die Abschaltung gehen der nativen Diagnose voraus. Eine langsame Diagnose hält die Lenküberwachung nicht mehr gesperrt. Ein nach manueller Übernahme eintreffendes Ergebnis wird verworfen. Der neue lokale Test scheiterte vor der Korrektur und besteht danach.
+- Die globale ETS2LA-Option `EnableModernOutputForPedals` ist gespeichert eingeschaltet. Der Mautassistent schaltet sie nicht selbst um. Die vorherige Einstellung und die Rücksicherung der 0.3.7 liegen im lokalen Installationspaket.
 
-Abschluss vom 5. November 2026: **0.3.7 installiert**, noch nicht im Spiel gestartet oder fahrgeprüft. Spiel und ETS2LA sind beendet. 67 vollständige lokale Prüfungen bestanden; die unabhängige Logik umfasst 42 Prüfungen. Der Installations-Hash beginnt mit `E2EC56944A7C76A1`. Rücksicherung von 0.3.6 liegt lokal beim Installationspaket.
+## Im Spiel bestätigt
 
-## Enthalten
+F8 und frische Lenksignale wurden bei Feststellbremse bestätigt. Gezieltes Ausschalten von Lane Assist löste nach rund 168 ms ohne Lenksignal Abschaltung und verriegelte Fehlerbremsung aus. Die Aufnahme lief vor dem Auslösen und bis nach der Quittierung. 631 unbeanstandete Hintergrund-Proben zeigen modernen Pedalbefehl −1, bestätigte Übernahme, SDK-Bremse 1 und Gas 0. Der getrennte physische Bremseingang war bei der Auslösung 0. Bei Spielfokus wurde ebenfalls volle SDK-Bremse gemessen. Der Fahrer bestätigte nach physischem Bremsantippen normale Controller-Lenkung. Danach waren Verriegelung und Pedalübernahme gelöst und die Assistenz blieb aus. Lane Assist wurde wieder eingeschaltet; alle vier Module waren bereit.
 
-- Bereits gelieferte Pause und Wiederaufnahme erreichen die unabhängige Lenküberwachung auch bei beschäftigter Routenverwaltung.
-- Native Lenkfehler und bereits geladene Lenkparameter werden bei einem Ausfall rein lesend aufgezeichnet. Unbekannte Bibliotheksstände werden ausdrücklich nicht mit geratenen Feldern ausgewertet.
-- Die letzte akzeptierte Route bleibt für die Fehleranalyse als getrennte Kopie mit Alter, Kurvenauswahl und Spurwechselzustand erhalten, auch wenn der native Planer danach nur eine leere Fehlerroute liefert.
-- Eine ältere Lenkausfallmeldung wird einem späteren unabhängigen Routenfehler nicht mehr als aktuelle Ursache zugeordnet.
-- Bremsübernahme, Ausgabeüberwachung und bestehende Mautbegrenzung bleiben enthalten. Diagnosekopien erlauben keine Weiterfahrt trotz Fehler.
+Das ist ein Nachweis der Ausgabe im Stand, kein Bremsweg unter Beladung und kein vollständiger Mautversuch. Die erste Aufnahme mit 0.3.7 endete vor ihrem Ausfalltest und darf dafür nicht herangezogen werden.
 
-## Reihenfolge morgen
+## Noch offen
 
-1. ETS2LA über die übliche Verknüpfung starten. Geladenen Stand anhand frischer Diagnosedaten auf 0.3.7 prüfen. Die vier Module bereitstellen; Overlay ausgeschaltet lassen. Im Stand mit Feststellbremse bleiben, F8 zunächst aus.
-2. Zuerst die Ausgabeüberwachung im Stand prüfen: F8 aktivieren, frische Lenksignale bestätigen, dann Lane Assist gezielt deaktivieren. Abschaltung und gehaltene Bremsanforderung prüfen; bei Spielfokus zusätzlich die tatsächlichen SDK-Pedalwerte lesen. Keine Fahrbewegung für diesen Test.
-3. Mit physischer Bremse beziehungsweise F9 manuell übernehmen. Fehlerbremsung muss quittiert bleiben, Controller-Lenkung muss funktionieren; Loslassen darf nicht automatisch neu starten. Lane Assist wieder bereitstellen, Fahrassistenz zunächst aus lassen.
-4. Erst danach kurze beaufsichtigte Straßen-/Kurvenprobe, möglichst im Einzelspieler mit Savepoint und gleicher Beladung. Bei erneutem Ausfall die neue native Fehlermeldung, Reglerwerte und Routen-/Spurwechselzustände sichern. Nicht durch wiederholtes F8 die Ursache übergehen.
-5. Anschließend den vollständigen Mautdurchlauf aus [VALIDATION.md](VALIDATION.md) prüfen: Lkw-Spur, Zahlart, Anfahrt, nötiger Halt, verzögerte Freigabe, langsame Passage, Ausfahrt und manuelle Übernahme.
+1. **TruckersMP ist ausdrücklich Pflicht. Hintergrundfahrt ist nicht gelöst.** Trotz moderner Pedalausgabe kommen Gasbefehl und Übernahmebestätigung an, wirksames Gas und Motorreaktion fallen im Hintergrund jedoch aus. Vordergrund und erneuter Hintergrund reproduzieren den Unterschied. Details und Messfolge: [BACKGROUND_INPUT.md](BACKGROUND_INPUT.md). Der heruntergeladene Focus Keeper wurde nur als Quelltext geprüft, nicht ausgeführt oder installiert; sein Autor beschränkt ihn auf Einzelspieler. Er ist kein Ersatz für die geforderte TruckersMP-Lösung.
+2. Die spontane Lenk-/ACC-Aufzeichnungslücke von knapp zwei Sekunden bei rund 28 km/h ist ungeklärt. Das native Lenkmodul lief ohne internen Fehler. Bei der anschließenden Fehleraufzeichnung kam bereits ein neues Lenksignal an. Gemeinsame Ausführungspause, Zustellverzögerung und überholtes Monitor-Snapshot sind nicht sicher unterschieden. Abschaltschwellen wurden nicht gelockert. Nächster sinnvoller Offline-Schritt: Ausführung der Host-Ticks und synchrone Diagnosearbeit auf mögliche Blockaden prüfen.
+3. Ursprünglicher Kurvenunfall und weiterer nativer Routenverlust nach Spurwechsel sind nicht nachweislich an der Wurzel behoben. Die Diagnose bewahrt tatsächliche native Reglerwerte und ausgewählte Route/Spurwechselzustände für neue Vorfälle.
+4. Vollständige Mautdurchfahrt mit dem aktuellen Stand: geeignete Lkw-Spur und Zahlart, stabile Schranke, frühes Abbremsen, Halt, zwei Sekunden Offenzeit, langsame Passage, stabile Ausfahrt und manuelle Übernahme. Ein Einzelspieler-Vorversuch ersetzt den geforderten TruckersMP-Nachweis nicht. Anforderungen: [VALIDATION.md](VALIDATION.md).
 
-## Weiter offen
+## Weiterarbeiten
 
-Die ursprüngliche Ursache des Kurvenunfalls ist nicht bewiesen behoben. Gesichert sind sowohl ausbleibende Lenksignale bei weiterhin gültiger Route als auch ein anderer nativer Routenabbruch nach einem protokollierten Spurwechsel. Für beide fehlen im alten Stand bestimmte native Zustandsdaten. Die neue Diagnose soll diese Lücke schließen. Eine vollständige Mautdurchfahrt mit dem aktuellen Stand ist ebenfalls noch nicht nachgewiesen.
+Die Computerbedienung wurde zuletzt durch die physische Escape-Taste beendet. Ohne erneute Rückmeldung keine weitere Fensterbedienung oder Testaktivierung beginnen. Dateien, Code und gespeicherte Aufnahmen können weiter offline geprüft werden. Vor späteren Änderungen an der laufenden Assistenz aktuelle Daten, Stillstand und Feststellbremse erneut prüfen; vor einem DLL-Austausch ETS2LA beenden.
+
+Für weitere Aufnahmen mit `Tools/Record-TollDrive.ps1 -IncludePedalOutput` einen neuen Dateinamen wählen. Vor gezieltem Auslösen anhand eines tatsächlich laufenden Aufnahmeprozesses und einer frischen vollständigen Zeile prüfen, dass das Fenster noch läuft. Eine fehlende oder abgelaufene Aufnahme nicht durch einen behaupteten Fahrnachweis ersetzen. Rohaufnahmen mit Spielpositionen bleiben außerhalb des öffentlichen Repositorys.

@@ -28,6 +28,22 @@ function InvokeRecordingAnalysis($records,[switch]$Automatic) {
     $json|ConvertFrom-Json
 }
 try {
+    $inputBytes=[byte[]]::new(26);$stateBytes=[byte[]]::new(6)
+    [BitConverter]::GetBytes([single]-.75).CopyTo($inputBytes,13);$inputBytes[17]=1
+    [BitConverter]::GetBytes([double]1000).CopyTo($inputBytes,18)
+    [BitConverter]::GetBytes([int]16101).CopyTo($stateBytes,0);$stateBytes[5]=1
+    $pedals=Read-ModernPedalBuffer $inputBytes $stateBytes 1000.05
+    Assert ($pedals.acceleration -eq -.75 -and $pedals.overrideRequested -and $pedals.overrideReported -and
+        $pedals.pluginVersion -eq 16101 -and [Math]::Abs($pedals.commandAgeSeconds-.05) -lt .00001 -and
+        !$pedals.atomicSnapshot -and $pedals.issues.Count -eq 0) 'Modern signed brake command, double timestamp and plugin acknowledgement must decode independently of steering.';$checks++
+    [BitConverter]::GetBytes([single]::NaN).CopyTo($inputBytes,13)
+    [BitConverter]::GetBytes([double]::PositiveInfinity).CopyTo($inputBytes,18);$inputBytes[17]=2;$stateBytes[5]=2
+    $pedals=Read-ModernPedalBuffer $inputBytes $stateBytes 1000
+    Assert ($null -eq $pedals.acceleration -and $null -eq $pedals.timestamp -and $null -eq $pedals.commandAgeSeconds -and
+        $null -eq $pedals.overrideRequested -and $null -eq $pedals.overrideReported -and $pedals.issues.Count -eq 3) 'Invalid modern output fields must remain unknown and serialize without nonfinite numbers.';$checks++
+    $rejected=$false
+    try {Read-ModernPedalBuffer ([byte[]]::new(25)) $stateBytes 1000|Out-Null}catch{$rejected=$true}
+    Assert $rejected 'A different modern output layout must not be guessed.';$checks++
     $culture=[Threading.Thread]::CurrentThread.CurrentCulture
     try {
         [Threading.Thread]::CurrentThread.CurrentCulture=[Globalization.CultureInfo]::GetCultureInfo('de-DE')

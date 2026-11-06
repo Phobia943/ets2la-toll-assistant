@@ -51,4 +51,27 @@ function Resolve-TollGateObservation {
     [pscustomobject]@{state=$(if($consistent){$states[0]}else{-1});rawCount=$matched.Count;anchor=$anchor;
         source='ObservedRawAnchor';issue=$(if(!$matched.Count){'MissingAnchorGroup'}elseif(!$consistent){'ConflictingOrInvalidStates'}else{$null})}
 }
-Export-ModuleMember -Function Read-TollGateBuffer,Resolve-TollGateObservation
+function Read-ModernPedalBuffer {
+    param([Parameter(Mandatory)][byte[]]$InputBytes,[Parameter(Mandatory)][byte[]]$StateBytes,
+        [Parameter(Mandatory)][double]$UnixSeconds)
+    if($InputBytes.Length -ne 26 -or $StateBytes.Length -ne 6){throw 'Die modernen Ein- und Statusdaten müssen exakt 26 beziehungsweise 6 Byte enthalten.'}
+    $issues=[Collections.Generic.List[string]]::new()
+    $acceleration=[double][BitConverter]::ToSingle($InputBytes,13)
+    $stamp=[BitConverter]::ToDouble($InputBytes,18)
+    if(![double]::IsFinite($acceleration) -or $acceleration -lt -1 -or $acceleration -gt 1){
+        $issues.Add('InvalidModernPedalCommand');$acceleration=$null
+    }
+    if(![double]::IsFinite($stamp) -or ![double]::IsFinite($UnixSeconds)){
+        $issues.Add('InvalidModernPedalTimestamp');$stamp=$null
+    }
+    if($InputBytes[17] -notin @(0,1) -or $StateBytes[5] -notin @(0,1)){$issues.Add('InvalidModernPedalOverrideFlag')}
+    [pscustomobject]@{
+        acceleration=$acceleration
+        overrideRequested=$(if($InputBytes[17] -in @(0,1)){$InputBytes[17] -eq 1}else{$null})
+        timestamp=$stamp;commandAgeSeconds=$(if($null -ne $stamp){$UnixSeconds-$stamp}else{$null})
+        pluginVersion=[BitConverter]::ToInt32($StateBytes,0)
+        overrideReported=$(if($StateBytes[5] -in @(0,1)){$StateBytes[5] -eq 1}else{$null})
+        atomicSnapshot=$false;issues=$issues.ToArray()
+    }
+}
+Export-ModuleMember -Function Read-TollGateBuffer,Resolve-TollGateObservation,Read-ModernPedalBuffer

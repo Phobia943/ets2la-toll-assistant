@@ -4,11 +4,12 @@ param(
     [Parameter(Mandatory)][string]$EtsRoot,
     [Parameter(Mandatory)][string]$OutputPath,
     [ValidateRange(1,3600)][int]$DurationSeconds=600,
-    [ValidateRange(50,1000)][int]$IntervalMs=100
+    [ValidateRange(50,1000)][int]$IntervalMs=100,
+    [switch]$IncludePedalOutput
 )
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSScriptRoot 'CaptureFormat.psm1') -Force
-# Independent observer: neither ETS2LA output memory nor game configuration is opened.
+# Independent observer: all maps are read-only; game configuration is not opened.
 # Layouts: RenCloud telemetry revision 12; ETS2LA semaphore SDK, 40 x 48 bytes.
 $statusPath=Join-Path $EtsRoot 'MautAssistent/status.json'
 $target=[IO.Path]::GetFullPath($OutputPath)
@@ -16,7 +17,9 @@ if(Test-Path -LiteralPath $target){throw 'Die Zieldatei existiert bereits. Bitte
 [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($target))|Out-Null
 $maps=@();$views=@();$stream=$null;$writer=$null
 try {
-    foreach($spec in @(@('Local\SCSTelemetry',2300),@('Local\ETS2LASemaphore',1920))) {
+    $specs=@(@('Local\SCSTelemetry',2300),@('Local\ETS2LASemaphore',1920))
+    if($IncludePedalOutput){$specs+=@(@('Local\ETS2LAPluginInput',26),@('Local\ETS2LAPluginStatus',6))}
+    foreach($spec in $specs) {
         $map=[IO.MemoryMappedFiles.MemoryMappedFile]::OpenExisting($spec[0],[IO.MemoryMappedFiles.MemoryMappedFileRights]::Read)
         $maps+=,$map
         $views+=,$map.CreateViewAccessor(0,$spec[1],[IO.MemoryMappedFiles.MemoryMappedFileAccess]::Read)
@@ -25,6 +28,7 @@ try {
     $writer=[IO.StreamWriter]::new($stream,[Text.UTF8Encoding]::new($false))
     $clock=[Diagnostics.Stopwatch]::StartNew()
     $telemetry=[byte[]]::new(2300);$semaphores=[byte[]]::new(1920)
+    if($IncludePedalOutput){$modernInput=[byte[]]::new(26);$modernState=[byte[]]::new(6)}
     $lastStatus='';$statusUtc=$null;$status=$null;$nextStatus=0.0;$nextFlush=0.0;$samples=0
     $lastStamp=$null;$lastAdvance=0.0
     while($clock.Elapsed.TotalSeconds -lt $DurationSeconds) {
@@ -54,7 +58,7 @@ try {
                     $newStatus=$status|Select-Object utc,version,assists,active,mode,phase,targetSpeedKph,gate,candidate,
                         selectedLane,selectedPayment,plaza,faultBraking,pathError,driveAction,connectedMetresAhead,
                         requiredLookahead,telemetryAge,gatesAge,pathAge,options,routing,routeFault,plannedStop,stopDistance,
-                        steeringFeed,steeringAge,steeringFault
+                        steeringFeed,steeringAge,steeringFault,brakeHeld,brakeInputValue
                 }
             } catch {$issues.Add('StatusUnreadable')}
         }
@@ -66,10 +70,21 @@ try {
         if(@($speed,$x,$y,$z,$heading)|Where-Object{![double]::IsFinite($_)}) {throw 'Ungültige Telemetriewerte.'}
         $row=[ordered]@{
             schema=1;t=$t;utc=[DateTimeOffset]::UtcNow;sdkTimestamp=$stamp;active=($telemetry[0] -ne 0);paused=($telemetry[4] -ne 0)
-            speedMps=$speed;x=$x;y=$y;z=$z;heading=$heading;parkingBrake=($telemetry[1566] -ne 0)
+            speedMps=$speed;engineRpm=[BitConverter]::ToSingle($telemetry,952)
+            x=$x;y=$y;z=$z;heading=$heading;parkingBrake=($telemetry[1566] -ne 0)
+            # Raw game input channels can include SDK overrides. They are not
+            # proof of physical pedal activity; use the separate SDL brake input.
             userThrottle=[BitConverter]::ToSingle($telemetry,960);userBrake=[BitConverter]::ToSingle($telemetry,964)
             gameThrottle=[BitConverter]::ToSingle($telemetry,976);gameBrake=[BitConverter]::ToSingle($telemetry,980)
             gates=$gates;statusUtc=$lastStatus;statusAgeSeconds=$age;status=$newStatus;issues=$issues.ToArray()
+        }
+        if($IncludePedalOutput){
+            $views[2].ReadArray(0,$modernInput,0,26)|Out-Null
+            $views[3].ReadArray(0,$modernState,0,6)|Out-Null
+            $row.modernPedals=Read-ModernPedalBuffer $modernInput $modernState ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()/1000.0)
+            if([BitConverter]::ToDouble($modernInput,18) -ne $views[2].ReadDouble(18)){
+                $row.modernPedals.issues+=@('ModernPedalCommandChangedDuringRead')
+            }
         }
         $writer.WriteLine(($row|ConvertTo-Json -Depth 9 -Compress));$samples++
         if($t -ge $nextFlush){$writer.Flush();$nextFlush=$t+1}

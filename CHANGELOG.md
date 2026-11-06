@@ -6,7 +6,8 @@
 - Eine währenddessen quittierte, beendete oder neu gestartete Überwachung verwirft das verspätete Diagnoseergebnis. Es darf keine bereits gelöste Fehlerbremsung erneut auslösen.
 - Ein gezielter Integrationstest hält die Diagnose an, prüft bereits ausgegebene Bremsung, unabhängige Auffrischung und physische Bremsübernahme und lässt den alten Aufruf erst danach zurückkehren. Vor der Korrektur scheiterte der Test an der fehlenden sofortigen Bremsung; danach bestehen alle 68 vollständigen lokalen Prüfungen und 42 unabhängigen Logikprüfungen.
 - Die Diagnose bleibt eine nicht atomare Beobachtung und erfolgt nun nach dem Abschalten. Sie beweist keinen exakt gleichzeitigen Zustand des nativen Reglers. Die spontane Lenk-/ACC-Aufzeichnungslücke vom 6. November ist dadurch nicht als behoben nachgewiesen. Abschaltschwellen und Mautregelung wurden nicht gelockert.
-- Vorbereitete Fassung; die laufende Installation bleibt bis zum Austausch bei geschlossenem ETS2LA auf 0.3.7. Tatsächliche SDK-Bremsausgabe und vollständige Mautdurchfahrt bleiben zu prüfen.
+- Am 6. November installiert und im Stand geprüft: gezielter Lenkausfall führt zu voller SDK-Bremsausgabe auch bei Spiel im Hintergrund; physische Bremsübernahme und normale Controller-Lenkung bestätigt. Bremsweg unter Beladung und vollständige Mautdurchfahrt bleiben offen.
+- Rein lesende Aufnahme kann mit `-IncludePedalOutput` zusätzlich moderne Pedalbefehle und deren Spiel-Plugin-Bestätigung erfassen; Motordrehzahl ist ebenfalls enthalten. 21 Prüfungen der Aufnahmeauswertung und Datenformate. Der Hintergrund-Gasfehler unter TruckersMP wurde damit reproduziert und bleibt ausdrücklich ungelöst.
 
 ## 0.3.7 – Pausenzustand und native Lenkdiagnose
 
