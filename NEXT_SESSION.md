@@ -1,5 +1,9 @@
 # Nächste Sitzung
 
+Aktualisierung vom 6. November: **0.3.7 läuft im Spiel.** F8 und frische Lenksignale wurden bestätigt. Beim gezielten Deaktivieren von Lane Assist im Stand verriegelte die Überwachung nach 152 ms ohne Signal die Fehlerbremsung und schaltete die Assistenz aus. Der Fahrer bestätigte die anschließende manuelle Übernahme und Controller-Lenkung; Lane Assist wurde wieder eingeschaltet. Die separate SDK-Aufnahme endete vor dem Auslösen und belegt deshalb die tatsächliche Bremsausgabe nicht. Diese Messung im Stand und die vollständige Mautdurchfahrt bleiben offen. Ein unabhängiger Ausfall mit knapp zwei Sekunden fehlenden Lenk- und ACC-Aufzeichnungen ist in VALIDATION.md dokumentiert; seine Ursache bleibt ungeklärt. Keine Plugin- oder Grenzwertänderung aus diesem Befund.
+
+## Bisheriger Abschluss und ursprünglicher Prüfplan
+
 Abschluss vom 5. November 2026: **0.3.7 installiert**, noch nicht im Spiel gestartet oder fahrgeprüft. Spiel und ETS2LA sind beendet. 67 vollständige lokale Prüfungen bestanden; die unabhängige Logik umfasst 42 Prüfungen. Der Installations-Hash beginnt mit `E2EC56944A7C76A1`. Rücksicherung von 0.3.6 liegt lokal beim Installationspaket.
 
 ## Enthalten
