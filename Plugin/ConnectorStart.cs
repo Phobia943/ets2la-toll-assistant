@@ -17,11 +17,15 @@ public static class ConnectorStart
     public const string MissingRoad = "No suitable starting road found for path planning.";
     static readonly Guid PlannerBuild = new("c0f35d70-ef3f-4fa1-9361-fdedc23bbe2d");
     static readonly Guid EventBusBuild = new("e4372644-7355-4bb8-a350-61dcbecccbcb");
+    static readonly Guid EventBusBuild5297 = new("55045e5f-8854-4fb4-8fd7-a173342a7471");
     static readonly Guid PathLibBuild = new("8d0821da-1971-4caa-a8be-78ea1093e51d");
     const BindingFlags Fields = BindingFlags.Instance | BindingFlags.NonPublic;
 
+    // Both inspected host builds publish on the caller's stack and release the
+    // subscription lock before invoking the captured handler list.
+    internal static bool SupportsEventBusBuild(Guid build) => build==EventBusBuild || build==EventBusBuild5297;
     static bool Compatible(IPlugin planner) => planner._IsRunning && planner.Info.Id == "tumppi066.pathfinding" &&
-        planner.GetType().Module.ModuleVersionId == PlannerBuild && typeof(Events).Module.ModuleVersionId == EventBusBuild &&
+        planner.GetType().Module.ModuleVersionId == PlannerBuild && SupportsEventBusBuild(typeof(Events).Module.ModuleVersionId) &&
         typeof(PlannedItem).Module.ModuleVersionId == PathLibBuild;
 
     internal static bool IsLoadingMap(IPlugin planner) => Compatible(planner) &&

@@ -1,6 +1,6 @@
 # Nächste Sitzung
 
-Stand: 6. November 2026, nach den Standprüfungen.
+Aktualisierung vom 13. November 2026: 0.3.9 ist unter ETS2LA 2026.11.5297 installiert, das offizielle SDK 1.62 ist erneuert. 69 vollständige lokale Prüfungen bestehen. Alle vier Module sind geladen. Nach manuellem Verlassen eines nicht startfähigen Kartenanschlusses wurden automatische Startfreigabe, F8-Aktivierung und frische Lenksignale bestätigt. Vollständige Mautdurchfahrt bleibt offen. Die folgenden Nachweise vom 6. November gelten mit ihren genannten Grenzen.
 
 ## Gesichert und installiert
 

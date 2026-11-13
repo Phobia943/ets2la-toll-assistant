@@ -101,6 +101,7 @@ void Run()
         }
     });
     #if INTEGRATION
+    Check("The inspected native event bus preserves synchronous route handoff and accepts the current host combination",()=>NativeEventBusIntegration.Run(Assert));
     Check("An empty native error retains detached prior route evidence without relaxing fault braking",()=>RouteFaultEvidenceIntegration.Run(Assert));
     Check("Verified native steering diagnostics are read-only, build-pinned and safe on lookup failures",()=>NativeSteeringDiagnosticsIntegration.Run(Assert));
     Check("Native settings diagnostics read only initialized values and never invoke their factory",()=>NativeSteeringDiagnosticsIntegration.SettingsWithoutInitialization(Assert));

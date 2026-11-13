@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.3.9 – Wiederherstellung nach ETS2LA- und Spielupdate
+
+- Die Routenprobe akzeptiert zusätzlich den geprüften Ereignisbus von ETS2LA 2026.11.5297. Pathfinding und PathLib müssen weiterhin exakt den bereits geprüften Fassungen entsprechen; unbekannte Host-Builds bleiben gesperrt.
+- Ein neuer Integrationstest verwendet den tatsächlichen Host-Ereignisbus und prüft synchrone Zustellung, Aufrufreihenfolge, Abonnementänderungen während eines Rückrufs und die konkrete Kombination mit Pathfinding. 69 vollständige lokale Prüfungen bestehen.
+- Am 13. November mit dem offiziellen SDK 1.62 wiederhergestellt: Plugin 0.3.9 geladen, Spielverbindung aktiv und alle vier Module eingeschaltet. Die erste Live-Startprobe wurde am Kartenanschluss abgelehnt. Nach manuellem Wechsel auf den nächsten Straßenabschnitt erfolgte die automatische Startfreigabe; F8 aktivierte Full Self-Driving mit frischen Lenksignalen und etwa 365 m verbundener Route. Eine vollständige Mautdurchfahrt ist noch nicht bestätigt. Keine Änderung an Brems- oder Trackinggrenzen.
+
 ## 0.3.8 – Bremsausgabe vor nativer Diagnose
 
 - Bei fehlender Lenkausgabe werden Assistenzabschaltung und Fehlerbremsung jetzt vor dem nativen Diagnoseaufruf ausgeführt. Der lesende Aufruf hält die Sperre der Lenküberwachung nicht mehr; weitere Bremsauffrischungen und die physische Übernahme bleiben während einer langsamen Diagnose möglich.
