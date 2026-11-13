@@ -1,31 +1,39 @@
 # Nächste Sitzung
 
-Aktualisierung vom 13. November 2026: 0.3.9 ist unter ETS2LA 2026.11.5297 installiert, das offizielle SDK 1.62 ist erneuert. 69 vollständige lokale Prüfungen bestehen. Alle vier Module sind geladen. Nach manuellem Verlassen eines nicht startfähigen Kartenanschlusses wurden automatische Startfreigabe, F8-Aktivierung und frische Lenksignale bestätigt. Vollständige Mautdurchfahrt bleibt offen. Die folgenden Nachweise vom 6. November gelten mit ihren genannten Grenzen.
+Stand: 13. November 2026, nach Beenden von Spiel und ETS2LA.
 
-Vorbereitet: **0.3.10**, noch nicht installiert. Die reproduzierte Blockade durch Diagnose-I/O ist korrigiert; 72 Integrationstests, 44 Logiktests und 24 Aufnahmeprüfungen bestehen. Die Signallücke vom 13. November bleibt kausal ungeklärt. Paket und Vorfallaufnahmen liegen lokal außerhalb des Repositorys. Vor dem Austausch aktuellen Stillstand und manuelle Übernahme prüfen und ETS2LA schließen. Nächster Fahrvergleich mit repariertem Lkw; danach vollständige klassische Mautdurchfahrt mit derselben Aufnahme vor, während und nach der Schranke.
+## Installiert und gesichert
 
-## Gesichert und installiert
+- **Mautassistent 0.3.10** ist installiert und per Dateiversion sowie SHA256 verifiziert: `A6A5AD051213393072F646556F35CF10747D7930696BEE54FA22862C1B1E784A`. Nach dem Austausch wurde er noch nicht neu gestartet oder im Spiel geprüft. Die vorherige 0.3.9 liegt im lokalen Installationspaket als Rücksicherung.
+- Geprüfte Kombination: ETS2LA 2026.11.5297, ETS2/SDK 1.62, Pathfinding 1.2.9, Lane Assist 1.6.2, PathLib 1.2.8 und ACC 2.1.1. Fremde DLLs und Rohaufnahmen bleiben außerhalb des Repositorys.
+- Diagnose-Serialisierung und Schreibzugriffe sind vom Fahrzyklus getrennt. 72 Integrationstests, 44 unabhängige Logiktests und 27 Aufnahmeprüfungen bestehen. Die Suiten ersetzen keinen Fahrnachweis.
+- In der lokalen Lane-Assist-Einstellung wurde bei beendeten Anwendungen ausschließlich **WidenTurnsWithTrailer = false** gespeichert. Die unveränderte Ausgangsdatei ist gesichert. Eine rekonstruierte vordere Kurvengeometrie überschreitet mit dem früheren Zusatzversatz die native Abstandsgrenze; ohne ihn nicht. Wirkung und Aufliegerführung sind noch im Spiel zu prüfen.
+- Moderne Pedalausgabe bleibt eingeschaltet, Overlay ausgeschaltet. F8/F9/F10/F11 und die physische Bremsübernahme bleiben erhalten. Die Bremsachse ist weiterhin Axis Z / SplitPos; ohne Anlass nicht erneut anlernen.
+- Beide Anwendungen sind beendet. Die Aufnahmen sind beendet; es läuft keine behauptete Hintergrundbeobachtung.
 
-- **Mautassistent 0.3.8** ist installiert und wurde live geladen. SHA256 der DLL: `325A0F71AF26F0E625C6FBA61FD279FC62736FFD6E157DB77B0CC057B65B253A`. Der Plugin-Build stammt aus Commit `db4b0b9`; spätere Änderungen ergänzen Messwerkzeuge und Nachweise.
-- 68 vollständige lokale Prüfungen, 42 unabhängige Logikprüfungen und 21 Prüfungen der Aufnahmeauswertung und Datenformate. Diese Zahlen sind getrennte Suiten, keine addierte Fahrfreigabe.
-- Der Bremsbefehl und die Abschaltung gehen der nativen Diagnose voraus. Eine langsame Diagnose hält die Lenküberwachung nicht mehr gesperrt. Ein nach manueller Übernahme eintreffendes Ergebnis wird verworfen. Der neue lokale Test scheiterte vor der Korrektur und besteht danach.
-- Die globale ETS2LA-Option `EnableModernOutputForPedals` ist gespeichert eingeschaltet. Der Mautassistent schaltet sie nicht selbst um. Die vorherige Einstellung und die Rücksicherung der 0.3.7 liegen im lokalen Installationspaket.
+## Belegt und noch offen
 
-## Im Spiel bestätigt
+Eine rollende Mautpassage mit **0.3.9** wurde aufgezeichnet und vom Fahrer bestätigt: zweite Lkw-Spur von rechts, automatische Abrechnung, langsame Anfahrt und Passage, anschließend stabile Route und keine neuen Kollisionsschäden. Das Tor öffnete vor einem längeren Stillstand. Der Halt vor einer geschlossen bleibenden Schranke ist damit nicht validiert. Die separate physische Bremsübernahme mit 0.3.9 wurde bestätigt. Einzelheiten, Abtastgrenzen und die Anforderungsmatrix stehen in [VALIDATION.md](VALIDATION.md).
 
-F8 und frische Lenksignale wurden bei Feststellbremse bestätigt. Gezieltes Ausschalten von Lane Assist löste nach rund 168 ms ohne Lenksignal Abschaltung und verriegelte Fehlerbremsung aus. Die Aufnahme lief vor dem Auslösen und bis nach der Quittierung. 631 unbeanstandete Hintergrund-Proben zeigen modernen Pedalbefehl −1, bestätigte Übernahme, SDK-Bremse 1 und Gas 0. Der getrennte physische Bremseingang war bei der Auslösung 0. Bei Spielfokus wurde ebenfalls volle SDK-Bremse gemessen. Der Fahrer bestätigte nach physischem Bremsantippen normale Controller-Lenkung. Danach waren Verriegelung und Pedalübernahme gelöst und die Assistenz blieb aus. Lane Assist wurde wieder eingeschaltet; alle vier Module waren bereit.
+Nach der Reparatur trat ein weiterer nativer Kurvenabbruch auf. Der seitliche Zusatzversatz erklärt die rekonstruierte Abstandsablehnung, aber keine beliebige frühere Signallücke. Ein anderer Routenabbruch betrifft einen unvollständigen Spurwechsel auf einem kurzen Straßenabschnitt. Keine Abschaltschwelle wurde gelockert.
 
-Das ist ein Nachweis der Ausgabe im Stand, kein Bremsweg unter Beladung und kein vollständiger Mautversuch. Die erste Aufnahme mit 0.3.7 endete vor ihrem Ausfalltest und darf dafür nicht herangezogen werden.
+Die neue Luftdruckaufnahme enthält die tatsächlichen Warn-/Notfallflags und fahrzeugspezifischen Schwellen. Zuletzt waren beide Flags aktiv und die Simulation pausiert. Ein Druckaufbau ist noch nicht nachgewiesen; ältere Aufnahmen enthalten keinen Luftdruck. Keinen früheren Vorfall nachträglich allein damit erklären.
 
-## Noch offen
+## Nächste praktische Prüfung
 
-1. **TruckersMP ist ausdrücklich Pflicht. Hintergrundfahrt ist nicht gelöst.** Trotz moderner Pedalausgabe kommen Gasbefehl und Übernahmebestätigung an, wirksames Gas und Motorreaktion fallen im Hintergrund jedoch aus. Vordergrund und erneuter Hintergrund reproduzieren den Unterschied. Details und Messfolge: [BACKGROUND_INPUT.md](BACKGROUND_INPUT.md). Der heruntergeladene Focus Keeper wurde nur als Quelltext geprüft, nicht ausgeführt oder installiert; sein Autor beschränkt ihn auf Einzelspieler. Er ist kein Ersatz für die geforderte TruckersMP-Lösung.
-2. Die spontane Lenk-/ACC-Aufzeichnungslücke von knapp zwei Sekunden bei rund 28 km/h ist ungeklärt. Das native Lenkmodul lief ohne internen Fehler. Bei der anschließenden Fehleraufzeichnung kam bereits ein neues Lenksignal an. Gemeinsame Ausführungspause, Zustellverzögerung und überholtes Monitor-Snapshot sind nicht sicher unterschieden. Abschaltschwellen wurden nicht gelockert. Nächster sinnvoller Offline-Schritt: Ausführung der Host-Ticks und synchrone Diagnosearbeit auf mögliche Blockaden prüfen.
-3. Ursprünglicher Kurvenunfall und weiterer nativer Routenverlust nach Spurwechsel sind nicht nachweislich an der Wurzel behoben. Die Diagnose bewahrt tatsächliche native Reglerwerte und ausgewählte Route/Spurwechselzustände für neue Vorfälle.
-4. Vollständige Mautdurchfahrt mit dem aktuellen Stand: geeignete Lkw-Spur und Zahlart, stabile Schranke, frühes Abbremsen, Halt, zwei Sekunden Offenzeit, langsame Passage, stabile Ausfahrt und manuelle Übernahme. Ein Einzelspieler-Vorversuch ersetzt den geforderten TruckersMP-Nachweis nicht. Anforderungen: [VALIDATION.md](VALIDATION.md).
+1. Nutzer startet TruckersMP und ETS2LA über die gewohnten Verknüpfungen und lädt den Lkw im Stand. Assistenz aus, Feststellbremse an. Motor im Leerlauf laufen lassen und bei Bedarf mit leichtem Gas Luft aufbauen; die Simulation muss laufen. Erst aktuelle Druckwerte und erloschene Warn-/Notfallflags bestätigen.
+2. Geladene 0.3.10, aktuelle SDK-Daten, vier eingeschaltete Module, Full Self-Driving und die gespeicherte Kurveneinstellung prüfen. Keine Fahrfreigabe aus einer alten Statusdatei ableiten.
+3. Zuerst mit Feststellbremse F8 aktivieren und die physische Bremsübernahme beziehungsweise F9 testen. Ausgeschaltete Assistenz und normale Controller-Lenkung tatsächlich bestätigen.
+4. Danach vorsichtiger Kurvenvergleich mit Auflieger: frische Lenkbefehle, Abstand zur Route und tatsächliche Innen-/Außenfreiheit beobachten. Die abgeschaltete Zusatzaufweitung ist noch kein Fahrnachweis.
+5. Vollständige klassische Mautdurchfahrt einschließlich Halt, falls das Tor geschlossen bleibt, und verzögerter Freigabe prüfen. Dieselbe Aufnahme muss Anfahrt, Tor, Passage, Ausfahrt und anschließende manuelle Übernahme enthalten. Einen offenen oder vorzeitig geöffneten Übergang entsprechend als Teilnachweis kennzeichnen.
+6. Bei normaler Fahrt Luftdruck und Bremsbefehle gemeinsam erfassen. Erst danach über Bremsflattern oder Druckluftverbrauch als Ursache entscheiden.
 
-## Weiterarbeiten
+Für eine neue Aufnahme PowerShell 7 verwenden, einen neuen Dateinamen wählen und vor dem Test einen tatsächlich laufenden Prozess sowie frische vollständige Messzeilen prüfen:
 
-Am 13. November wurde die Wiederherstellung vom Nutzer fortgesetzt; die letzten Beobachtungen erfolgten ohne Fensterbedienung. Dateien, Code und gespeicherte Aufnahmen können weiter offline geprüft werden. Vor späteren Änderungen an der laufenden Assistenz aktuelle Daten, Stillstand und Feststellbremse erneut prüfen; vor einem DLL-Austausch ETS2LA beenden.
+```powershell
+./Tools/Record-TollDrive.ps1 -EtsRoot 'D:\ETS2LA\current' -OutputPath './neue-mautfahrt.jsonl' -DurationSeconds 600 -IncludePedalOutput
+```
 
-Für weitere Aufnahmen mit `Tools/Record-TollDrive.ps1 -IncludePedalOutput` einen neuen Dateinamen wählen. Vor gezieltem Auslösen anhand eines tatsächlich laufenden Aufnahmeprozesses und einer frischen vollständigen Zeile prüfen, dass das Fenster noch läuft. Eine fehlende oder abgelaufene Aufnahme nicht durch einen behaupteten Fahrnachweis ersetzen. Rohaufnahmen mit Spielpositionen bleiben außerhalb des öffentlichen Repositorys.
+Während einer Fahrt nur lesen, keinen Fensterfokus wechseln und keine Plugin-Dateien oder Einstellungen austauschen. Vor späteren Änderungen aktuellen Stillstand und manuelle Übernahme prüfen; vor einem DLL-Austausch ETS2LA beenden.
+
+**TruckersMP bleibt Pflicht.** Hintergrund-Gas ist weiterhin nicht gelöst. Der nur für Einzelspieler vorgesehene Focus Keeper wurde nicht installiert und ist kein Ersatz. Messfolge: [BACKGROUND_INPUT.md](BACKGROUND_INPUT.md).

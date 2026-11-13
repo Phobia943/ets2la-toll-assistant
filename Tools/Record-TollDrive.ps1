@@ -72,6 +72,7 @@ try {
             schema=1;t=$t;utc=[DateTimeOffset]::UtcNow;sdkTimestamp=$stamp
             simulatedTimestamp=[BitConverter]::ToUInt64($telemetry,16);renderTimestamp=[BitConverter]::ToUInt64($telemetry,24)
             damage=(Read-TruckDamageBuffer $telemetry)
+            airBrakes=(Read-TruckAirBuffer $telemetry)
             active=($telemetry[0] -ne 0);paused=($telemetry[4] -ne 0)
             speedMps=$speed;engineRpm=[BitConverter]::ToSingle($telemetry,952)
             x=$x;y=$y;z=$z;heading=$heading;parkingBrake=($telemetry[1566] -ne 0)

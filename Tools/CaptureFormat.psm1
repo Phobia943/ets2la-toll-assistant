@@ -94,4 +94,26 @@ function Read-TruckDamageBuffer {
     $values.issues=$issues.ToArray()
     [pscustomobject]$values
 }
-Export-ModuleMember -Function Read-TollGateBuffer,Resolve-TollGateObservation,Read-ModernPedalBuffer,Read-TruckDamageBuffer
+function Read-TruckAirBuffer {
+    param([Parameter(Mandatory)][byte[]]$Bytes)
+    if($Bytes.Length -ne 2300 -or [BitConverter]::ToUInt32($Bytes,40) -ne 12){
+        throw 'Luftdruckwerte erfordern den 2300-Byte-Telemetrieausschnitt der Revision 12.'
+    }
+    # Verified against the installed GameTelemetry reader. Pressure and its
+    # configured limits use the same SDK scale; no unit conversion is assumed.
+    $issues=[Collections.Generic.List[string]]::new()
+    $values=[ordered]@{}
+    foreach($field in @(@('pressure',992),@('warningThreshold',720),@('emergencyThreshold',724))) {
+        $value=[double][BitConverter]::ToSingle($Bytes,$field[1])
+        if(![double]::IsFinite($value) -or $value -lt 0){$issues.Add("InvalidAirPressure:$($field[0])");$value=$null}
+        $values[$field[0]]=$value
+    }
+    foreach($field in @(@('warning',1568),@('emergency',1569))) {
+        $value=$Bytes[$field[1]]
+        if($value -notin @(0,1)){$issues.Add("InvalidAirFlag:$($field[0])");$values[$field[0]]=$null}
+        else{$values[$field[0]]=$value -eq 1}
+    }
+    $values.issues=$issues.ToArray()
+    [pscustomobject]$values
+}
+Export-ModuleMember -Function Read-TollGateBuffer,Resolve-TollGateObservation,Read-ModernPedalBuffer,Read-TruckDamageBuffer,Read-TruckAirBuffer

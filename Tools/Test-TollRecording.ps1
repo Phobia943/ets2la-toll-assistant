@@ -28,6 +28,19 @@ function InvokeRecordingAnalysis($records,[switch]$Automatic) {
     $json|ConvertFrom-Json
 }
 try {
+    $airBytes=[byte[]]::new(2300);[BitConverter]::GetBytes([uint32]12).CopyTo($airBytes,40)
+    [BitConverter]::GetBytes([single]4.5).CopyTo($airBytes,992)
+    [BitConverter]::GetBytes([single]5).CopyTo($airBytes,720)
+    [BitConverter]::GetBytes([single]4.25).CopyTo($airBytes,724);$airBytes[1568]=1
+    $air=Read-TruckAirBuffer $airBytes
+    Assert ($air.pressure -eq 4.5 -and $air.warningThreshold -eq 5 -and $air.emergencyThreshold -eq 4.25 -and
+        $air.warning -and !$air.emergency -and $air.issues.Count -eq 0) 'Read pressure, vehicle-specific limits and actual warning flags without inferred units.';$checks++
+    [BitConverter]::GetBytes([single]::NaN).CopyTo($airBytes,992);$airBytes[1569]=2
+    $air=Read-TruckAirBuffer $airBytes
+    Assert ($null -eq $air.pressure -and $null -eq $air.emergency -and $air.issues.Count -eq 2) 'Bad pressure and warning flags cannot be reported as safe readings.';$checks++
+    $airBytes[40]=13;$rejected=$false
+    try{Read-TruckAirBuffer $airBytes|Out-Null}catch{$rejected=$true}
+    Assert $rejected 'Unknown telemetry layout cannot decode air pressure.';$checks++
     $telemetry=[byte[]]::new(2300);[BitConverter]::GetBytes([uint32]12).CopyTo($telemetry,40)
     $offset=1036
     foreach($wear in @(.01,.02,.03,.04,.05)){[BitConverter]::GetBytes([single]$wear).CopyTo($telemetry,$offset);$offset+=4}
