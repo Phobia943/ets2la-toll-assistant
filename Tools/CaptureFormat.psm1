@@ -116,4 +116,62 @@ function Read-TruckAirBuffer {
     $values.issues=$issues.ToArray()
     [pscustomobject]$values
 }
-Export-ModuleMember -Function Read-TollGateBuffer,Resolve-TollGateObservation,Read-ModernPedalBuffer,Read-TruckDamageBuffer,Read-TruckAirBuffer
+function Measure-TollDeparture {
+    param([Parameter(Mandatory)][object[]]$Rows,[Parameter(Mandatory)][string]$GateKey)
+    function Finite($object,[string]$name) {
+        if($null -eq $object -or $null -eq $object.$name){return $false}
+        try{return [double]::IsFinite([double]$object.$name)}catch{return $false}
+    }
+    $anchor=$null;$seed=$null;$previous=$null;$approached=$false
+    $released=0;$beyond=0;$first=$null;$last=$null;$maxProjection=$null
+    foreach($r in $Rows) {
+        $s=$r.currentStatus
+        $continuous=$null -eq $previous -or ($r.t-$previous.t -le .5 -and $r.sdkTimestamp -ne $previous.sdkTimestamp)
+        $good=$r.active -and !$r.paused -and @($r.issues).Count -eq 0 -and $continuous -and
+            $null -ne $s -and $s.assists -and !$s.faultBraking -and !$s.pathError -and !$s.routeFault -and
+            $s.steeringFeed -eq 'Healthy' -and (Finite $s 'connectedMetresAhead') -and (Finite $s 'requiredLookahead') -and
+            (Finite $s 'telemetryAge') -and $s.telemetryAge -ge 0 -and $s.telemetryAge -lt .5 -and
+            (Finite $s 'pathAge') -and $s.pathAge -ge 0 -and $s.pathAge -lt 1 -and
+            (Finite $s 'steeringAge') -and $s.steeringAge -ge 0 -and $s.steeringAge -le .15 -and
+            $s.requiredLookahead -ge 25 -and $s.connectedMetresAhead -ge $s.requiredLookahead -and
+            (Finite $r 'x') -and (Finite $r 'y') -and (Finite $r 'z') -and (Finite $r 'heading') -and
+            (Finite $r 'speedMps') -and $r.speedMps -ge -.1 -and (!$s.gate -or $s.gate -ceq $GateKey)
+        if($good -and $previous -and (Finite $previous 'x') -and (Finite $previous 'y') -and (Finite $previous 'z')) {
+            $step=[math]::Sqrt([math]::Pow($r.x-$previous.x,2)+[math]::Pow($r.y-$previous.y,2)+[math]::Pow($r.z-$previous.z,2))
+            $allow=[math]::Max(5,([math]::Max([math]::Abs($r.speedMps),[math]::Abs($previous.speedMps))*($r.t-$previous.t)+2))
+            if($step -gt $allow){$good=$false}
+        }
+        if(!$good){$seed=$null;$approached=$false;$previous=$r;continue}
+        $observed=Resolve-TollGateObservation -Gates $r.gates -GateKey $GateKey -RememberedAnchor $anchor
+        if($observed.state -in 0..3 -and $observed.anchor){$anchor=$observed.anchor}
+        $assigned=$s.gate -ceq $GateKey -and $s.candidate.Key -ceq $GateKey -and (Finite $s.candidate 'Distance')
+        if($assigned -and $s.candidate.Distance -ge 0){$approached=$true;$seed=$null}
+        if(!$seed -and $approached -and $assigned -and $s.candidate.Distance -lt -1 -and $s.candidate.Distance -gt -30 -and
+            $observed.state -eq 3 -and $anchor -and $r.speedMps -gt .05) {
+            $fx=-[math]::Sin($r.heading*2*[math]::PI);$fz=-[math]::Cos($r.heading*2*[math]::PI)
+            $projection=($r.x-$anchor.x)*$fx+($r.z-$anchor.z)*$fz
+            if($projection -gt 0 -and $projection -lt 40 -and [math]::Abs($r.y-$anchor.y) -le 3){
+                $seed=[pscustomobject]@{x=$anchor.x;y=$anchor.y;z=$anchor.z;fx=$fx;fz=$fz;t=$r.t}
+            }
+        }
+        if($seed) {
+            $headingDot=(-[math]::Sin($r.heading*2*[math]::PI))*$seed.fx+(-[math]::Cos($r.heading*2*[math]::PI))*$seed.fz
+            if($r.t-$seed.t -gt 60 -or [math]::Abs($r.y-$seed.y) -gt 3 -or $headingDot -le 0){
+                $seed=$null;$approached=$false
+            } elseif(!$s.gate) {
+                $released++
+                $projection=($r.x-$seed.x)*$seed.fx+($r.z-$seed.z)*$seed.fz
+                if($r.speedMps -gt .05 -and $projection -gt 30) {
+                    $beyond++;if($null -eq $first){$first=$r.t};$last=$r.t
+                    if($null -eq $maxProjection -or $projection -gt $maxProjection){$maxProjection=$projection}
+                }
+            }
+        }
+        $previous=$r
+    }
+    [pscustomobject]@{healthySamplesAfterRelease=$released;beyondGatePlane30mSamples=$beyond;
+        firstBeyond=$first;lastBeyond=$last;maxForwardProjectionMetres=$maxProjection;
+        method='SDK pose beyond a frozen gate plane after observed approach and passage; current status reports healthy route/steering with bounded source ages; at most 60 s.';
+        isRouteDistance=$false;fullPassValidated=$false}
+}
+Export-ModuleMember -Function Read-TollGateBuffer,Resolve-TollGateObservation,Read-ModernPedalBuffer,Read-TruckDamageBuffer,Read-TruckAirBuffer,Measure-TollDeparture

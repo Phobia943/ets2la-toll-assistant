@@ -807,13 +807,18 @@ public sealed partial class TollPlugin : Plugin
                         var mapDirectory=Path.GetDirectoryName(DiagnosticPath)!;
                         diagnostics.Enqueue(DiagnosticQueue.Slot.Map,()=>MapDiagnostics.Write(mapPosition,mapDirectory));
                     }
+                    // Control events arrive outside the route lock. Read the
+                    // command reference before sampling its observation clock;
+                    // the tick-start clock may precede a command received here.
+                    var observedSteering=Volatile.Read(ref lastSteeringCommand);
+                    double observedAt=clock.Elapsed.TotalSeconds;
                     var snapshot = new {
-                        version=Info.Version, utc=DateTimeOffset.UtcNow, active, fresh=Fresh(now), speedKph=speed*3.6,
+                        version=Info.Version, utc=DateTimeOffset.UtcNow, active, fresh=Fresh(observedAt), speedKph=speed*3.6,
                         connectorAttempted, connectorPending, connectorSeeded,
                         driveAction=driveAction.ToString(),
                         plannedStop=router.StopBoundary.HasValue,stopDistance=router.StopDistance,
                         automaticPreparationPending=automaticPreparation.Requested,
-                        startBlocked=!(active&&State.EnableAssists)&&!CanStartNow(now), readyToStart=CanStartNow(now),
+                        startBlocked=!(active&&State.EnableAssists)&&!CanStartNow(observedAt), readyToStart=CanStartNow(observedAt),
                         startRouteFailure=startCheck?.Failure,preparationReason,selectedLane=(previewRouter??router).SelectedGate,plaza=(previewRouter??router).CurrentKey,
                         rollingStartPending,rollingStartCalculating,rollingStartStatus,
                         brakeHeld,brakeInputValue,
@@ -823,9 +828,9 @@ public sealed partial class TollPlugin : Plugin
                         connectedMetresAhead=safetyTrace!=null?safetyTrace.Length-safetyTrace.Project(position).Along:(double?)null,
                         requiredLookahead=TrackingGuard.RequiredLookahead(speed),
                         phase=decision.Phase, targetSpeedKph=decision.TargetSpeed*3.6, gate=tracked, candidate, dataStatus=DataStatus,
-                        telemetryAge=now-telemetryAt, gatesAge=now-gatesAt, pathAge=now-pathAt, gameTimeAge=now-gameTimeChangedAt,
-                        pathReceivedAge=now-pathReceivedAt,routeWorkMilliseconds,maxRouteWorkMilliseconds,
-                        steeringFeed=steeringFeedState.ToString(),steeringAge=lastSteeringCommand!=null?now-lastSteeringCommand.At:(double?)null,
+                        telemetryAge=observedAt-telemetryAt, gatesAge=observedAt-gatesAt, pathAge=observedAt-pathAt, gameTimeAge=observedAt-gameTimeChangedAt,
+                        pathReceivedAge=observedAt-pathReceivedAt,routeWorkMilliseconds,maxRouteWorkMilliseconds,
+                        steeringFeed=steeringFeedState.ToString(),steeringAge=observedSteering!=null?observedAt-observedSteering.At:(double?)null,
                         steeringFault=lastSteeringFailure,
                         sdk, paused, pathError=path?.ErrorMessage,
                         gateCount=gates.Count(g=>g.type==SemaphoreType.GATE), options,

@@ -1,8 +1,46 @@
 using System.Reflection;
+using System.Text.Json;
+using ETS2LA.Game.Output;
 using MautAssistent;
 
 public static class DiagnosticDeliveryIntegration
 {
+    public static void ConsistentAges(Action<bool,string> assert)
+    {
+        using var written=new ManualResetEventSlim();string? json=null;int delivered=0;
+        var f=new RollingStartIntegration.Fixture(writeDiagnostic:(name,text)=>{
+            if(Path.GetFileName(name)=="status.json"){json=text;written.Set();}
+        });
+        f.F8();f.Probe();f.Fresh();f.Set("lastWrite",-100d);f.Set("lastMapWrite",0d);
+        f.DuringReadAcc=()=>{
+            delivered++;
+            f.Call("OnControlOutput",new ControlEvent {
+                ChannelDefinition=new(){Id="LaneAssist.SteeringCorrection"},Variables=new(){steering=.1f}
+            });
+        };
+        try {
+            f.Plugin.Tick();
+            assert(written.Wait(TimeSpan.FromSeconds(2)),"The test must receive the actual serialized status");
+            using var document=JsonDocument.Parse(json!);
+            var age=document.RootElement.GetProperty("steeringAge");
+            assert(delivered>0&&age.ValueKind==JsonValueKind.Number,"A real steering event must arrive during the driving tick");
+            assert(age.GetDouble()>=0&&age.GetDouble()<.15,
+                "A command delivered after tick start must have a nonnegative, fresh age in the diagnostic snapshot");
+            double previousTick=f.Now;
+            f.Call("OnControlOutput",new ControlEvent {
+                ChannelDefinition=new(){Id="AdaptiveCruiseControl.Acceleration"},Variables=new(){aforward=.2f}
+            });
+            f.Call("RecordMotion",previousTick,true);
+            var history=(System.Collections.IEnumerable)f.Get<object>("motionHistory");
+            var motion=history.Cast<object>().Last();
+            double steeringAge=(double)motion.GetType().GetProperty("SteeringAge")!.GetValue(motion)!;
+            double accAge=(double)motion.GetType().GetProperty("AccAge")!.GetValue(motion)!;
+            assert(steeringAge>=0&&accAge>=0,"Motion diagnostics must use a clock after both captured command references, too");
+        } finally {
+            f.Call("StopDiagnostics");
+            assert(SpinWait.SpinUntil(()=>f.Get<DiagnosticQueue>("diagnostics").IsIdle,TimeSpan.FromSeconds(2)),"Diagnostic worker must settle");
+        }
+    }
     public static void BlockedStorage(Action<bool,string> assert)
     {
         using var entered=new ManualResetEventSlim();using var release=new ManualResetEventSlim();

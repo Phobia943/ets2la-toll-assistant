@@ -32,6 +32,7 @@ public static class RollingStartIntegration
         public readonly List<string> Notices=[];
         public readonly Vector3 Point;
         public Action? DuringProbe;
+        public Action? DuringReadAcc;
         public Func<PlannedPathData?> Plan;
         public bool InstallSucceeds=true;
         public int Installs;
@@ -56,7 +57,7 @@ public static class RollingStartIntegration
                 item=new ParsedRoadList([road]),startNode=start,endNode=end,direction=Direction.Forward,laneIndex=1
             }]};
             State.DrivingMode=DrivingMode.FullSelfDriving;
-            Plugin=new(()=>State,(title,message)=>Notices.Add(title+": "+message),Outputs.Add,()=>acc,
+            Plugin=new(()=>State,(title,message)=>Notices.Add(title+": "+message),Outputs.Add,()=>{DuringReadAcc?.Invoke();return acc;},
                 readPlanner:()=>Planner,probeRoute:(_,_,_,_)=> {DuringProbe?.Invoke();return Plan();},
                 installStart:(_,planned,published,_,_)=> {
                     Installs++;

@@ -70,6 +70,7 @@ $switched=@($rows|Where-Object{$_.currentStatus.assists -and $_.currentStatus.ga
     observedOpenWindows=$windows.ToArray();nearGateSamples=$near.Count;stationaryBeforeClosedGateSamples=$held.Count
     nearGatePeakSpeedKph=($near.speedKph|Measure-Object -Maximum).Maximum
     observedPassageSamples=$passage.Count;observedExitBeyond30mSamples=$exit.Count
+    departureAfterGateRelease=(Measure-TollDeparture -Rows $rows.ToArray() -GateKey $GateKey)
     otherAssignedGateSamples=$switched.Count
     paymentEvidence=@($points.payment|Where-Object{$_}|Sort-Object -Unique)
     fullPassValidated=$false
@@ -79,6 +80,7 @@ $switched=@($rows|Where-Object{$_.currentStatus.assists -and $_.currentStatus.ga
         'Spurhöhe, Kollisionen und die Eignung der Durchfahrt benötigen Spielbild beziehungsweise Fahrerbestätigung.'
         'Abtastlücken, pausierte Simulation und fehlende Schranke unterbrechen jedes Offenzeitfenster.'
         'Die Messübersicht erteilt keine automatische Freigabe der vollständigen Mautdurchfahrt.'
+        'Die getrennte SDK-Ausfahrtprojektion nach Freigabe des Schrankenschlüssels ist keine Entfernung entlang der Route; sie endet bei Daten-/Steuerungslücken, Gegenrichtung oder nach 60 s.'
         'Doppelte Rohobjekte werden nur innerhalb 1 m um eine zuvor eindeutig beobachtete 3D-Position derselben Signalnummer zusammengefasst; das ist kein Modellnachweis.'
     )
 }|ConvertTo-Json -Depth 8

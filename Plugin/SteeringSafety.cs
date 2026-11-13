@@ -119,8 +119,10 @@ public sealed partial class TollPlugin
     void RecordMotion(double now,bool force=false)
     {
         if(!force && now-lastMotionAt<.05)return;
-        lastMotionAt=now;
         var steering=Volatile.Read(ref lastSteeringCommand);var acc=Volatile.Read(ref lastAccCommand);
+        // These command references can be newer than a caller's tick clock.
+        now=clock.Elapsed.TotalSeconds;
+        lastMotionAt=now;
         var projected=safetyTrace?.ProjectForTracking(position);
         if(motionHistory.Count==240)motionHistory.Dequeue();
         motionHistory.Enqueue(new(now,DateTimeOffset.UtcNow,State.EnableAssists,speed*3.6,position.X,position.Y,position.Z,

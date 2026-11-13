@@ -150,6 +150,7 @@ void Run()
     Check("Manual brake releases even a pending steering fault before route bookkeeping is available",()=>SteeringSafetyIntegration.BusyManualRelease(Assert));
     Check("Slow native diagnostics cannot delay fault braking, brake refresh or manual acknowledgement",()=>SteeringSafetyIntegration.SlowDiagnostics(Assert));
     Check("Blocked diagnostic storage cannot hold the driving tick, ACC or route delivery",()=>DiagnosticDeliveryIntegration.BlockedStorage(Assert));
+    Check("Diagnostic source ages include commands delivered after the driving tick starts",()=>DiagnosticDeliveryIntegration.ConsistentAges(Assert));
     Check("Short item seams do not create false opposite road headings",()=>DirectionSeamIntegration.Run(Assert));
     Check("Automatic preparation attaches only at standstill and preserves fault takeover",()=>AutomaticPreparationIntegration.Run(Assert));
     Check("Rolling F8 validates the latest pose before handoff and can resume after F9",()=>RollingStartIntegration.StartAndTakeover(Assert));

@@ -152,6 +152,49 @@ try {
     foreach($row in $rows){$row.gates[3].key=$key;$row.gates[3].id=7}
     $r=InvokeRecordingAnalysis $rows
     Assert ($r.observedOpenWindows.Count -eq 0 -and $r.duplicateBoothObjectSamples -eq 0) 'An ambiguous first key at two heights must not be counted as a proven physical booth replica.';$checks++
+    function DepartureFixture {
+        $rows=PositionedFixture
+        for($i=0;$i -lt $rows.Count;$i++) {
+            $row=$rows[$i];$row.t=$i/5;$row.sdkTimestamp=1000000+$i*200000;$row.speedMps=20
+            foreach($pair in @(@('x',(12.3+4*$i)),@('y',4),@('z',-45.6),@('heading',.75))){
+                $row|Add-Member -Force NoteProperty $pair[0] $pair[1]
+            }
+            foreach($pair in @(@('steeringFeed','Healthy'),@('steeringAge',0),@('telemetryAge',0),@('pathAge',0),@('connectedMetresAhead',100),@('requiredLookahead',25),@('pathError',''),@('routeFault',$null))){
+                $row.status|Add-Member -Force NoteProperty $pair[0] $pair[1]
+            }
+            $row.status.candidate.Distance=-4*$i
+            if($i -ge 8){$row.status.gate=$null;$row.status.candidate=$null}
+        }
+        return $rows
+    }
+    $r=InvokeRecordingAnalysis (DepartureFixture)
+    Assert ($r.observedExitBeyond30mSamples -eq 0 -and $r.departureAfterGateRelease.beyondGatePlane30mSamples -eq 3 -and
+        !$r.departureAfterGateRelease.isRouteDistance -and !$r.fullPassValidated) 'SDK departure remains observable after normal gate release, without claiming route distance or full-drive certification.';$checks++
+    $rows=DepartureFixture;for($i=8;$i -lt $rows.Count;$i++){$rows[$i].gates=@()}
+    $r=InvokeRecordingAnalysis $rows
+    Assert ($r.departureAfterGateRelease.beyondGatePlane30mSamples -eq 3) 'A barrier disappearing behind the truck does not erase independent healthy SDK departure evidence.';$checks++
+    foreach($mode in @('noapproach','wrongside','reverse','gap','stale','fault','othergate','jump','height','duplicate','loststeering','oldroute','oldtelemetry','oldsteering')) {
+        $rows=DepartureFixture
+        switch($mode) {
+            'noapproach' {foreach($row in $rows){if($row.status.candidate){$row.status.candidate.Distance=-10}}}
+            'wrongside' {for($i=0;$i -lt $rows.Count;$i++){$rows[$i].x=12.3-4*$i}}
+            'reverse' {$rows[8].speedMps=-20}
+            'gap' {for($i=8;$i -lt $rows.Count;$i++){$rows[$i].t+=1}}
+            'stale' {$rows[8].statusAgeSeconds=4}
+            'fault' {$rows[8].status.faultBraking=$true}
+            'othergate' {$rows[8].status.gate=$neighbor}
+            'jump' {$rows[8].x+=100}
+            'height' {for($i=8;$i -lt $rows.Count;$i++){$rows[$i].y=14}}
+            'duplicate' {$rows[8].sdkTimestamp=$rows[7].sdkTimestamp}
+            'loststeering' {$rows[8].status.steeringFeed='Lost'}
+            'oldroute' {$rows[8].status.pathAge=2}
+            'oldtelemetry' {$rows[8].status.telemetryAge=1}
+            'oldsteering' {$rows[8].status.steeringAge=.2}
+        }
+        $r=InvokeRecordingAnalysis $rows
+        Assert ($r.departureAfterGateRelease.beyondGatePlane30mSamples -eq 0) ('No inferred departure across '+$mode)
+        Assert (!$r.fullPassValidated) 'A departure metric never certifies the full trip.';$checks++
+    }
     Write-Output "$checks recording checks passed. No game or ETS2LA output opened."
 } finally {
     # Only files created by this test in its unique temporary directory are removed.

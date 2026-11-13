@@ -1,5 +1,12 @@
 # Änderungen
 
+## 0.3.11 – Zeitbezug der Diagnose und getrennte SDK-Ausfahrtmessung
+
+- Ein während des Fahrzyklus eintreffender Steuerbefehl konnte einen negativen Diagnose-Alterswert erzeugen, weil der Bezugszeitpunkt vom Zyklusbeginn stammte. Die Status- und Bewegungsaufzeichnung lesen jetzt ihre Befehlsreferenzen vor dem zugehörigen Zeitbezug. Der neue deterministische Integrationstest scheitert vor und besteht nach der Korrektur. Keine Änderung der Lenk-/Bremsentscheidungen oder Abschaltschwellen.
+- Die Auswertung kann eine Weiterfahrt nach normaler Freigabe des Schrankenschlüssels separat aus SDK-Positionen nachweisen. Sie verlangt beobachtete Anfahrt und Passage, aktuelle gesunde Status-/Quellwerte und kontinuierliche positive Bewegung. Gegenrichtung, Rückwärtsfahrt, Ebenenwechsel, Positionssprünge und Datenlücken beenden die Zuordnung. Eine eingefrorene Tor-Ebenenprojektion wird weder als Routenentfernung noch als vollständige Fahrfreigabe ausgegeben.
+- 73 Integrationstests, 44 unabhängige Logiktests und 43 Aufnahmeprüfungen bestehen. Alte Aufnahmen mit ungültigen Diagnose-Alterswerten werden nicht geglättet, um einen Nachweis zu erzwingen. Die strenge Ausfahrtprüfung bleibt für die betroffene 0.3.9-Aufnahme ohne Treffer; Fahrerbestätigung und unabhängige Bewegung sind getrennte Nachweise.
+- Bei beendetem Spiel und ETS2LA mit Rücksicherung der 0.3.10 installiert und Prüfsumme verifiziert. Noch nicht neu gestartet oder im Spiel geprüft. Die zuvor gesicherte lokale Einstellung `WidenTurnsWithTrailer = false` bleibt erhalten.
+
 ## 0.3.10 – Diagnoseausgabe vom Steuerungspfad getrennt
 
 - Ein blockierter Diagnoseschreibzugriff hielt bisher die gemeinsame Sperre für Fahrzyklus, ACC-Aufruf und Routenzustellung. Der gezielte Test reproduziert das Scheitern vor der Korrektur. JSON-Serialisierung und Schreibzugriffe für Status, Routenfehler, Startprobe und Fehlerbericht laufen jetzt auf einem separaten Schreiber; auch der einmalige Kartenbericht wird dort erzeugt.
