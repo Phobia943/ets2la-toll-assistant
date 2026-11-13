@@ -49,6 +49,7 @@ public sealed partial class TollPlugin : Plugin
     readonly Func<IPlugin,Vector3,double,Vector3[],PlannedPathData?> probeRoute;
     readonly Action<string,string> notify;
     readonly FaultBrake faultBrake;
+    readonly Action<string,string> writeDiagnostic;
     readonly TrackingGuard trackingGuard=new();
     RouteTrace? safetyTrace;
     PlannedPathData? lastAcceptedPlan;
@@ -63,11 +64,12 @@ public sealed partial class TollPlugin : Plugin
         Func<ETS2LA.Game.Data.ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments=null, Func<IPlugin?>? readPlanner=null,
         Func<IPlugin,Vector3,double,Vector3[],PlannedPathData?>? probeRoute=null,
         Func<IPlugin,PlannedPathData,PlannedPathData,Vector3,double,bool>? installStart=null,bool monitorSteering=false,
-        Func<IPlugin?>? readLaneAssist=null) {
+        Func<IPlugin?>? readLaneAssist=null,Action<string,string>? writeDiagnostic=null) {
         this.monitorSteering=monitorSteering;
         this.readState=readState;this.readAcc=readAcc??FindAcc;this.notify=notify;this.readPayments=readPayments;
         this.readPlanner=readPlanner??FindPlanner;
         this.readLaneAssist=readLaneAssist??FindLaneAssist;
+        this.writeDiagnostic=writeDiagnostic??File.WriteAllText;
         this.probeRoute=probeRoute??ConnectorStart.Probe;
         this.installStart=installStart??ConnectorStart.TryInstallStart;
         publishOutput=output??(_=>{});
@@ -177,6 +179,7 @@ public sealed partial class TollPlugin : Plugin
         lock(sync)
         {
             if (subscribed) return;
+            diagnostics.Resume();
             _=State; // Register host controls before our cancel listener.
             faultBrake.Release();ResetDriving();
             motionHistory.Clear();lastMotionAt=-100;
@@ -423,9 +426,7 @@ public sealed partial class TollPlugin : Plugin
             routeTransition=new {utc=DateTimeOffset.UtcNow,error=data.ErrorMessage,active,
                 assists=State.EnableAssists,speedKph=speed*3.6,
                 x=position.X,y=position.Y,z=position.Z,tracked,decision.Phase};
-            try {Directory.CreateDirectory(Path.GetDirectoryName(DiagnosticPath)!);
-                File.WriteAllText(Path.Combine(Path.GetDirectoryName(DiagnosticPath)!,"route-error.json"),JsonSerializer.Serialize(routeTransition));}
-            catch(IOException){} catch(UnauthorizedAccessException){}
+            QueueDiagnostic(DiagnosticQueue.Slot.RouteError,"route-error.json",routeTransition);
         }
         lastPathError=data.HasError?data.ErrorMessage??"":"";
         routeFault=null;
@@ -537,11 +538,9 @@ public sealed partial class TollPlugin : Plugin
                     tracking=trace.Diagnose(origin), headingTurns=heading,
                     items=data.PlannedPath.Select(i=>new{kind=i.item.GetType().Name,length=i.GetLength(),
                         prefab=i.prefabPath?.Prefab.Prefab.Uid.ToString(),
-                        curves=i.prefabPath?.Curves.Select(c=>new {id=i.prefabPath.Prefab.Descriptor!.NavCurves.IndexOf(c),gate=c.SemaphoreId}),
-                        direction=i.direction.ToString()}) };
-                Directory.CreateDirectory(Path.GetDirectoryName(DiagnosticPath)!);
-                File.WriteAllText(Path.Combine(Path.GetDirectoryName(DiagnosticPath)!,"preview.json"),
-                    JsonSerializer.Serialize(report,new JsonSerializerOptions{WriteIndented=true}));
+                        curves=i.prefabPath?.Curves.Select(c=>new {id=i.prefabPath.Prefab.Descriptor!.NavCurves.IndexOf(c),gate=c.SemaphoreId}).ToArray(),
+                        direction=i.direction.ToString()}).ToArray() };
+                QueueDiagnostic(DiagnosticQueue.Slot.Preview,"preview.json",report);
             }
             catch (Exception ex) { FailStartCheck(origin,heading,ex.GetBaseException().Message); }
         }
@@ -702,10 +701,7 @@ public sealed partial class TollPlugin : Plugin
             previousAcceptedPlan,
             driveRecording=new DriveRecording(driveHistory.TryPeek(out var first) ? first.Before : default,
                 driveHistory.Select(entry => entry.Sample).ToArray())};
-        try {File.WriteAllText(Path.Combine(Path.GetDirectoryName(DiagnosticPath)!,"last-fault.json"),
-            JsonSerializer.Serialize(lastFault,new JsonSerializerOptions{WriteIndented=true,
-                NumberHandling=System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals}));}
-        catch(IOException){} catch(UnauthorizedAccessException){}
+        QueueDiagnostic(DiagnosticQueue.Slot.Fault,"last-fault.json",lastFault);
         Logger.Warn("Mautassistent: "+reason+" Fahrassistenz ausgeschaltet; bitte manuell übernehmen.");
         notify(brake?"Fehlerbremsung aktiv":action==DriveAction.RejectStart?"Fahrassistenz nicht gestartet":"Mautassistenz beendet",reason+(brake?
             " Gas aus, Bremsung angefordert. Selbst lenken; F9 löst die Bremsung zur manuellen Übernahme.":" Bitte selbst lenken und bremsen.")+" F8 bleibt bis zur erneuten Vorbereitung im Stand gesperrt.");
@@ -805,9 +801,13 @@ public sealed partial class TollPlugin : Plugin
                 lastWrite = now;
                 try
                 {
-                    Directory.CreateDirectory(Path.GetDirectoryName(DiagnosticPath)!);
-                    if (sdk && lastMapWrite < 0) { lastMapWrite=now; try { MapDiagnostics.Write(position,Path.GetDirectoryName(DiagnosticPath)!); } catch(Exception ex) { Logger.Warn("Maut-Kartenprüfung: " + ex.Message); } }
-                    File.WriteAllText(DiagnosticPath, JsonSerializer.Serialize(new {
+                    if (sdk && lastMapWrite < 0) {
+                        lastMapWrite=now;
+                        var mapPosition=position;
+                        var mapDirectory=Path.GetDirectoryName(DiagnosticPath)!;
+                        diagnostics.Enqueue(DiagnosticQueue.Slot.Map,()=>MapDiagnostics.Write(mapPosition,mapDirectory));
+                    }
+                    var snapshot = new {
                         version=Info.Version, utc=DateTimeOffset.UtcNow, active, fresh=Fresh(now), speedKph=speed*3.6,
                         connectorAttempted, connectorPending, connectorSeeded,
                         driveAction=driveAction.ToString(),
@@ -831,16 +831,20 @@ public sealed partial class TollPlugin : Plugin
                         gateCount=gates.Count(g=>g.type==SemaphoreType.GATE), options,
                         geometry=RouteMatcher.Diagnose(path,position,gates), routing=router.Status, routeFault, lastFault, previewStatus,routeTransition,
                         assists=State.EnableAssists,mode=State.DrivingMode.ToString()
-                    }, new JsonSerializerOptions { WriteIndented=true,
-                        NumberHandling=System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals }));
+                    };
                     var log = Path.ChangeExtension(DiagnosticPath, ".log");
                     string logState = active + ":" + driveAction + ":" + decision.Phase + ":" + tracked;
-                    if (logState != lastLogged)
-                    {
-                        if (File.Exists(log) && new FileInfo(log).Length > 2_000_000) File.Move(log, log+".previous", true);
-                        File.AppendAllText(log, $"{DateTimeOffset.UtcNow:O} {Status} | {Details}\n");
-                        lastLogged = logState;
-                    }
+                    string logLine=$"{DateTimeOffset.UtcNow:O} {Status} | {Details}\n";
+                    // Only captured values enter the worker: never access live
+                    // plugin state, routing containers or their lock from I/O.
+                    diagnostics.Enqueue(DiagnosticQueue.Slot.Status,()=> {
+                        Directory.CreateDirectory(Path.GetDirectoryName(DiagnosticPath)!);
+                        writeDiagnostic(DiagnosticPath,JsonSerializer.Serialize(snapshot,diagnosticJson));
+                        if(logState==lastLogged)return;
+                        if(File.Exists(log)&&new FileInfo(log).Length>2_000_000)File.Move(log,log+".previous",true);
+                        File.AppendAllText(log,logLine);
+                        lastLogged=logState;
+                    });
                 }
                 catch(IOException) { /* Diagnostic storage must not interfere with driving. */ }
                 catch(UnauthorizedAccessException) { }
@@ -850,6 +854,7 @@ public sealed partial class TollPlugin : Plugin
     public override void OnDisable()
     {
         StopSteeringMonitor();
+        StopDiagnostics();
         lock(sync)
         {
             if(active || preview || faultBrake.Latched)State.EnableAssists=false;

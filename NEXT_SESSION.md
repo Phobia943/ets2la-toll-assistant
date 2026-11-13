@@ -2,6 +2,8 @@
 
 Aktualisierung vom 13. November 2026: 0.3.9 ist unter ETS2LA 2026.11.5297 installiert, das offizielle SDK 1.62 ist erneuert. 69 vollständige lokale Prüfungen bestehen. Alle vier Module sind geladen. Nach manuellem Verlassen eines nicht startfähigen Kartenanschlusses wurden automatische Startfreigabe, F8-Aktivierung und frische Lenksignale bestätigt. Vollständige Mautdurchfahrt bleibt offen. Die folgenden Nachweise vom 6. November gelten mit ihren genannten Grenzen.
 
+Vorbereitet: **0.3.10**, noch nicht installiert. Die reproduzierte Blockade durch Diagnose-I/O ist korrigiert; 72 Integrationstests, 44 Logiktests und 24 Aufnahmeprüfungen bestehen. Die Signallücke vom 13. November bleibt kausal ungeklärt. Paket und Vorfallaufnahmen liegen lokal außerhalb des Repositorys. Vor dem Austausch aktuellen Stillstand und manuelle Übernahme prüfen und ETS2LA schließen. Nächster Fahrvergleich mit repariertem Lkw; danach vollständige klassische Mautdurchfahrt mit derselben Aufnahme vor, während und nach der Schranke.
+
 ## Gesichert und installiert
 
 - **Mautassistent 0.3.8** ist installiert und wurde live geladen. SHA256 der DLL: `325A0F71AF26F0E625C6FBA61FD279FC62736FFD6E157DB77B0CC057B65B253A`. Der Plugin-Build stammt aus Commit `db4b0b9`; spätere Änderungen ergänzen Messwerkzeuge und Nachweise.
@@ -24,6 +26,6 @@ Das ist ein Nachweis der Ausgabe im Stand, kein Bremsweg unter Beladung und kein
 
 ## Weiterarbeiten
 
-Die Computerbedienung wurde zuletzt durch die physische Escape-Taste beendet. Ohne erneute Rückmeldung keine weitere Fensterbedienung oder Testaktivierung beginnen. Dateien, Code und gespeicherte Aufnahmen können weiter offline geprüft werden. Vor späteren Änderungen an der laufenden Assistenz aktuelle Daten, Stillstand und Feststellbremse erneut prüfen; vor einem DLL-Austausch ETS2LA beenden.
+Am 13. November wurde die Wiederherstellung vom Nutzer fortgesetzt; die letzten Beobachtungen erfolgten ohne Fensterbedienung. Dateien, Code und gespeicherte Aufnahmen können weiter offline geprüft werden. Vor späteren Änderungen an der laufenden Assistenz aktuelle Daten, Stillstand und Feststellbremse erneut prüfen; vor einem DLL-Austausch ETS2LA beenden.
 
 Für weitere Aufnahmen mit `Tools/Record-TollDrive.ps1 -IncludePedalOutput` einen neuen Dateinamen wählen. Vor gezieltem Auslösen anhand eines tatsächlich laufenden Aufnahmeprozesses und einer frischen vollständigen Zeile prüfen, dass das Fenster noch läuft. Eine fehlende oder abgelaufene Aufnahme nicht durch einen behaupteten Fahrnachweis ersetzen. Rohaufnahmen mit Spielpositionen bleiben außerhalb des öffentlichen Repositorys.

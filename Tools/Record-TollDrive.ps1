@@ -69,7 +69,10 @@ try {
         $heading=[BitConverter]::ToDouble($telemetry,2224)
         if(@($speed,$x,$y,$z,$heading)|Where-Object{![double]::IsFinite($_)}) {throw 'Ungültige Telemetriewerte.'}
         $row=[ordered]@{
-            schema=1;t=$t;utc=[DateTimeOffset]::UtcNow;sdkTimestamp=$stamp;active=($telemetry[0] -ne 0);paused=($telemetry[4] -ne 0)
+            schema=1;t=$t;utc=[DateTimeOffset]::UtcNow;sdkTimestamp=$stamp
+            simulatedTimestamp=[BitConverter]::ToUInt64($telemetry,16);renderTimestamp=[BitConverter]::ToUInt64($telemetry,24)
+            damage=(Read-TruckDamageBuffer $telemetry)
+            active=($telemetry[0] -ne 0);paused=($telemetry[4] -ne 0)
             speedMps=$speed;engineRpm=[BitConverter]::ToSingle($telemetry,952)
             x=$x;y=$y;z=$z;heading=$heading;parkingBrake=($telemetry[1566] -ne 0)
             # Raw game input channels can include SDK overrides. They are not

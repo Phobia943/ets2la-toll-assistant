@@ -46,6 +46,45 @@ void Run()
     var results=new List<string>();
     void Check(string name, Action test) { try {test(); results.Add("PASS "+name);} catch(Exception ex) {results.Add("FAIL "+name+": "+ex); } }
     void Assert(bool v,string message="Assertion failed") {if(!v)throw new Exception(message);}
+    Check("Diagnostic storage coalesces bounded slots, resumes in order and survives write failures",()=>{
+        using var entered=new ManualResetEventSlim();using var release=new ManualResetEventSlim();
+        var writes=new List<int>();int failures=0;
+        var queue=new DiagnosticQueue(_=>Interlocked.Increment(ref failures));
+        queue.Enqueue(DiagnosticQueue.Slot.Status,()=>{entered.Set();release.Wait(TimeSpan.FromSeconds(5));lock(writes)writes.Add(-1);});
+        Assert(entered.Wait(TimeSpan.FromSeconds(2)),"The first actual write must be held");
+        try {
+            for(int i=0;i<1000;i++){int sample=i;queue.Enqueue(DiagnosticQueue.Slot.Status,()=>{lock(writes)writes.Add(sample);});}
+            queue.Enqueue(DiagnosticQueue.Slot.Fault,()=>throw new IOException("Simulated full disk"));
+            queue.Enqueue(DiagnosticQueue.Slot.Preview,()=>{lock(writes)writes.Add(1001);});
+        } finally {release.Set();}
+        Assert(SpinWait.SpinUntil(()=>queue.IsIdle,TimeSpan.FromSeconds(3)),"The single worker must drain after storage recovers");
+        Assert(writes.SequenceEqual(new[]{-1,999,1001})&&failures==1,"Keep only the newest pending status; a failed fault write cannot strand later work");
+        entered.Reset();release.Reset();
+        queue.Enqueue(DiagnosticQueue.Slot.Status,()=>{entered.Set();release.Wait(TimeSpan.FromSeconds(5));});
+        Assert(entered.Wait(TimeSpan.FromSeconds(2)));
+        try {
+            queue.Enqueue(DiagnosticQueue.Slot.Status,()=>writes.Add(2000));
+            queue.Pause();queue.Enqueue(DiagnosticQueue.Slot.Status,()=>writes.Add(3000));
+            queue.Resume();queue.Enqueue(DiagnosticQueue.Slot.Status,()=>writes.Add(4000));
+        } finally {release.Set();}
+        Assert(SpinWait.SpinUntil(()=>queue.IsIdle,TimeSpan.FromSeconds(3)));
+        Assert(writes.SequenceEqual(new[]{-1,999,1001,4000}),"Disable discards queued writes; resume cannot let an old worker overtake the new session");
+    });
+    Check("Continuous status replacement cannot starve a queued fault report",()=>{
+        using var first=new ManualResetEventSlim();using var releaseFirst=new ManualResetEventSlim();
+        using var second=new ManualResetEventSlim();using var releaseSecond=new ManualResetEventSlim();
+        var writes=new List<int>();var queue=new DiagnosticQueue();
+        queue.Enqueue(DiagnosticQueue.Slot.Status,()=>{first.Set();releaseFirst.Wait(TimeSpan.FromSeconds(5));writes.Add(1);});
+        try {
+            Assert(first.Wait(TimeSpan.FromSeconds(2)));
+            queue.Enqueue(DiagnosticQueue.Slot.Status,()=>{second.Set();releaseSecond.Wait(TimeSpan.FromSeconds(5));writes.Add(2);});
+            queue.Enqueue(DiagnosticQueue.Slot.Fault,()=>writes.Add(3));
+            releaseFirst.Set();Assert(second.Wait(TimeSpan.FromSeconds(2)));
+            queue.Enqueue(DiagnosticQueue.Slot.Status,()=>writes.Add(4));
+        } finally {releaseFirst.Set();releaseSecond.Set();}
+        Assert(SpinWait.SpinUntil(()=>queue.IsIdle,TimeSpan.FromSeconds(3)));
+        Assert(writes.SequenceEqual(new[]{1,2,3,4}),"A newly arriving status must follow the already waiting fault report");
+    });
     Check("Steering supervision has bounded startup, immediate stale-feed loss and explicit reset",()=>{
         var g=new SteeringFeedGuard();
         Assert(g.Check(0,double.NegativeInfinity,true)==SteeringFeedState.Starting);
@@ -110,6 +149,7 @@ void Run()
     Check("A newly delivered game pause is honored even before busy route bookkeeping drains it",()=>SteeringSafetyIntegration.PauseDeliveryWhileBusy(Assert));
     Check("Manual brake releases even a pending steering fault before route bookkeeping is available",()=>SteeringSafetyIntegration.BusyManualRelease(Assert));
     Check("Slow native diagnostics cannot delay fault braking, brake refresh or manual acknowledgement",()=>SteeringSafetyIntegration.SlowDiagnostics(Assert));
+    Check("Blocked diagnostic storage cannot hold the driving tick, ACC or route delivery",()=>DiagnosticDeliveryIntegration.BlockedStorage(Assert));
     Check("Short item seams do not create false opposite road headings",()=>DirectionSeamIntegration.Run(Assert));
     Check("Automatic preparation attaches only at standstill and preserves fault takeover",()=>AutomaticPreparationIntegration.Run(Assert));
     Check("Rolling F8 validates the latest pose before handoff and can resume after F9",()=>RollingStartIntegration.StartAndTakeover(Assert));

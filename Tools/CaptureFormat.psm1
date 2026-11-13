@@ -74,4 +74,24 @@ function Read-ModernPedalBuffer {
         atomicSnapshot=$false;issues=$issues.ToArray()
     }
 }
-Export-ModuleMember -Function Read-TollGateBuffer,Resolve-TollGateObservation,Read-ModernPedalBuffer
+function Read-TruckDamageBuffer {
+    param([Parameter(Mandatory)][byte[]]$Bytes)
+    if($Bytes.Length -ne 2300 -or [BitConverter]::ToUInt32($Bytes,40) -ne 12){
+        throw 'Schadenswerte erfordern den 2300-Byte-Telemetrieausschnitt der Revision 12.'
+    }
+    # Verified against the installed 1.62 GameTelemetry reader: TruckFloat
+    # starts at 948; wearEngine follows 22 single-precision fields.
+    $issues=[Collections.Generic.List[string]]::new()
+    $values=[ordered]@{}
+    $offset=1036
+    foreach($name in @('engine','transmission','cabin','chassis','wheels')) {
+        $value=[double][BitConverter]::ToSingle($Bytes,$offset);$offset+=4
+        if(![double]::IsFinite($value) -or $value -lt 0 -or $value -gt 1){
+            $issues.Add("InvalidDamage:$name");$value=$null
+        }
+        $values[$name]=$value
+    }
+    $values.issues=$issues.ToArray()
+    [pscustomobject]$values
+}
+Export-ModuleMember -Function Read-TollGateBuffer,Resolve-TollGateObservation,Read-ModernPedalBuffer,Read-TruckDamageBuffer

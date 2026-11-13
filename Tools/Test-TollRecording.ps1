@@ -28,6 +28,19 @@ function InvokeRecordingAnalysis($records,[switch]$Automatic) {
     $json|ConvertFrom-Json
 }
 try {
+    $telemetry=[byte[]]::new(2300);[BitConverter]::GetBytes([uint32]12).CopyTo($telemetry,40)
+    $offset=1036
+    foreach($wear in @(.01,.02,.03,.04,.05)){[BitConverter]::GetBytes([single]$wear).CopyTo($telemetry,$offset);$offset+=4}
+    $damage=Read-TruckDamageBuffer $telemetry
+    Assert ([Math]::Abs($damage.engine-.01) -lt .00001 -and [Math]::Abs($damage.transmission-.02) -lt .00001 -and
+        [Math]::Abs($damage.cabin-.03) -lt .00001 -and [Math]::Abs($damage.chassis-.04) -lt .00001 -and
+        [Math]::Abs($damage.wheels-.05) -lt .00001 -and $damage.issues.Count -eq 0) 'Read all five wear channels from the verified telemetry offsets.';$checks++
+    [BitConverter]::GetBytes([single]::NaN).CopyTo($telemetry,1036);[BitConverter]::GetBytes([single]2).CopyTo($telemetry,1048)
+    $damage=Read-TruckDamageBuffer $telemetry
+    Assert ($null -eq $damage.engine -and $null -eq $damage.chassis -and $damage.issues.Count -eq 2) 'Invalid damage cannot appear as a valid undamaged truck.';$checks++
+    $telemetry[40]=13;$rejected=$false
+    try{Read-TruckDamageBuffer $telemetry|Out-Null}catch{$rejected=$true}
+    Assert $rejected 'An unknown telemetry layout cannot be decoded as known damage.';$checks++
     $inputBytes=[byte[]]::new(26);$stateBytes=[byte[]]::new(6)
     [BitConverter]::GetBytes([single]-.75).CopyTo($inputBytes,13);$inputBytes[17]=1
     [BitConverter]::GetBytes([double]1000).CopyTo($inputBytes,18)

@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.3.10 – Diagnoseausgabe vom Steuerungspfad getrennt
+
+- Ein blockierter Diagnoseschreibzugriff hielt bisher die gemeinsame Sperre für Fahrzyklus, ACC-Aufruf und Routenzustellung. Der gezielte Test reproduziert das Scheitern vor der Korrektur. JSON-Serialisierung und Schreibzugriffe für Status, Routenfehler, Startprobe und Fehlerbericht laufen jetzt auf einem separaten Schreiber; auch der einmalige Kartenbericht wird dort erzeugt.
+- Fünf feste Berichtplätze begrenzen die Warteschlange. Pro Bericht bleibt nur die neueste wartende Momentaufnahme erhalten; es gibt einen aktiven Schreiber. Abschalten wartet nicht auf eine blockierte Datei. Wiederanschalten verwendet dieselbe Warteschlange, damit ein alter Schreibauftrag keinen neueren überholen kann. Diagnosefehler verändern die Fahrfreigabe nicht. Geometrieprüfungen für Momentaufnahmen bleiben im Steuerungspfad; diese Änderung beseitigt nicht jede mögliche Ausführungspause.
+- 72 vollständige Integrationstests, 44 unabhängige Logiktests und 24 Aufnahmeprüfungen bestehen. Der Blockadetest prüft Fahrzyklus, ACC, Routenzustellung und F9-Übernahme, bevor der Diagnosespeicher wieder freigegeben wird. Weitere Tests prüfen Zusammenfassen, Schreibfehler und Deaktivieren/Wiederaktivieren.
+- Rein lesende Fahraufnahmen enthalten zusätzlich SDK-Simulations-/Renderzeit und fünf Schadenswerte. Nicht endliche oder unzulässige Schadenswerte werden ausdrücklich markiert. Die Felder wurden mit dem installierten 1.62-Telemetrieleser abgeglichen und am laufenden Spiel gelesen.
+- Nur vorbereitet, noch nicht installiert oder im Spiel als 0.3.10 geprüft. Die Bremsung vom 13. November bei etwa 47 km/h folgt auf 0,204 s ohne frischen Lenkbefehl. Die unabhängige Aufnahme zeigt auch stagnierende Spielwerte und eine eigene Beobachtungslücke; die Ursache ist damit nicht eindeutig. Vorhandene Lkw-Schäden wurden vom Fahrer bestätigt, waren in der damaligen Aufnahme aber nicht enthalten. Keine Änderung der Abschaltschwellen und kein Nachweis einer vollständigen Mautdurchfahrt.
+
 ## 0.3.9 – Wiederherstellung nach ETS2LA- und Spielupdate
 
 - Die Routenprobe akzeptiert zusätzlich den geprüften Ereignisbus von ETS2LA 2026.11.5297. Pathfinding und PathLib müssen weiterhin exakt den bereits geprüften Fassungen entsprechen; unbekannte Host-Builds bleiben gesperrt.
