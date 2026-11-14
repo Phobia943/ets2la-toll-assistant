@@ -24,6 +24,8 @@ Wenn eine passende manuelle Lkw-Spur die einzige erkennbare Option ist, wählt d
 
 ## Entwicklungsstand
 
+**0.3.16 ist als Offline-Testfassung vorbereitet.** Eine zusätzliche Kurvenvorschau begrenzt das Tempo bereits auf der Zufahrt, berechnet außerhalb der Fahrsteuerung und mit begrenzter Zusatzverzögerung. Außerdem behält der Modelllader jetzt die zuvor verlorenen Schrankenpositionen für passende manuelle Zahlhaltebereiche. Die Kurvensimulation und die beiden gespeicherten griechischen Kartenwiederholungen sind geprüft; noch kein Fahrnachweis. [Änderungen, Annahmen und offene Punkte](VERSION_0316.md).
+
 **0.3.15 ist als Offline-Fassung vorbereitet, noch nicht installiert.** Sie warnt bei anhaltend fehlender Spielreaktion auf frische Bremsbefehle. Ein separates, ausschließlich lesendes TruckersMP-Modul für Fahrzeug-/Auflieger-Modellmaße und ein optionaler Statusleser sind gebaut. Die Messungen verändern keine Fahrentscheidung; ein Test im tatsächlichen TruckersMP-Client fehlt. Hintergrund-Pedale und vorausblickende Baustellenerkennung sind weiterhin offen. Umfang, Nachweise und Grenzen: [VERSION_0315.md](VERSION_0315.md).
 
 **0.3.14 ist offline geprüft und lokal installiert.** Sie lädt Mautmodelle früher, verwendet bei der Startvorschau dieselben Freiraumprüfungen wie während der Fahrt und verlagert die zusätzliche Statusgeometrie aus dem Fahrzyklus. Eindeutige gerade Modell-Zahlzonen können einen früheren manuellen Haltepunkt liefern; der bisherige Sicherheitsabstand wird dabei nicht verkleinert. Die beiden griechischen Offline-Spurwahlen bleiben gültig. 84 Integrations- und 46 Logikprüfungen bestehen. Noch nicht gestartet oder gefahren. Umfang und offene Punkte: [VERSION_0314.md](VERSION_0314.md).

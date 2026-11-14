@@ -12,6 +12,7 @@ public sealed record TollDecision(string Phase, double? TargetSpeed, float MaxAc
 
 public sealed record TollOptions
 {
+    public bool CurvePreviewEnabled {get;init;}=true;
     public double ApproachSpeedKph { get; init; } = 20;
     public double PassageSpeedKph { get; init; } = 10;
     // Distance from the telemetry truck origin, not a measured bumper gap.

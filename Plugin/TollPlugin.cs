@@ -75,7 +75,9 @@ public sealed partial class TollPlugin : Plugin
         Func<ETS2LA.Game.Data.PrefabPath,bool>? readClearance=null,
         Action<ETS2LA.Game.Data.ParsedPrefab>? prefetch=null,
         Func<ETS2LA.Game.Data.ParsedPrefab,int,ManualStopZone?>? readManualStop=null,
-        Func<RouteTrace?,Vector3,ETS2LA.Game.SDK.Semaphore[],object>? buildStatusGeometry=null) {
+        Func<RouteTrace?,Vector3,ETS2LA.Game.SDK.Semaphore[],object>? buildStatusGeometry=null,
+        Func<RouteTrace,Vector3,CurveSpeedProfile>? buildCurveProfile=null) {
+        curvePreview=new(buildCurveProfile);
         this.monitorSteering=monitorSteering;
         this.readState=readState;this.readAcc=readAcc??FindAcc;this.notify=notify;this.readPayments=readPayments;
         this.readPlanner=readPlanner??FindPlanner;
@@ -260,6 +262,7 @@ public sealed partial class TollPlugin : Plugin
     }
     void ResetDriving()
     {
+        curvePreview.Clear();curveDecision=null;
         supervisor.Reset();
         trackingGuard.Reset();
         safetyTrace = null;
@@ -491,6 +494,7 @@ public sealed partial class TollPlugin : Plugin
                     var fault=trackingGuard.Check(trace,position,headingTurns,speed,State.DrivingMode!=DrivingMode.AdaptiveCruiseControlOnly);
                     if(fault!=null)Disarm(fault);else {
                         safetyTrace=trace;
+                        RequestCurvePreview(trace);
                         lastAcceptedPlan=RouteSnapshot.Capture(data);lastAcceptedPlanAt=clock.Elapsed.TotalSeconds;
                         // Geometry was checked against the latest pose just now.
                         // Keep source receipt age separately for timing diagnostics.
@@ -621,6 +625,7 @@ public sealed partial class TollPlugin : Plugin
             try { newOptions.Validate(); } catch (ArgumentException e) { return e.Message; }
             try {preferences.Save(newOptions,preferences.Gates);} catch(Exception ex) {return "Einstellungen nicht gespeichert: "+ex.Message;}
             options = newOptions; controller = new(options); tracked = null; active = false;  bridge.Detach();
+            curvePreview.Clear();curveDecision=null;
             startCheck=null;
             automaticPreparation.Request();
             preparationReason="Einstellungen gespeichert. Automatische Vorbereitung wartet auf verbundene Module.";
@@ -750,7 +755,7 @@ public sealed partial class TollPlugin : Plugin
                     float routeLimit = ApproachStop.BeforeRouteGap(speed, trace.Length - trace.Project(position).Along);
                     limit = float.IsFinite(limit) ? Math.Min(limit, routeLimit) : routeLimit;
                 }
-                return limit;
+                return LimitForCurve(limit);
             }
             catch(Exception ex) {Disarm(ex.Message);return -5f;}
         }
@@ -856,6 +861,7 @@ public sealed partial class TollPlugin : Plugin
                         steeringFault=lastSteeringFailure,
                         impact=lastImpact,
                         pedalWarning=Volatile.Read(ref brakeWarning),
+                        curve=curveDecision,curvePreviewIssue=safetyTrace!=null?curvePreview.ErrorFor(safetyTrace):null,
                         sdk, paused, pathError=path?.ErrorMessage,
                         gateCount=gates.Count(g=>g.type==SemaphoreType.GATE), options,
                         geometry=(object?)null,manualStopOffset=router.ManualStopOffset(options.StopOffsetMetres),

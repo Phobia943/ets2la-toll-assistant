@@ -4,9 +4,47 @@ using MautAssistent;
 using TruckLib.Models;
 using TruckLib.Models.Ppd;
 using TruckLib.Sii;
+using ETS2LA.Game.Data;
+using System.Runtime.CompilerServices;
 
 public static class ManualTriggerIntegration
 {
+    public static void WorkerSnapshot(Action<bool,string> assert)
+    {
+        var rotation=Quaternion.CreateFromAxisAngle(Vector3.UnitY,MathF.PI);
+        var descriptor=new PrefabDescriptor {NavCurves=[new NavCurve {StartPosition=Vector3.Zero,EndPosition=new(0,0,30),Length=30,
+            StartRotation=rotation,EndRotation=rotation,SemaphoreId=1}]};
+        descriptor.Semaphores.Add(new(){SemaphoreId=1,Position=new(2,0,30)});
+        var part=new Part("base"){Locators=[new Locator {Position=new(0,0,15),Rotation=Quaternion.Identity,Scale=1,HookupOffset=0}]};
+        part.Pieces.Add(new(){Vertices=[new(new Vector3(-1,-.1f,0)),new(new Vector3(1,-.1f,0)),new(new Vector3(0,-.1f,30))],Triangles=[new(0,1,2)]});
+        var unit=new Unit("tollgate","tollgate.fixture");unit.Attributes["trigger_length"]=10;unit.Attributes["trigger_width"]=4;
+        var units=new Dictionary<string,Unit>{{unit.Name,unit}};
+        var model=new Model {Parts=[part],Variants=[new("default"){Attributes=[new(){Tag="visible",Value=1}]}]};
+        var hook=Encoding.ASCII.GetBytes(unit.Name+"\0");var bytes=new byte[96+hook.Length];bytes[0]=21;
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(88),96);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(92),hook.Length);hook.CopyTo(bytes,96);
+        var incomplete=new PrefabDescriptor {NavCurves=descriptor.NavCurves};
+        assert(TollModelEvidence.InspectModel(incomplete,model,"default",[],bytes,tollUnits:units).ManualStops.Count==0&&
+            TollModelEvidence.InspectModel(descriptor,model,"default",[],bytes,tollUnits:units).ManualStops.Count==1,
+            "The former signal-free snapshot loses a valid payment interval even with valid model geometry");
+        var prefab=(ParsedPrefab)RuntimeHelpers.GetUninitializedObject(typeof(ParsedPrefab));
+        prefab.Prefab=new TruckLib.ScsMap.Prefab {Model="fixture",Variant="default"};prefab.Descriptor=descriptor;
+        using var entered=new ManualResetEventSlim();using var release=new ManualResetEventSlim();
+        // A stable source identity is needed by the real cache, as in the host.
+        var files=new ModelClearanceIntegration.StubFiles();
+        var evidence=new TollModelEvidence(()=>files,null,request=>{
+            entered.Set();if(!release.Wait(TimeSpan.FromSeconds(4)))throw new TimeoutException();
+            return TollModelEvidence.InspectModel(request.Descriptor,model,"default",[],bytes,tollUnits:units);
+        });
+        try {
+            assert(evidence.ReadManualStop(prefab,1)==null&&entered.Wait(TimeSpan.FromSeconds(2)),"The actual model worker must be held before inspection");
+            descriptor.Semaphores[0].Position=new(2,0,300);
+            release.Set();
+            assert(SpinWait.SpinUntil(()=>evidence.ReadManualStop(prefab,1)!=null,TimeSpan.FromSeconds(2)),
+                "The asynchronous descriptor snapshot must retain its original signal geometry");
+            assert(evidence.ReadManualStop(prefab,1)==new ManualStopZone(11,19),"Later map mutation cannot move the cached payment interval");
+        } finally {release.Set();}
+    }
     public static void Run(Action<bool,string> assert)
     {
         var rotation=Quaternion.CreateFromAxisAngle(Vector3.UnitY,MathF.PI);

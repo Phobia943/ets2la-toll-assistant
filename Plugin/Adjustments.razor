@@ -10,6 +10,7 @@
     <p>@TollPlugin.Current?.DataStatus</p>
     <p>@TollPlugin.Current?.RouteStatus</p>
     <p>@TollPlugin.Current?.VehicleGeometryStatus</p>
+    @if (!string.IsNullOrEmpty(TollPlugin.Current?.CurveStatus)) {<p>@TollPlugin.Current?.CurveStatus</p>}
     @if (!string.IsNullOrEmpty(TollPlugin.Current?.BrakeResponseStatus)) {<p role="alert">@TollPlugin.Current?.BrakeResponseStatus</p>}
     <p>Baustellen und Hindernisse werden nicht zuverlässig vorausblickend erkannt. Dort bitte manuell fahren. Die Kollisionsabschaltung kann erst nach einem Aufprall reagieren.</p>
     @if (TollPlugin.Current?.LaneChoices is { Length: >0 } choices) {
@@ -38,6 +39,7 @@
     <label>Halteabstand zum Lkw-Messpunkt (m) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="4" max="15" @bind="offset" /></label>
     <p>Der Messpunkt ist nicht die Stoßstange. Der passende Wert muss mit deinem Lkw geprüft werden.</p>
     <label>Warten nach vollständig geöffneter Schranke (s) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="1" max="10" step="0.5" @bind="delay" /></label>
+    <label><input type="checkbox" @bind="curvePreviewEnabled" /> Zusätzliche Kurvenvorschau verwenden</label>
     <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="Apply">Einstellungen speichern</button>
     <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="Observe">Nur beobachten / Fehlerbremsung lösen</button>
     <button style="padding:10px;border:1px solid #b58a6f;border-radius:6px" @onclick="Activate">Vorbereitung jetzt prüfen (optional)</button>
@@ -49,6 +51,7 @@
 </div>
 @code {
     double approach=20, passage=10, offset=8, delay=2;
+    bool curvePreviewEnabled=true;
     string message="";
     int lane=-1;
     TollPayment payment=TollPayment.Unknown;
@@ -56,14 +59,14 @@
     protected override void OnInitialized() {
         var o=TollPlugin.Current?.Options;
         lane=TollPlugin.Current?.SelectedLane ?? -1;
-        if(o != null) { approach=o.ApproachSpeedKph; passage=o.PassageSpeedKph; offset=o.StopOffsetMetres; delay=o.OpenDelaySeconds; }
+        if(o != null) { approach=o.ApproachSpeedKph; passage=o.PassageSpeedKph; offset=o.StopOffsetMetres; delay=o.OpenDelaySeconds; curvePreviewEnabled=o.CurvePreviewEnabled; }
         _=Refresh();
     }
     async Task Refresh() {
         try { using var timer=new PeriodicTimer(TimeSpan.FromSeconds(1)); while(await timer.WaitForNextTickAsync(stop.Token)) await InvokeAsync(StateHasChanged); }
         catch(OperationCanceledException) { }
     }
-    void Apply() => message=TollPlugin.Current?.Configure(new TollOptions { ApproachSpeedKph=approach, PassageSpeedKph=passage, StopOffsetMetres=offset, OpenDelaySeconds=delay }) ?? "Plugin fehlt";
+    void Apply() => message=TollPlugin.Current?.Configure(new TollOptions { ApproachSpeedKph=approach, PassageSpeedKph=passage, StopOffsetMetres=offset, OpenDelaySeconds=delay, CurvePreviewEnabled=curvePreviewEnabled }) ?? "Plugin fehlt";
     void Observe() => message=TollPlugin.Current?.SetActive(false) ?? "Plugin fehlt";
     void Preview() => message=TollPlugin.Current?.PreviewRoute() ?? "Plugin fehlt";
     void ConfirmLane() => message=TollPlugin.Current?.ConfirmLane(lane,payment) ?? "Plugin fehlt";

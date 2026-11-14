@@ -1,5 +1,13 @@
 # Fahrnachweis
 
+## Vorbereitete Offline-Fassung 0.3.16
+
+Noch nicht installiert oder im Spiel gefahren. 96 lokale Integrations- und 53 unabhängige Logikprüfungen einschließlich des optionalen C-Protokollrahmens bestehen, außerdem 44 Aufnahme- und drei Inventurprüfungen. Die zusätzliche Kurvenvorschau bremst im vereinfachten Modell bei einer 90-km/h-Anfahrt vor einer 40-m-Kurve auf etwa 24 km/h. Dabei sind eine Sekunde zusätzliche Befehlsverzögerung und höchstens 1,2 m/s² angeforderte Zusatzverzögerung angesetzt. Das ist kein Fahr-, Kipp- oder Bremswegbeweis für das Spiel.
+
+Die Integration prüft den echten ACC-Rückruf, den Erhalt stärkerer Halteanforderungen, die separate Abschaltung der Zusatzvorschau, Lane-only-Modus und manuelle Übernahme. Absichtlich blockierte Vorschauarbeit hält weder ACC noch Route noch F9 auf; eine verspätete Antwort reaktiviert nichts. Die Modelllader-Regression prüft einen gültigen manuellen Zahlhaltebereich mit kopierten Schrankenankern und nachträglicher Mutation der Originalkarte. Der bisherige Sicherheitsabstand wird nicht verkleinert.
+
+Beide griechischen SDK-Kartenwiederholungen wählen weiterhin eine automatische Zahlspur und erzeugen keinen unbestätigten Halt. Nur drei beziehungsweise fünf Abschnitte sind rekonstruiert. In diesen Fällen entstehen weiterhin keine neuen manuellen Zielpunkte. Hintergrundfahrt und allgemeine Baustellenerkennung sind offen. [Änderungen und Grenzen von 0.3.16](VERSION_0316.md).
+
 ## Vorbereitete Offline-Fassung 0.3.15
 
 Noch nicht installiert oder im Spiel gestartet. 89 Integrations-, 49 unabhängige Logik-, 18 native Host-, 44 Aufnahme- und drei Inventurprüfungen bestehen. Die ersten beiden Zahlen schließen den optionalen tatsächlichen C-Protokollrahmen ein. Die Bremsreaktionswarnung greift bei gehaltenem Routenaufruf, ohne selbst Steuerausgaben oder Assistenzzustand zu verändern; F9 löscht sie. Der optionale Fahrzeugleser öffnet vorhandenen Speicher ausschließlich lesend und macht fehlende, ungültige oder nicht bestätigte Proben nicht zu einer Fahrfreigabe.

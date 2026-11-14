@@ -126,6 +126,7 @@ public sealed partial class TollPlugin
                 automaticPreparation.Cancel();
                 ResetDriving();controller.Reset();passage.Reset();tracked=null;candidate=null;
                 safetyTrace=trace;
+                RequestCurvePreview(trace);
                 pathAt=now;
                 decision=initial;
                 evaluatedAt=now;

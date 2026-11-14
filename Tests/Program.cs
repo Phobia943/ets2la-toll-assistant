@@ -49,6 +49,10 @@ void Run()
     var results=new List<string>();
     void Check(string name, Action test) { try {test(); results.Add("PASS "+name);} catch(Exception ex) {results.Add("FAIL "+name+": "+ex); } }
     void Assert(bool v,string message="Assertion failed") {if(!v)throw new Exception(message);}
+    Check("Curve geometry excludes grades, item seams and isolated interpolation spikes",()=>CurveSpeedTests.Geometry(Assert));
+    Check("Curve speed preview slows ahead without increasing native bounds or stopping a slow truck",()=>CurveSpeedTests.Limits(Assert));
+    Check("Delayed 90 km/h approach simulation slows before the curve without hard braking",()=>CurveSpeedTests.ApproachSimulation(Assert));
+    Check("Curve preview work is bounded, coalesced and invalidated on takeover",()=>CurveSpeedTests.Worker(Assert));
     Check("Vehicle bounds require coherent fresh frames and never grant clearance",()=>GeometryBrakeTests.Protocol(Assert));
     Check("Missing brake response requires one second of coherent effective commands",()=>GeometryBrakeTests.Brake(Assert));
     if(!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MAUT_GEOMETRY_FIXTURE")))
@@ -186,6 +190,9 @@ void Run()
         }
     });
     #if INTEGRATION
+    Check("Actual ACC curve bound preserves stronger stops, lane-only mode and F9",()=>CurveSpeedIntegration.ActiveBound(Assert));
+    Check("Held curve preview cannot block ACC, route delivery or manual takeover",()=>CurveSpeedIntegration.BlockedWorker(Assert));
+    Check("Async model snapshots retain detached payment signal geometry",()=>ManualTriggerIntegration.WorkerSnapshot(Assert));
     Check("Missing brake response warns without interrupting control or waiting for routing",()=>BrakeGeometryIntegration.BrakeWarning(Assert));
     Check("Geometry reader is optional, read-only, coherent and session-bound",()=>BrakeGeometryIntegration.Reader(Assert));
     Check("Blocked status geometry cannot stall driving callbacks or manual takeover",()=>DiagnosticDeliveryIntegration.BlockedGeometry(Assert));

@@ -60,6 +60,29 @@ public sealed class RouteTrace
         }
         return previous;
     }
+    // Interpolation stays inside the verified trace. Item seams are geometric
+    // continuity, not evidence of a bend, so curvature windows exclude them.
+    public bool TryCurvature(double center,double span,out double curvature)
+    {
+        curvature=0;
+        if(!double.IsFinite(center)||!double.IsFinite(span)||span<=0||center-span<0||center+span>Length)return false;
+        foreach(int i in connectorEnds)if(distances[i]>=center-span&&distances[i-1]<=center+span)return false;
+        Vector3 At(double along) {
+            int end=Array.BinarySearch(distances,along);
+            if(end<0)end=~end;
+            end=Math.Clamp(end,1,points.Length-1);
+            while(end<points.Length-1&&distances[end]-distances[end-1]<.000001)end++;
+            double length=distances[end]-distances[end-1];
+            return Vector3.Lerp(points[end-1],points[end],length>0?(float)((along-distances[end-1])/length):0);
+        }
+        var a=At(center-span);var b=At(center);var c=At(center+span);
+        double abX=(double)b.X-a.X,abZ=(double)b.Z-a.Z,bcX=(double)c.X-b.X,bcZ=(double)c.Z-b.Z;
+        double ab=Math.Sqrt(abX*abX+abZ*abZ),bc=Math.Sqrt(bcX*bcX+bcZ*bcZ);
+        double ac=Math.Sqrt((abX+bcX)*(abX+bcX)+(abZ+bcZ)*(abZ+bcZ));
+        if(Math.Min(Math.Min(ab,bc),ac)<.25)return false;
+        curvature=2*(abX*bcZ-abZ*bcX)/(ab*bc*ac);
+        return double.IsFinite(curvature);
+    }
     public object Diagnose(Vector3 position)
     {
         var p=Project(position);var direction=DirectionAt(p.Along);

@@ -94,7 +94,7 @@ public static class ModelClearanceIntegration
         assert(evidence.Read(prefab).Count==0,"A changed additional-part mask cannot reuse old clearance");
         assert(finished.Wait(TimeSpan.FromSeconds(2)),"The changed mask must get its own inspection");
     }
-    sealed class StubFiles : IFileSystem
+    internal sealed class StubFiles : IFileSystem
     {
         public char DirectorySeparator=>'/';public bool FileExists(string p)=>false;public bool DirectoryExists(string p)=>false;
         public IList<string> GetFiles(string p)=>[];public byte[] ReadAllBytes(string p)=>throw new NotSupportedException();

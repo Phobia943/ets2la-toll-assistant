@@ -78,6 +78,11 @@ public sealed class TollModelEvidence
                 cache.Remove(old.Key);
             }
             var copy=new PrefabDescriptor {NavCurves=descriptor.NavCurves.Select(CloneCurve).ToList()};
+            // Manual trigger matching needs the same gate anchors as the live
+            // descriptor. Copy values before dispatch; never read mutable map
+            // objects from the model worker.
+            foreach(var signal in descriptor.Semaphores)
+                copy.Semaphores.Add(new(){SemaphoreId=signal.SemaphoreId,Position=signal.Position});
             var entry=new Entry();cache.Add(key,entry);
             pending.Enqueue(new(current,new(key.Model,key.Variant,parts,key.SpecialJob,copy,archives),entry));
             if(!worker) {worker=true;ThreadPool.QueueUserWorkItem(_=>RunWorker());}
