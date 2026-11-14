@@ -8,6 +8,35 @@ using TruckLib.ScsMap;
 
 public static class SignalIdentityIntegration
 {
+    public static void WidePassage(Action<bool,string> assert)
+    {
+        NavCurve Line(float x,int gate)=>new() {StartPosition=new(x,0,0),EndPosition=new(x,0,30),Length=30,SemaphoreId=gate,
+            StartRotation=Quaternion.CreateFromAxisAngle(Vector3.UnitY,MathF.PI),EndRotation=Quaternion.CreateFromAxisAngle(Vector3.UnitY,MathF.PI),AllowedVehicles=AllowedVehicles.AllVehicles};
+        var lane=Line(0,91);var tail=Line(0,-1);tail.StartPosition=new(0,0,30);tail.EndPosition=new(0,0,100);tail.Length=70;lane.NextLines.Add(1);
+        var descriptor=new PrefabDescriptor{NavCurves=[lane,tail]};
+        descriptor.Semaphores.Add(new(){SemaphoreId=91,Position=new(-3.7f,0,29)});
+        descriptor.Semaphores.Add(new(){SemaphoreId=91,Position=new(3.7f,0,29)});
+        var prefab=(ParsedPrefab)RuntimeHelpers.GetUninitializedObject(typeof(ParsedPrefab));prefab.Prefab=new(){Uid=910};prefab.Descriptor=descriptor;
+        var path=new PrefabPath(prefab,new(){Uid=911},new(){Uid=912},[lane,tail],Direction.Forward,Matrix4x4.Identity,Vector3.Zero);
+        var frame=new PlannedPathData{HasError=false,PlannedPath=[new(){item=prefab,prefabPath=path,startNode=path.StartNode,endNode=path.EndNode,laneIndex=0,direction=Direction.Forward}]};
+        ETS2LA.Game.SDK.Semaphore S(float x,int state)=>new(){id=91,position=new(x,0,29),state=state,type=ETS2LA.Game.SDK.SemaphoreType.GATE};
+        var left=S(-3.7f,1);var right=S(3.7f,3);var truck=new Vector3(0,0,10);
+        var gate=RouteMatcher.Select(frame,truck,[left,right],null);
+        assert(gate?.State==BarrierState.Closed,"One open arm cannot clear a wide passage whose other arm is closed");
+        var key=gate!.Key;left.state=3;
+        assert(RouteMatcher.Select(frame,truck,[left,right],key)?.State==BarrierState.Open,"Both separately observed arms must open before clearance");
+        assert(RouteMatcher.Select(frame,truck,[left],key)?.State==BarrierState.Unknown,"A missing wide-passage arm must never look open");
+        var live=RouteMatcher.FindLiveGate(frame,[left,right],key)!;right.state=1;
+        assert(RouteMatcher.FindLiveGate(null,[left,right],key,live.GetWorldCoordinates())?.state==1,
+            "The paired-arm requirement must survive route pruning and exit handoff");
+        var unknown=new ETS2LA.Game.SDK.Semaphore{id=929,position=new(111,0,29),state=3,type=ETS2LA.Game.SDK.SemaphoreType.GATE};
+        assert(RouteMatcher.FindLiveGate(null,[unknown],RouteMatcher.Key(unknown),unknown.GetWorldCoordinates())?.state==-1,
+            "Absent map metadata must not invent a single-arm opening proof");
+        var neighbor=Line(6,91);descriptor.NavCurves.Add(neighbor);
+        var separate=RouteMatcher.Select(frame,truck,[left,right],null);
+        assert(separate?.State==BarrierState.Open,"A reused number on a distinctly mapped neighboring booth must not merge its state");
+    }
+
     public static void Run(Action<bool,string> assert)
     {
         TollPayment Hookup(string name,bool special=false) {

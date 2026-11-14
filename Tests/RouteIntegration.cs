@@ -48,6 +48,20 @@ public static class RouteIntegration
         var truck=source.Interpolate(.03f,0)!.Value.Position;
         var sdk=descriptor.Semaphores.Select(s=>new ETS2LA.Game.SDK.Semaphore{position=s.Position,id=(int)s.SemaphoreId,
             type=ETS2LA.Game.SDK.SemaphoreType.GATE,state=1}).ToArray();
+        bool clearanceValid=true;
+        var clearanceRouter=new TollRouter(new PreferenceStore(Path.Combine(Path.GetTempPath(),"unused-clearance-"+Guid.NewGuid()+".json")),
+            _=>new Dictionary<int,TollPayment>{{4,TollPayment.Automatic},{12,TollPayment.Automatic}},
+            path=>clearanceValid&&PrefabRefinement.OriginalFor(path).Curves.All(c=>c.SemaphoreId!=4));
+        clearanceRouter.Discover(data,truck,sdk);
+        assert(clearanceRouter.SelectedGate==12&&!clearanceRouter.Choices.Any(c=>c.GateId==4),
+            "A blocked paid lane must be excluded before automatic selection; a free connected lane remains eligible");
+        bool blockedConfirmation=false;try{clearanceRouter.Confirm(4,TollPayment.Automatic);}catch(ArgumentException){blockedConfirmation=true;}
+        assert(blockedConfirmation,"A saved/manual payment choice cannot bypass structural clearance");
+        var clearedCopy=RouteSnapshot.Capture(data);
+        assert(clearanceRouter.Apply(clearedCopy,truck,out _),"Known clear geometry must apply to the cloned native plan");
+        clearanceValid=false;
+        assert(clearanceRouter.Apply(clearedCopy,truck,out _)&&clearanceRouter.StopBoundary.HasValue&&clearanceRouter.SelectedGate==null,
+            "A cached route cannot retain clearance after its model evidence changes");
         var filename=Path.Combine(AppContext.BaseDirectory,"route-integration-settings.json");
         if(File.Exists(filename))File.Delete(filename);
         var prefs=new PreferenceStore(filename);var router=new TollRouter(prefs);

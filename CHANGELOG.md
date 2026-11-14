@@ -1,9 +1,16 @@
 # Änderungen
 
-## Noch nicht veröffentlicht – Luftdruckbeobachtung und DLC-Befunde
+## 0.3.12 – Modellvarianten und breite Mautdurchgänge
+
+- Aktivierte Modellteile werden zusätzlich zur Variantenmaske ausgewertet. Sichtbare statische Dreiecke sperren einen betroffenen Fahrkorridor; Zahlungsart und Durchfahrtsgeometrie bleiben getrennt. Der Korridor ist 3 m breit und 6 m hoch, kein gemessenes Fahrzeugprofil. Unbekannte Kindmodelle, animierte Geometrie und unpassende Archivquellen bleiben ohne Freigabe.
+- Zwei Flügel einer breiten Schranke werden anhand der physischen Spur zu einem Durchgang zugeordnet. Beide getrennten Komponenten müssen offen gemeldet werden. Eine fehlende Komponente, widersprüchliche Repliken oder verlorene Zuordnungsdaten können keine Öffnung vortäuschen; der Zusammenhang bleibt beim Routenübergang erhalten.
+- Modellarbeit läuft begrenzt außerhalb des Fahrzyklus und mit eigenen Archivlesern. Gespeicherte Spuren und bereits angewendete Routen umgehen die geometrische Prüfung nicht. Zwei griechische Kartenfälle wählen mit aufgezeichneten SDK-Eingaben jetzt selbst eine verbundene automatische Zahlspur. Ein Fall ist nur bis zum Straßenstück nach der Anlage rekonstruiert; eine echte Durchfahrt bleibt offen.
+- 77 Integrationstests, 44 unabhängige Logiktests und 44 Aufnahmeprüfungen bestehen. Details und Einschränkungen stehen in `VALIDATION.md`. Keine feste griechische Spur- oder Stationsnummer im Auswahlcode.
+
+## Beobachtungen und Konfiguration vom 14. November
 
 - Die Aufnahme bewahrt endliche negative Luftdruck-Rohwerte getrennt von der weiterhin ungültigen Druckmessung. Warn-/Notfallflags bleiben unabhängig erhalten; ein neuer Test prüft die vollständige Speicherung. 44 Aufnahmeprüfungen bestehen. Der spielinterne Tempomat-Sollwert wird künftig ebenfalls erfasst.
-- Laufzeitbeobachtung von 0.3.11, wiederholter Luftdruckverlust bei automatischer Bremsung und die Ablehnung einer griechischen Mautanlage mit aktivierten Zusatzteilen sind dokumentiert. Moderne/Standard-Pedalausgabe sind noch nicht kontrolliert verglichen; die Höhenbalkensperre bleibt bestehen. Keine Änderung an der installierten Plugin-DLL oder den Fahrentscheidungen.
+- Laufzeitbeobachtung von 0.3.11, wiederholter Luftdruckverlust bei automatischer Bremsung und die Ablehnung einer griechischen Mautanlage mit aktivierten Zusatzteilen sind dokumentiert. Der Teilenname „bar3“ allein belegt keinen Höhenbalken; diese anfängliche Einordnung wurde durch die tatsächliche Geometrieprüfung ersetzt.
 - Die lokale Konfiguration nutzt nach Sicherung und Neustart wieder die Standard-Pedalausgabe. Der beobachtende Vergleich zeigt wesentlich geringeren Luftverbrauch bei automatischer Bremsung, vier Minuten oberhalb der Warnschwelle und bestätigte manuelle Übernahme. Eine beim Heraustabben wirkungslose Standard-Bremsausgabe ist ebenfalls aufgezeichnet und vom Fahrer zeitlich zugeordnet. Damit ist nur eine vorläufige Abhilfe für Vordergrundfahrt belegt; Hintergrundfahrt bleibt offen.
 
 ## 0.3.11 – Zeitbezug der Diagnose und getrennte SDK-Ausfahrtmessung

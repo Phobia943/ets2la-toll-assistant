@@ -160,6 +160,10 @@ void Run()
     Check("SDK delivery remains live through slow toll work without weakening actual telemetry-loss braking",()=>InputDeliveryIntegration.Run(Assert));
     Check("Physical brake releases assist outputs immediately even during route computation",()=>InputDeliveryIntegration.BrakeWhileBusy(Assert));
     Check("Duplicate signal objects preserve physical booth identity, payment and conservative clearance",()=>SignalIdentityIntegration.Run(Assert));
+    Check("Wide passages require every distinct arm to open, including after route pruning",()=>SignalIdentityIntegration.WidePassage(Assert));
+    Check("Static height and width checks distinguish real triangle intersections from bounding boxes",()=>ModelClearanceIntegration.Geometry(Assert));
+    Check("Visible additional parts affect geometry independently of payment markers",()=>ModelClearanceIntegration.VisibleParts(Assert));
+    Check("Slow model inspection is bounded, detached, cached and nonblocking for route callers",()=>ModelClearanceIntegration.NonBlocking(Assert));
     Check("Connector starts distinguish passed signals from signals and restrictions ahead",()=>ConnectorSignalIntegration.Run(Assert));
     Check("Distant planning gaps do not trip current tracking; nearby gaps still brake",()=>FutureGapIntegration.Run(Assert));
     Check("Tracking faults brake independently of ACC; F9 releases and F8 cannot restart",()=>FaultBrakeIntegration.Run(Assert));

@@ -95,7 +95,8 @@ public static class RouteMatcher
                 if(live!=null && Key(live)==key)return live;
             }
         if(remembered.HasValue && int.TryParse(key.Split(':')[0],out var id))return TollSignals.ReadLive(gates,id,remembered.Value);
-        return gates.FirstOrDefault(g=>g.type==SemaphoreType.GATE && Key(g)==key);
+        var raw=gates.FirstOrDefault(g=>g.type==SemaphoreType.GATE && Key(g)==key);
+        return raw==null?null:TollSignals.ReadLive(gates,raw.id,raw.GetWorldCoordinates());
     }
 
     public static RouteTrace Sample(PlannedPathData path) => Sample(path,null,0);

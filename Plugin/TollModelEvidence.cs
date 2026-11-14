@@ -1,58 +1,173 @@
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Text;
+using System.Threading;
 using ETS2LA.Game.Data;
-using ETS2LA.Game.SiiFiles;
 using ETS2LA.Game.Utils;
 using TruckLib;
 using TruckLib.Models;
 using TruckLib.Models.Ppd;
+using TruckLib.Sii;
 
 namespace MautAssistent;
 
-public sealed class TollModelEvidence(Func<IFileSystem?> readFiles,Func<bool>? readSpecialJob=null)
+public sealed class TollModelEvidence
 {
+    readonly Func<IFileSystem?> readFiles;
+    readonly Func<bool>? readSpecialJob;
+    readonly Func<ModelRequest,ModelInspection>? inspect;
+    readonly object sync=new();
     IFileSystem? files;
-    Dictionary<string,string>? models;
-    readonly Dictionary<(string Model, string Variant,bool SpecialJob), IReadOnlyDictionary<int,TollPayment>> cache = new();
+    string[]? archives;
+    readonly Dictionary<ModelKey,Entry> cache=[];
+    readonly Queue<Job> pending=[];
+    bool worker;
+    sealed record ModelKey(string Model,string Variant,string Parts,bool SpecialJob,PrefabDescriptor Descriptor);
+    sealed class Entry {public ModelInspection? Result;}
+    sealed record Job(IFileSystem Source,ModelRequest Request,Entry Entry);
+    internal sealed record ModelRequest(string Model,string Variant,string[] Parts,bool SpecialJob,PrefabDescriptor Descriptor,string[] Archives);
+    public sealed record ModelInspection(IReadOnlyDictionary<int,TollPayment> Payments,bool[] BlockedCurves);
     static readonly IReadOnlyDictionary<int,TollPayment> Unknown = new Dictionary<int,TollPayment>();
+    static readonly ModelInspection Rejected=new(Unknown,[]);
+
+    public TollModelEvidence(Func<IFileSystem?> readFiles,Func<bool>? readSpecialJob=null)
+        :this(readFiles,readSpecialJob,null) { }
+    internal TollModelEvidence(Func<IFileSystem?> readFiles,Func<bool>? readSpecialJob,Func<ModelRequest,ModelInspection>? inspect)
+    {this.readFiles=readFiles;this.readSpecialJob=readSpecialJob;this.inspect=inspect;}
 
     public IReadOnlyDictionary<int,TollPayment> Read(ParsedPrefab prefab)
     {
-        var current = readFiles();
-        if (current == null || prefab.Descriptor == null || prefab.Prefab.AdditionalParts.Count > 0) return Unknown;
-        if (!ReferenceEquals(current, files)) { files = current; models = null; cache.Clear(); }
-        var key = (prefab.Prefab.Model.ToString(), prefab.Prefab.Variant.ToString(),readSpecialJob?.Invoke()??false);
-        if (cache.TryGetValue(key, out var known)) return known;
-        try
-        {
-            models ??= ReadModels(current);
-            if (!models.TryGetValue(key.Item1, out var pmd)) return cache[key] = Unknown;
-            var model = TruckLib.Models.Model.Open(pmd, current);
-            var variants = model.Variants.Where(v => v.Name.ToString() == key.Item2).ToArray();
-            if (variants.Length != 1 || variants[0].Attributes.Count != model.Parts.Count ||
-                variants[0].Attributes.Any(a => a.Tag.ToString() != "visible" || a.Value > 1)) return cache[key] = Unknown;
-            var locators = model.Parts.Where((_, i) => variants[0].Attributes[i].Value == 1)
-                .SelectMany(p => p.Locators);
-            var pmg = current.ReadAllBytes(Path.ChangeExtension(pmd, ".pmg"));
-            var markers = locators.Select(l => (l.Position, Payment: DecodeHookup(pmg, l.HookupOffset,key.Item3)))
-                .Where(l => l.Payment != TollPayment.Unknown);
-            return cache[key] = Match(prefab.Descriptor, markers);
-        }
-        catch (Exception ex)
-        {
-            ETS2LA.Logging.Logger.Warn("Maut-Zahlart konnte nicht aus dem Modell gelesen werden: " + ex.Message);
-            return cache[key] = Unknown;
+        var entry=GetEntry(prefab);
+        return entry==null?Unknown:Volatile.Read(ref entry.Result)?.Payments ?? Unknown;
+    }
+
+    public bool IsClear(PrefabPath input)
+    {
+        var path=PrefabRefinement.OriginalFor(input);
+        var entry=GetEntry(path.Prefab);var result=entry==null?null:Volatile.Read(ref entry.Result);
+        var descriptor=path.Prefab.Descriptor;
+        if(result==null||descriptor==null||result.BlockedCurves.Length!=descriptor.NavCurves.Count||path.Curves.Count==0)return false;
+        return path.Curves.All(curve=>descriptor.NavCurves.IndexOf(curve) is int i && i>=0 && !result.BlockedCurves[i]);
+    }
+
+    Entry? GetEntry(ParsedPrefab prefab)
+    {
+        var current=readFiles();var descriptor=prefab.Descriptor;
+        if(current==null||descriptor==null)return null;
+        lock(sync) {
+            if(!ReferenceEquals(current,files)) {files=current;archives=inspect==null?IndependentAssets.SnapshotPaths(current):[];cache.Clear();}
+            if(archives==null)return null;
+            var parts=prefab.Prefab.AdditionalParts.Select(p=>p.ToString()).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+            var key=new ModelKey(prefab.Prefab.Model.ToString(),prefab.Prefab.Variant.ToString(),string.Join('\u001f',parts),readSpecialJob?.Invoke()??false,descriptor);
+            if(cache.TryGetValue(key,out var existing))return existing;
+            // Bound pending heavy work; callers retry from discovery without waiting.
+            if(pending.Count>=4)return null;
+            if(cache.Count>=64) {
+                var old=cache.FirstOrDefault(p=>Volatile.Read(ref p.Value.Result)!=null);
+                if(old.Key==null)return null;
+                cache.Remove(old.Key);
+            }
+            var copy=new PrefabDescriptor {NavCurves=descriptor.NavCurves.Select(CloneCurve).ToList()};
+            var entry=new Entry();cache.Add(key,entry);
+            pending.Enqueue(new(current,new(key.Model,key.Variant,parts,key.SpecialJob,copy,archives),entry));
+            if(!worker) {worker=true;ThreadPool.QueueUserWorkItem(_=>RunWorker());}
+            return entry;
         }
     }
 
+    static NavCurve CloneCurve(NavCurve c)
+    {
+        var copy=new NavCurve {StartPosition=c.StartPosition,EndPosition=c.EndPosition,StartRotation=c.StartRotation,
+            EndRotation=c.EndRotation,Length=c.Length,SemaphoreId=c.SemaphoreId,AllowedVehicles=c.AllowedVehicles,TrafficRule=c.TrafficRule};
+        foreach(var next in c.NextLines)copy.NextLines.Add(next);
+        foreach(var previous in c.PreviousLines)copy.PreviousLines.Add(previous);
+        return copy;
+    }
+
+    void RunWorker()
+    {
+        IndependentAssets? owned=null;IFileSystem? source=null;Dictionary<string,string>? models=null;HashSet<string>? nonSolid=null;
+        try {
+            while(true) {
+                Job job;
+                lock(sync) {if(pending.Count==0){worker=false;return;}job=pending.Dequeue();}
+                ModelInspection result;
+                try {
+                    if(inspect!=null)result=inspect(job.Request);
+                    else {
+                        if(!ReferenceEquals(source,job.Source)) {
+                            owned?.Dispose();owned=new(job.Request.Archives);source=job.Source;models=ReadModels(owned.Files);
+                            nonSolid=ReadNonSolidHookups(owned);
+                        }
+                        var request=job.Request;
+                        if(!models!.TryGetValue(request.Model,out var pmd))result=Rejected;
+                        else {
+                            var model=Model.Open(pmd,owned!.Files);
+                            result=InspectModel(request.Descriptor,model,request.Variant,request.Parts,
+                                owned.Files.ReadAllBytes(Path.ChangeExtension(pmd,".pmg")),request.SpecialJob,nonSolid);
+                        }
+                    }
+                } catch(Exception ex) {
+                    result=Rejected;
+                    try {ETS2LA.Logging.Logger.Warn("Maut-Modellprüfung nicht möglich: "+ex.Message);} catch { }
+                }
+                Volatile.Write(ref job.Entry.Result,result);
+            }
+        } finally {try {owned?.Dispose();}catch { }}
+    }
+
+    public static ModelInspection InspectModel(PrefabDescriptor descriptor,Model model,string variant,string[] extraParts,byte[] pmg,bool specialJob=false,
+        IReadOnlySet<string>? nonSolidHookups=null)
+    {
+        var variants=model.Variants.Where(v=>v.Name.ToString()==variant).ToArray();
+        if(variants.Length!=1||variants[0].Attributes.Count!=model.Parts.Count||
+            variants[0].Attributes.Any(a=>a.Tag.ToString()!="visible"||a.Value>1)||
+            model.Parts.GroupBy(p=>p.Name).Any(g=>g.Count()>1)||
+            extraParts.Any(name=>!model.Parts.Any(p=>p.Name.ToString()==name)))return Rejected;
+        // Additional parts enable named parts in addition to the variant mask.
+        // Their names do not establish payment type or obstacle clearance.
+        var visible=model.Parts.Where((p,i)=>variants[0].Attributes[i].Value==1||extraParts.Contains(p.Name.ToString(),StringComparer.Ordinal)).ToArray();
+        var blocked=ModelClearance.BlockedCurves(descriptor,visible);
+        foreach(var locator in visible.SelectMany(p=>p.Locators)) {
+            if(locator.HookupOffset==-1)continue;
+            // Unknown child hook-ups can instantiate geometry not in this PMG.
+            // Do not silently treat an uninspected child model as empty space.
+            var hookup=ReadHookup(pmg,locator.HookupOffset);
+            if(hookup is not ("" or "tollgate.autopass.custom" or "tollgate.autopass.custom.wide" or
+                "tollgate.autopass.oversize" or "tollgate.autopass.ovs_disable" or "tollgate.autopass.ovs_disable.long" or
+                "tollgate.manual.ovs_disable" or "tollgate.custom") && (hookup==null||nonSolidHookups?.Contains(hookup)!=true))return Rejected;
+        }
+        var markers=visible.SelectMany(p=>p.Locators).Select(l=>(l.Position,Payment:DecodeHookup(pmg,l.HookupOffset,specialJob)))
+            .Where(l=>l.Payment!=TollPayment.Unknown);
+        return new(Match(descriptor,markers),blocked);
+    }
+    internal static bool IsNonSolidHookup(Unit unit)
+    {
+        string[] keys=unit.Class switch {
+            "light_source"=>["setup","ambient_color","diffuse_color","type","range"],
+            "env_area"=>["size_x","size_y"],
+            _=>[]
+        };
+        return keys.Length>0 && unit.Attributes.Count>0 && unit.Attributes.Keys.All(k=>keys.Contains(k,StringComparer.Ordinal));
+    }
+    static HashSet<string> ReadNonSolidHookups(IndependentAssets assets)
+    {
+        var known=new Dictionary<string,bool>(StringComparer.Ordinal);
+        foreach(var file in assets.FilesBelow("/unit/hookup").Where(p=>p.EndsWith(".sii",StringComparison.Ordinal))) {
+            SiiFile definitions;try {definitions=SiiFile.Open(file,assets.Files);}catch {continue;}
+            foreach(var unit in definitions.Units) {
+                bool harmless=IsNonSolidHookup(unit);
+                known[unit.Name]=harmless && (!known.TryGetValue(unit.Name,out bool previous)||previous);
+            }
+        }
+        return known.Where(p=>p.Value).Select(p=>p.Key).ToHashSet(StringComparer.Ordinal);
+    }
     static Dictionary<string,string> ReadModels(IFileSystem files)
     {
         var models = new Dictionary<string,string>();
         foreach (var path in files.GetFiles("/def/world/").Where(f => f.StartsWith("/def/world/prefab.") && f.EndsWith(".sii")))
         {
-            var definitions = SiiFileHandler.Current.GetSiiFile(path);
-            if (definitions == null) continue;
+            var definitions = SiiFile.Open(path,files);
             foreach (var unit in definitions.Units)
             {
                 if (!unit.Attributes.TryGetValue("model_desc", out var model)) continue;
@@ -66,17 +181,7 @@ public sealed class TollModelEvidence(Func<IFileSystem?> readFiles,Func<bool>? r
 
     // PMG v21: locator offsets point into the null-terminated hookup table.
     public static TollPayment DecodeHookup(ReadOnlySpan<byte> pmg, int offset,bool specialJob=false)
-    {
-        if (pmg.Length < 96 || pmg[0] != 21 || offset < 0) return TollPayment.Unknown;
-        int table = BinaryPrimitives.ReadInt32LittleEndian(pmg[88..]);
-        int length = BinaryPrimitives.ReadInt32LittleEndian(pmg[92..]);
-        if (table < 96 || length <= offset || table > pmg.Length || length > pmg.Length - table)
-            return TollPayment.Unknown;
-        if (offset != 0 && pmg[table + offset - 1] != 0) return TollPayment.Unknown;
-        var tail = pmg.Slice(table + offset, length - offset);
-        int end = tail.IndexOf((byte)0);
-        if (end < 1 || end > 64) return TollPayment.Unknown;
-        return Encoding.ASCII.GetString(tail[..end]) switch
+        => ReadHookup(pmg,offset) switch
         {
             "tollgate.autopass.custom" or "tollgate.autopass.custom.wide" => TollPayment.Automatic,
             "tollgate.autopass.oversize" when specialJob => TollPayment.Automatic,
@@ -85,6 +190,18 @@ public sealed class TollModelEvidence(Func<IFileSystem?> readFiles,Func<bool>? r
             "tollgate.custom" => TollPayment.Manual,
             _ => TollPayment.Unknown
         };
+
+    static string? ReadHookup(ReadOnlySpan<byte> pmg,int offset)
+    {
+        if (pmg.Length < 96 || pmg[0] != 21 || offset < 0) return null;
+        int table = BinaryPrimitives.ReadInt32LittleEndian(pmg[88..]);
+        int length = BinaryPrimitives.ReadInt32LittleEndian(pmg[92..]);
+        if (table < 96 || length <= offset || table > pmg.Length || length > pmg.Length - table)
+            return null;
+        if (offset != 0 && pmg[table + offset - 1] != 0) return null;
+        var tail = pmg.Slice(table + offset, length - offset);
+        int end = tail.IndexOf((byte)0);
+        return end is <0 or >64?null:Encoding.ASCII.GetString(tail[..end]);
     }
 
     public static IReadOnlyDictionary<int,TollPayment> Match(PrefabDescriptor descriptor,

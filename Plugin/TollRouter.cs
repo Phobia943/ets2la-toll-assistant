@@ -20,14 +20,16 @@ public sealed class TollRouter
         modelPayments.GetValueOrDefault(gate);
     IReadOnlyDictionary<int,TollPayment> modelPayments = new Dictionary<int,TollPayment>();
     readonly Func<ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments;
+    readonly Func<PrefabPath,bool>? readClearance;
     readonly Dictionary<int,PrefabPath> plans = new();
     readonly Dictionary<int,(bool ShortChange,int Changes)> entryCosts = new();
     double lastSearch = double.NegativeInfinity;
     PlannedItem? shortChangeRoad;
     public bool HasShortChange => shortChangeRoad != null;
     readonly PreferenceStore preferences;
-    public TollRouter(PreferenceStore preferences, Func<ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments=null)
-    {this.preferences=preferences;this.readPayments=readPayments;}
+    public TollRouter(PreferenceStore preferences, Func<ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments=null,
+        Func<PrefabPath,bool>? readClearance=null)
+    {this.preferences=preferences;this.readPayments=readPayments;this.readClearance=readClearance;}
     public string Status {get;private set;}="Warte auf Route";
     readonly Dictionary<PrefabPath,PrefabPath> replacements=new();
     static readonly MethodInfo clone=typeof(object).GetMethod("MemberwiseClone",BindingFlags.Instance|BindingFlags.NonPublic)!;
@@ -79,7 +81,7 @@ public sealed class TollRouter
                 foreach (var alternative in alternatives)
                 {
                     var route = ViaGate(alternative, c.SemaphoreId);
-                    if (route == null || TollEntry.Plan(data,index,p,route,truck,speed) is not { } entry) continue;
+                    if (route == null || readClearance?.Invoke(route)==false || TollEntry.Plan(data,index,p,route,truck,speed) is not { } entry) continue;
                     var cost = (entry.SlowRoad != null, entry.Apply.Count);
                     if (entryCosts.TryGetValue(c.SemaphoreId,out var existing) && cost.CompareTo(existing) >= 0) continue;
                     entryCosts[c.SemaphoreId]=cost;
@@ -188,7 +190,7 @@ public sealed class TollRouter
             {
                 replacement=plans.TryGetValue(SelectedGate.Value,out var plan) ? plan : ViaGate(current,SelectedGate.Value);
                 var changes = replacement == null ? null : TollEntry.Plan(data,itemIndex,current,replacement,truck,speed);
-                if (changes == null || replacement == null)
+                if (changes == null || replacement == null || readClearance?.Invoke(replacement)==false)
                 {
                     if (TryHoldBeforeBranch(data,item,current,truck,speed)) return true;
                     error="Keine erreichbare Lkw-Mautspur und zu wenig Strecke für einen geplanten Halt.";
@@ -219,6 +221,12 @@ public sealed class TollRouter
                 if (changes.SlowRoad != null) shortChangeRoad=changes.SlowRoad;
                 replacements[current]=replacement;replacements[replacement]=replacement;
                 if(replacements.Count>128)replacements.Clear();
+            }
+            if(readClearance?.Invoke(replacement)==false) {
+                replacements.Clear();plans.Clear();
+                if(TryHoldBeforeBranch(data,item,current,truck,speed))return true;
+                error="Geometrische Mautspur-Freigabe nicht mehr verfügbar. Bitte manuell übernehmen.";
+                return false;
             }
             if(!ReferenceEquals(current,replacement))
             {

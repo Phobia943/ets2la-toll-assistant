@@ -56,15 +56,17 @@ public sealed partial class TollPlugin : Plugin
     double lastAcceptedPlanAt=-100;
     double headingTurns;
     ApplicationState State => readState();
-    public TollPlugin() : this(() => ApplicationState.Current, Notify,
+    public TollPlugin() : this(new TollModelEvidence(() => ApplicationState.Current.RunningGame?.GetFileSystem(),
+        ()=>GameTelemetry.Current.GetCurrentData().configBool.specialJob)) { }
+    TollPlugin(TollModelEvidence modelEvidence) : this(() => ApplicationState.Current, Notify,
         output=>Events.Current.Publish(GameOutput.Current.EventString,output),
-        readPayments: new TollModelEvidence(() => ApplicationState.Current.RunningGame?.GetFileSystem(),
-            ()=>GameTelemetry.Current.GetCurrentData().configBool.specialJob).Read,monitorSteering:true) { }
+        readPayments:modelEvidence.Read,readClearance:modelEvidence.IsClear,monitorSteering:true) { }
     internal TollPlugin(Func<ApplicationState> readState, Action<string,string> notify,Action<ControlEvent>? output=null,Func<IPlugin?>? readAcc=null,
         Func<ETS2LA.Game.Data.ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments=null, Func<IPlugin?>? readPlanner=null,
         Func<IPlugin,Vector3,double,Vector3[],PlannedPathData?>? probeRoute=null,
         Func<IPlugin,PlannedPathData,PlannedPathData,Vector3,double,bool>? installStart=null,bool monitorSteering=false,
-        Func<IPlugin?>? readLaneAssist=null,Action<string,string>? writeDiagnostic=null) {
+        Func<IPlugin?>? readLaneAssist=null,Action<string,string>? writeDiagnostic=null,
+        Func<ETS2LA.Game.Data.PrefabPath,bool>? readClearance=null) {
         this.monitorSteering=monitorSteering;
         this.readState=readState;this.readAcc=readAcc??FindAcc;this.notify=notify;this.readPayments=readPayments;
         this.readPlanner=readPlanner??FindPlanner;
@@ -73,7 +75,7 @@ public sealed partial class TollPlugin : Plugin
         this.probeRoute=probeRoute??ConnectorStart.Probe;
         this.installStart=installStart??ConnectorStart.TryInstallStart;
         publishOutput=output??(_=>{});
-        router=new(preferences,readPayments);faultBrake=new(output??(_=>{}));
+        router=new(preferences,readPayments,readClearance);faultBrake=new(output??(_=>{}));
     }
     string preparationReason="Automatische Vorbereitung wartet auf Stillstand und verbundene Module.";
     double lastStartWarning=double.NegativeInfinity;
