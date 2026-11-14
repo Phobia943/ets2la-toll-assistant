@@ -1,5 +1,7 @@
 # Nächste Sitzung
 
+Zusätzliche Offline-Arbeit: **0.3.15 ist vorbereitet, nicht installiert.** Sie ergänzt eine Warnung für fehlende Spielreaktion auf frische Bremsanforderungen und ein optionales, rein lesendes TruckersMP-Fahrzeugmessmodul. Bau- und Protokollprüfungen laufen ohne Spiel. Hintergrundfahrt, vorausschauende Baustellenerkennung und engere manuelle Zahlhaltepositionen sind damit nicht gelöst. Details: [VERSION_0315.md](VERSION_0315.md). Vor einer späteren Installation den aktuellen Prozesszustand und Stillstand erneut bestätigen. Heute weiterhin keine Anwendungen starten oder Fahrprüfung verlangen.
+
 Stand: 14. November 2026, nach Umsetzung und Installation von 0.3.14. ETS2LA und ETS2 waren unmittelbar vor dem Austausch nachweislich geschlossen. Neue DLL noch nicht gestartet oder im Spiel geprüft. Keine dauerhafte Fahrtaufnahme läuft. Prozessabfragen auf dem tatsächlichen PC prüfen; eine eingeschränkte Abfrage hatte das weiterhin laufende Spiel nicht angezeigt.
 
 Der Nutzer möchte heute Abend keinen weiteren Start. Der zusätzliche Rückblick anhand bestehender Daten steht in [RETROSPECTIVE_0313.md](RETROSPECTIVE_0313.md): 16 gespeicherte Überwachungsverläufe mit 8.192 Entscheidungen wiederholt, eine konkrete frühere unnötige Abschaltung ist auf dieser Ebene korrigiert. Keine vollständige Gegenprobe von Physik, Hindernissen und allen Ländern. Baustellen-Vorausschau und Hintergrund-Pedale sind weiterhin offen. Heute keinen weiteren Fahrtest anfordern und Anwendungen nicht starten.

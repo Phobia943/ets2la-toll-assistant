@@ -55,6 +55,7 @@ public sealed partial class TollPlugin : Plugin
     readonly FaultBrake faultBrake;
     readonly Action<string,string> writeDiagnostic;
     readonly TrackingGuard trackingGuard=new();
+    readonly VehicleGeometryReader vehicleGeometry=new();
     RouteTrace? safetyTrace;
     PlannedPathData? lastAcceptedPlan;
     double lastAcceptedPlanAt=-100;
@@ -160,6 +161,7 @@ public sealed partial class TollPlugin : Plugin
     public TollOptions Options { get { lock(sync) return options; } }
     public bool Active { get { lock(sync) return active; } }
     public bool FaultBraking { get { lock(sync) return faultBrake.Latched; } }
+    public string VehicleGeometryStatus=>vehicleGeometry.Status;
     public string Status { get { lock(sync) return faultBrake.Latched ? "Fehlerbremsung aktiv – F9 zur manuellen Übernahme: "+preparationReason : rollingStartPending ? "Start angefordert – Route wird geprüft; noch selbst steuern. F9 bricht ab." : preview ? "Routenprobe ohne Fahrsteuerung" : active ? (State.EnableAssists ? driveAction switch {
         DriveAction.AwaitRoute => "Warte auf eine gültige Startroute",
         DriveAction.Recover => "Kurze Datenlücke – kein Gas",
@@ -192,6 +194,7 @@ public sealed partial class TollPlugin : Plugin
         lock(sync)
         {
             if (subscribed) return;
+            vehicleGeometry.Resume();
             diagnostics.Resume();
             _=State; // Register host controls before our cancel listener.
             faultBrake.Release();ResetDriving();
@@ -710,6 +713,7 @@ public sealed partial class TollPlugin : Plugin
             action=action.ToString(), geometry,routeTracking=safetyTrace?.Diagnose(position),tracking=trackingGuard.LastDirectionFailure,
             steeringFailure=lastSteeringFailure is { } failure&&failure.Reason==reason?failure:null,
             impact=reason==ImpactReason?lastImpact:null,
+            pedalWarning=brakeWarning,
             motion=motionHistory.ToArray(),routePlan,
             routePlanSource=path is {HasError:false}?"Current":lastAcceptedPlan!=null?"LastAccepted":"Unavailable",
             lastAcceptedPlanAge=lastAcceptedPlan!=null?clock.Elapsed.TotalSeconds-lastAcceptedPlanAt:(double?)null,
@@ -829,6 +833,7 @@ public sealed partial class TollPlugin : Plugin
                     var observedSteering=Volatile.Read(ref lastSteeringCommand);
                     double observedAt=clock.Elapsed.TotalSeconds;
                     var diagnosticTrace=safetyTrace;var diagnosticPosition=position;var diagnosticGates=gates;
+                    double diagnosticHeading=headingTurns;
                     var snapshot = new {
                         version=Info.Version, utc=DateTimeOffset.UtcNow, active, fresh=Fresh(observedAt), speedKph=speed*3.6,
                         connectorAttempted, connectorPending, connectorSeeded,
@@ -850,6 +855,7 @@ public sealed partial class TollPlugin : Plugin
                         steeringFeed=steeringFeedState.ToString(),steeringAge=observedSteering!=null?observedAt-observedSteering.At:(double?)null,
                         steeringFault=lastSteeringFailure,
                         impact=lastImpact,
+                        pedalWarning=Volatile.Read(ref brakeWarning),
                         sdk, paused, pathError=path?.ErrorMessage,
                         gateCount=gates.Count(g=>g.type==SemaphoreType.GATE), options,
                         geometry=(object?)null,manualStopOffset=router.ManualStopOffset(options.StopOffsetMetres),
@@ -865,6 +871,9 @@ public sealed partial class TollPlugin : Plugin
                     diagnostics.Enqueue(DiagnosticQueue.Slot.Status,()=> {
                         Directory.CreateDirectory(Path.GetDirectoryName(DiagnosticPath)!);
                         var report=JsonSerializer.SerializeToNode(snapshot,diagnosticJson)!.AsObject();
+                        var shape=vehicleGeometry.Read();
+                        report["vehicleShape"]=JsonSerializer.SerializeToNode(shape?.DescribeFor(diagnosticPosition,diagnosticHeading),diagnosticJson);
+                        report["vehicleShapeStatus"]=vehicleGeometry.Status;
                         report["geometry"]=JsonSerializer.SerializeToNode(buildStatusGeometry(diagnosticTrace,diagnosticPosition,diagnosticGates),diagnosticJson);
                         writeDiagnostic(DiagnosticPath,report.ToJsonString(diagnosticJson));
                         if(logState==lastLogged)return;
@@ -884,6 +893,7 @@ public sealed partial class TollPlugin : Plugin
         StopDiagnostics();
         lock(sync)
         {
+            vehicleGeometry.Dispose();
             if(active || preview || faultBrake.Latched)State.EnableAssists=false;
             active = false;
             CancelRollingStart();

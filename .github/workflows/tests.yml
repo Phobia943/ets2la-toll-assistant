@@ -23,3 +23,27 @@ jobs:
         run: ./Tools/Test-TollRecording.ps1
       - name: Check historical evidence inventory
         run: python -m unittest discover -s Tools -p test_toll_history.py
+  geometry-protocol:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Download pinned Zig compiler and official SDK headers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $zip=Join-Path $env:RUNNER_TEMP 'zig.zip'
+          Invoke-WebRequest 'https://ziglang.org/download/0.15.2/zig-x86_64-windows-0.15.2.zip' -OutFile $zip
+          if((Get-FileHash $zip).Hash -ne '3A0ED1E8799A2F8CE2A6E6290A9FF22E6906F8227865911FB7DDEDC3CC14CB0C') {throw 'Zig hash mismatch'}
+          Expand-Archive -LiteralPath $zip -DestinationPath $env:RUNNER_TEMP
+          ./Native/TruckersMPGeometry/Fetch-Sdk.ps1
+      - name: Build observer and run fake SDK host
+        shell: pwsh
+        run: ./Native/TruckersMPGeometry/Build.ps1 -Zig "$env:RUNNER_TEMP/zig-x86_64-windows-0.15.2/zig.exe" -Test
+      - name: Decode actual native ABI fixture in managed tests
+        shell: pwsh
+        run: |
+          $env:MAUT_GEOMETRY_FIXTURE=(Resolve-Path './Native/TruckersMPGeometry/bin/native-fixture.bin').Path
+          dotnet run --project CoreTests -c Release

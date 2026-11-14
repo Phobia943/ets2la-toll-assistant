@@ -36,6 +36,10 @@ Die geprüfte [offizielle TruckersMP-Eingabedokumentation](https://github.com/Tr
 
 ## Weitere Prüfung
 
+Offline-Ergänzung 0.3.15: Die neue Bremsreaktionsdiagnose erkennt in der vorhandenen Standardausgabe-Aufnahme das anhaltende Muster aus Bremsanforderung und Spielbremse null. Sie warnt, ohne eine zweite Bremsung oder eine Abschaltung funktionierender Lenkung auszulösen. Die Wiederholung nimmt mangels Legacy-Erzeugerzeitstempel ein frisches Kommando an und beweist deshalb nicht die vollständige Laufzeitwirkung. Laufzeitbefehle müssen höchstens 150 ms alt sein. Details: [VERSION_0315.md](VERSION_0315.md).
+
+Der am 14. November geprüfte neue [offizielle Controller](https://github.com/ETS2LA/controller) registriert ein semantisches SCS-Eingabegerät und verarbeitet SDK-Eingabeereignisse. Im geprüften Quelltext ist kein Fokus-Override nachgewiesen. Sein vorhandener Eingangspfad und ein funktionierender SDK-Handshake allein belegen keine TruckersMP-Hintergrundpedale. Er wurde nicht zusätzlich zum bestehenden Ausgang installiert. Das neue optionale Fahrzeugmessmodul liest ausschließlich Maße; auch damit entsteht kein Pedal-Ersatzweg.
+
 Mit `Tools/Record-TollDrive.ps1 -IncludePedalOutput` zusätzlich zum SDK den modernen Ausgang und dessen Bestätigung aufzeichnen. Der Schalter benötigt die vorhandenen Speicherbereiche `Local\ETS2LAPluginInput` (26 Byte) und `Local\ETS2LAPluginStatus` (6 Byte); er erzeugt sie nicht und schreibt nichts hinein. Ohne diesen Schalter bleibt die Aufnahme der Ausgangsspeicher ausgeschaltet.
 
 Für einen neuen Kandidaten dieselbe Folge messen: Assistenz aus und Motor im Leerlauf; im Stand bei Feststellbremse aktivieren; Hintergrund, Vordergrund und erneut Hintergrund vergleichen; Abschaltung und physische Bremsübernahme prüfen. Erst nach erfolgreichem Standnachweis einen beaufsichtigten Fahrversuch durchführen. Das ursprüngliche Ziel der vollständigen Mautdurchfahrt mit geeigneter Spur und stabiler Ausfahrt bleibt davon unabhängig offen.

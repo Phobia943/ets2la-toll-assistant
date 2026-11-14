@@ -75,6 +75,7 @@ public sealed partial class TollPlugin
             steeringGuard.Reset();steeringFeedState=SteeringFeedState.Off;
             lastSteeringCommand=null;lastAccCommand=null;collectingSteeringFailure=pendingSteeringFailure=lastSteeringFailure=null;
             pendingImpact=lastImpact=null;impactGuard.Reset();
+            ClearBrakeResponse();
             steeringMonitoringLive=true;
             steeringTimer=new Timer(_=> {
                 CheckSteeringOutput();
@@ -93,6 +94,7 @@ public sealed partial class TollPlugin
             steeringTimer?.Dispose();steeringTimer=null;
             collectingSteeringFailure=pendingSteeringFailure=null;
             pendingImpact=null;impactGuard.Reset();
+            ClearBrakeResponse();
         }
     }
 
@@ -104,6 +106,7 @@ public sealed partial class TollPlugin
             faultBrake.Release();
             collectingSteeringFailure=pendingSteeringFailure=null;
             pendingImpact=null;impactGuard.Reset();
+            ClearBrakeResponse();
         }
     }
 

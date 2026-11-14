@@ -8,5 +8,6 @@
   <ItemGroup>
     <Compile Include="../Core/*.cs" Link="Core/%(Filename)%(Extension)" />
     <Compile Include="../Tests/Program.cs" Link="Program.cs" />
+    <Compile Include="../Tests/GeometryBrakeTests.cs" Link="GeometryBrakeTests.cs" />
   </ItemGroup>
 </Project>

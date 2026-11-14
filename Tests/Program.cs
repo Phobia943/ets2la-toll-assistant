@@ -7,6 +7,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using MautAssistent;
 
+if(args is ["--brake-replay",var brakeCapture,"--assume-fresh-legacy-command"])
+    return GeometryBrakeTests.Replay(brakeCapture);
+
 if (args is ["--replay", var file])
 {
     using var report = JsonDocument.Parse(File.ReadAllText(file));
@@ -46,6 +49,10 @@ void Run()
     var results=new List<string>();
     void Check(string name, Action test) { try {test(); results.Add("PASS "+name);} catch(Exception ex) {results.Add("FAIL "+name+": "+ex); } }
     void Assert(bool v,string message="Assertion failed") {if(!v)throw new Exception(message);}
+    Check("Vehicle bounds require coherent fresh frames and never grant clearance",()=>GeometryBrakeTests.Protocol(Assert));
+    Check("Missing brake response requires one second of coherent effective commands",()=>GeometryBrakeTests.Brake(Assert));
+    if(!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MAUT_GEOMETRY_FIXTURE")))
+        Check("Native C geometry fixture matches the managed protocol",()=>GeometryBrakeTests.NativeFixture(Assert));
     Check("Manual trigger targets retain the existing safe distance and cannot modify automatic lanes",()=>{
         Assert(new ManualStopZone(11,19).Choose(8)==15);
         Assert(new ManualStopZone(-4,4).Choose(8)==null,"A closer payment zone cannot reduce the safe stop gap");
@@ -179,6 +186,8 @@ void Run()
         }
     });
     #if INTEGRATION
+    Check("Missing brake response warns without interrupting control or waiting for routing",()=>BrakeGeometryIntegration.BrakeWarning(Assert));
+    Check("Geometry reader is optional, read-only, coherent and session-bound",()=>BrakeGeometryIntegration.Reader(Assert));
     Check("Blocked status geometry cannot stall driving callbacks or manual takeover",()=>DiagnosticDeliveryIntegration.BlockedGeometry(Assert));
     Check("Manual trigger rectangles are matched to a straight gate lane with conservative bounds",()=>ManualTriggerIntegration.Run(Assert));
     Check("Legacy toll model registry includes multiple country folders without granting unknown payment",()=>ModelRegistryIntegration.Run(Assert));

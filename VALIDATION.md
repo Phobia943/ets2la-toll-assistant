@@ -1,5 +1,11 @@
 # Fahrnachweis
 
+## Vorbereitete Offline-Fassung 0.3.15
+
+Noch nicht installiert oder im Spiel gestartet. 89 Integrations-, 49 unabhängige Logik-, 14 native Host-, 44 Aufnahme- und drei Inventurprüfungen bestehen. Die ersten beiden Zahlen schließen den optionalen tatsächlichen C-Protokollrahmen ein. Die Bremsreaktionswarnung greift bei gehaltenem Routenaufruf, ohne selbst Steuerausgaben oder Assistenzzustand zu verändern; F9 löscht sie. Der optionale Fahrzeugleser öffnet vorhandenen Speicher ausschließlich lesend und macht fehlende, ungültige oder nicht bestätigte Proben nicht zu einer Fahrfreigabe.
+
+Die Wiederholung des aufgezeichneten Hintergrundausfalls ergibt nach rund einer Sekunde eine Warnung, allerdings nur unter ausdrücklich angenommener Befehlsfrische der alten Legacy-Aufnahme. Keine Aussage über behobene Hintergrundpedale, vorausblickende Hinderniserkennung, engere Zahlhaltepositionen oder sämtliche Länder. Der echte SDK-Handshake des neuen Messmoduls fehlt. [Umfang und Grenzen von 0.3.15](VERSION_0315.md).
+
 ## Aktueller Prüfstand 0.3.14
 
 84 Integrations- und 46 unabhängige Logikprüfungen bestehen. Beide gespeicherten griechischen SDK-Spurwahlen bleiben gültig, mit weiterhin nur drei beziehungsweise fünf verifizierten Kartenabschnitten. Die neuen Prüfungen halten die Statusgeometrie an, rufen die tatsächliche Startvorschau mit gesperrter Geometrie auf und prüfen Modellvorbereitung ohne SDK-Schranken sowie deren Fehlerfall. Modell-Zahlhalteintervalle und das Beibehalten eines bereits etablierten früheren Halts sind mit synthetischer Geometrie geprüft. Keine reale Zahlzonen-, Fahr- oder Baustellenvalidierung. Die griechischen Modelle liefern keinen freigegebenen manuellen Zielpunkt. Einzelheiten: [VERSION_0314.md](VERSION_0314.md).

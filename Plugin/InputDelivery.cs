@@ -31,6 +31,7 @@ public sealed partial class TollPlugin
         Interlocked.Exchange(ref incomingTelemetry,frame);
         Interlocked.Exchange(ref latestDeliveredTelemetry,frame);
         ObserveImpact(frame);
+        ObserveBrakeResponse(frame);
         if(!Monitor.TryEnter(sync))return;
         try
         {
