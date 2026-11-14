@@ -2,6 +2,8 @@
 
 Stand: 14. November 2026, nach Installation von 0.3.13. Nutzer hat den Austausch freigegeben; ETS2LA und ETS2 waren unmittelbar vor dem Austausch nachweislich geschlossen. Neue DLL noch nicht gestartet oder im Spiel geprüft. Keine dauerhafte Fahrtaufnahme läuft. Prozessabfragen auf dem tatsächlichen PC prüfen; eine eingeschränkte Abfrage hatte das weiterhin laufende Spiel nicht angezeigt.
 
+Der Nutzer möchte heute Abend keinen weiteren Start. Der zusätzliche Rückblick anhand bestehender Daten steht in [RETROSPECTIVE_0313.md](RETROSPECTIVE_0313.md): 16 gespeicherte Überwachungsverläufe mit 8.192 Entscheidungen wiederholt, eine konkrete frühere unnötige Abschaltung ist auf dieser Ebene korrigiert. Keine vollständige Gegenprobe von Physik, Hindernissen und allen Ländern. Baustellen-Vorausschau und Hintergrund-Pedale sind weiterhin offen. Heute keinen weiteren Fahrtest anfordern und Anwendungen nicht starten.
+
 ## Installiert und gesichert
 
 - **Mautassistent 0.3.13 ist installiert; sie enthält die Änderungen aus 0.3.12.** Dateiversion 0.3.13.0 und SHA256 `9AD018950CE10CFDA023611F51184235FFF20A3075977B57238412EA3F3B933A` sind nach dem Austausch bestätigt. Die vorherige 0.3.11, SHA256 `4D96A516F16D67267251D29A16CD283EF9523439D1350D71ECB22021A7173486`, ist als `outputs/Mautassistent-0.3.13/MautAssistent-before-0.3.13.dll` außerhalb des Repositorys gesichert; `installation.json` dokumentiert den Austausch. Keine Einstellungen geändert. Noch nicht gestartet; eine echte Mautdurchfahrt und bestätigte manuelle Übernahme stehen aus.

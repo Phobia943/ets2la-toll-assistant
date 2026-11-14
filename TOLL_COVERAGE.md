@@ -2,6 +2,8 @@
 
 Stand: 14. November 2026. Diese Übersicht trennt Archivbefunde, Modellprüfung und tatsächliche Fahrnachweise. 0.3.13 ist bei geschlossenen Anwendungen installiert und per Dateiversion sowie Prüfsumme bestätigt, aber noch nicht gestartet oder gefahren.
 
+Der zusätzliche Vergleich gespeicherter Fahrentscheidungen und die Gesamtbewertung aller offenen Problemgruppen stehen in [RETROSPECTIVE_0313.md](RETROSPECTIVE_0313.md). Er bestätigt ausdrücklich keine vollständige Behebung aller Probleme.
+
 ## Was rückwirkend untersucht wurde
 
 Eine erneute Inventur des lokalen Diagnosearchivs findet 24 lesbare SDK-Fahrtdateien und 24 unterschiedliche Kombinationen aus Fehlerzeit und Fehlermeldung. Sieben Fahrtdateien enthalten zugeordnete oder räumlich nahe rohe Schrankendaten. Das sind **keine 24 Mautdurchfahrten oder 24 Straßenunfälle**: Darunter sind Standprüfungen, Teilaufnahmen, überlappende Mitschnitte und zusammengehörende Auslöser-/Fehlermeldungen. Das Inventurwerkzeug liest die gespeicherten Dateien und dedupliziert gleiche Fehler mit verschieden dargestellter Zeitzone.
