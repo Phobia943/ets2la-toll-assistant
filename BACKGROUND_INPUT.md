@@ -1,8 +1,14 @@
 # Hintergrundbetrieb unter TruckersMP
 
-Stand: 6. November 2026. **Hintergrundfahrt ist nicht gelöst. TruckersMP-Unterstützung bleibt eine Anforderung.** Die Einzelspieler-Lösung ersetzt sie nicht.
+Stand: 14. November 2026. **Hintergrundfahrt ist nicht gelöst. TruckersMP-Unterstützung bleibt eine Anforderung.** Die Einzelspieler-Lösung ersetzt sie nicht.
 
-## Gemessene Kombination
+## Neuer Vergleich mit SDK 1.62 und 0.3.11
+
+Nach starkem Luftdruckverlust mit moderner Pedalausgabe wurde bei beendetem ETS2LA ausschließlich `EnableModernOutputForPedals = false` eingestellt. Nach dem Neustart ist die Standardausgabe tatsächlich aktiv, der moderne Override aus. Mehrere automatische Bremsabschnitte verlieren damit erheblich weniger Luft; die vierminütige Aufnahme bleibt oberhalb der Warnschwelle. Die manuelle Übernahme ist vom Fahrer bestätigt. Details und Messgrenzen stehen in [VALIDATION.md](VALIDATION.md).
+
+Diese Umstellung löst die Hintergrundfahrt nicht: Etwa 17 Sekunden lang ist ein deutlicher Standard-Bremsbefehl vorhanden, aber `gameBrake` bleibt null und Simulations-/Renderzeit laufen weiter. Der Fahrer bestätigt, zu diesem Zeitpunkt aus dem Spiel herausgetabbt zu haben. Die Standardausgabe wird deshalb vorerst nur bei Vordergrundfahrt weiter geprüft. Die frühere einzelne erfolgreiche Hintergrund-Bremsmessung mit moderner Ausgabe ist kein Nachweis für diesen anderen Ausgang und keine Entkräftung des neuen Luftdruckfehlers.
+
+## Frühere gemessene Kombination vom 6. November
 
 - ETS2LA 2026.11.5251, Mautassistent 0.3.8, ETS2 1.61 über TruckersMP.
 - Der moderne Pedalausgang wurde bei geschlossenem ETS2LA in dessen `GameSettings.json` mit `EnableModernOutputForPedals: true` aktiviert. Der Mautassistent schaltet diese globale Option nicht selbst um.

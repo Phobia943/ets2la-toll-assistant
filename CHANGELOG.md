@@ -4,6 +4,7 @@
 
 - Die Aufnahme bewahrt endliche negative Luftdruck-Rohwerte getrennt von der weiterhin ungültigen Druckmessung. Warn-/Notfallflags bleiben unabhängig erhalten; ein neuer Test prüft die vollständige Speicherung. 44 Aufnahmeprüfungen bestehen. Der spielinterne Tempomat-Sollwert wird künftig ebenfalls erfasst.
 - Laufzeitbeobachtung von 0.3.11, wiederholter Luftdruckverlust bei automatischer Bremsung und die Ablehnung einer griechischen Mautanlage mit aktivierten Zusatzteilen sind dokumentiert. Moderne/Standard-Pedalausgabe sind noch nicht kontrolliert verglichen; die Höhenbalkensperre bleibt bestehen. Keine Änderung an der installierten Plugin-DLL oder den Fahrentscheidungen.
+- Die lokale Konfiguration nutzt nach Sicherung und Neustart wieder die Standard-Pedalausgabe. Der beobachtende Vergleich zeigt wesentlich geringeren Luftverbrauch bei automatischer Bremsung, vier Minuten oberhalb der Warnschwelle und bestätigte manuelle Übernahme. Eine beim Heraustabben wirkungslose Standard-Bremsausgabe ist ebenfalls aufgezeichnet und vom Fahrer zeitlich zugeordnet. Damit ist nur eine vorläufige Abhilfe für Vordergrundfahrt belegt; Hintergrundfahrt bleibt offen.
 
 ## 0.3.11 – Zeitbezug der Diagnose und getrennte SDK-Ausfahrtmessung
 
