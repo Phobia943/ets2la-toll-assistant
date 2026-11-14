@@ -65,7 +65,20 @@ int main(int argc,char **argv) {
     shutdown();check(frame->flags==0&&removed==1&&!callback,"shutdown unregisters and invalidates the last frame");
     has_vehicle=true;has_trailer=true;Sleep(2);
     check(init(&host,&desc),"reload with a retained read handle");
-    shutdown();deny_api=true;
+    shutdown();
+    HANDLE writable_map=OpenFileMappingW(FILE_MAP_WRITE,FALSE,GEOMETRY_MAP);
+    GeometryFrame *retained=writable_map?MapViewOfFile(writable_map,FILE_MAP_WRITE,0,0,sizeof(*retained)):NULL;
+    check(retained!=NULL,"prepare a retained mapping across producer process changes");
+    if(retained) {
+        retained->process_id=0xffffffffU;
+        check(init(&host,&desc),"new producer reclaims a cleanly invalidated known mapping");shutdown();
+        retained->process_id=0xffffffffU;retained->flags=GEOMETRY_TRUCK;
+        check(!init(&host,&desc)&&retained->flags==GEOMETRY_TRUCK,"fresh foreign producer data is not erased");
+        retained->utc_ms=1;
+        check(init(&host,&desc),"new producer can recover a stale abandoned known mapping");shutdown();
+        UnmapViewOfFile(retained);CloseHandle(writable_map);
+    }
+    deny_api=true;
     check(!init(&host,&desc),"missing API tables refuse initialization");
     UnmapViewOfFile(frame);CloseHandle(map);FreeLibrary(dll);
     printf("%s Native observer checks; no game process or game inputs used.\n",failures?"FAIL":"PASS");

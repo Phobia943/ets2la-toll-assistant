@@ -111,7 +111,7 @@ public static class GeometryBrakeTests
         var bytes=File.ReadAllBytes(path);long timestamp=BinaryPrimitives.ReadInt64LittleEndian(bytes.AsSpan(16));
         var native=VehicleGeometryProtocol.Decode(bytes,timestamp);
         assert(native is {TrailerKnown:true,Trailer:not null}&&native.Truck.Position==new Vector3(10,2,20)&&
-            native.Truck.Minimum==new Vector3(-1,0,-5)&&native.Truck.Maximum==new Vector3(1,4,3),
+            native.Truck.Minimum==new Vector3(-1,0,-5)&&native.Truck.Maximum==new Vector3(1,4,3)&&native.Truck.Rotation==Quaternion.Identity,
             "Actual C-produced fixture must decode without layout or quaternion mismatch");
     }
 }

@@ -40,7 +40,7 @@ internal sealed class VehicleGeometryReader:IDisposable
             Thread.MemoryBarrier();view.ReadArray(0,buffer,0,buffer.Length);Thread.MemoryBarrier();
             if(before!=view.ReadInt32(12)||before!=BitConverter.ToInt32(buffer,12)) {Status="Fahrzeugmaße: Probe wurde während des Lesens geändert.";return null;}
             var result=VehicleGeometryProtocol.Decode(buffer,DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-            if(result==null){Status="Fahrzeugmaße: keine frische gültige Fahrzeugprobe.";return null;}
+            if(result==null){Status="Fahrzeugmaße: keine frische gültige Fahrzeugprobe.";CloseLocked();return null;}
             if(result.ProcessId!=checkedPid||result.Session!=checkedSession) {
                 if(!isGame(result.ProcessId)){Status="Fahrzeugmaße: Quelle ist kein bestätigter Spielprozess.";return null;}
                 checkedPid=result.ProcessId;checkedSession=result.Session;

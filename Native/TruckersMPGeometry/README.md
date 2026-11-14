@@ -25,7 +25,7 @@ Output: `bin/MautGeometry.dll`, plus the fake-host executable and a binary frame
 
 ## Protocol
 
-One writer publishes the 256-byte layout in `Protocol.h` to `Local\ETS2LA-MautGeometry-v1`. The odd/even sequence is checked around the complete reader copy. A writer mutex excludes another producer; the frame carries process ID, unique session, UTC milliseconds, explicit truck/trailer validity, world placement, local bounds, and optional velocity. Shutdown publishes invalidity before unmapping.
+One writer publishes the 256-byte layout in `Protocol.h` to `Local\ETS2LA-MautGeometry-v1`. The odd/even sequence is checked around the complete reader copy. A writer mutex excludes another producer; the frame carries process ID, unique session, UTC milliseconds, explicit truck/trailer validity, world placement, local bounds, and optional velocity. Shutdown publishes invalidity before unmapping. If a reader retains the mapping across game restarts, the next exclusive writer may reclaim only a known protocol frame that is invalidated or more than one second stale. Fresh foreign frames are not erased. Fake-host tests cover these cases.
 
 The consumer opens existing memory read-only and never creates it. It rejects changed, stale (>300 ms), future (>100 ms), malformed or unverified game-process frames. A changed PID/session is revalidated. Reader work runs on the diagnostic worker, away from driving callbacks. Raw truck/trailer bounds and pose are included in `status.vehicleShape`; front reach is only a diagnostic value when SDK origin and orientation agree. Rejection or absence of this optional observer cannot stop the driving assistant.
 

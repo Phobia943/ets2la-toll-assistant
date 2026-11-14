@@ -103,8 +103,15 @@ TMP_EXPORT bool TMP_API truckersmp_init(const TruckersMP_Host *h,TruckersMP_Plug
     shared=MapViewOfFile(mapping,FILE_MAP_READ|FILE_MAP_WRITE,0,0,sizeof(GeometryFrame));
     if(!shared){cleanup();return false;}
     if(existed&&shared->process_id&&shared->process_id!=GetCurrentProcessId()) {
-        // Never publish an empty frame into another producer's mapping.
-        UnmapViewOfFile(shared);shared=NULL;cleanup();return false;
+        // A managed reader can retain the mapping across a game restart. With
+        // the writer mutex owned, reclaim only our known protocol after clean
+        // invalidation or a stale heartbeat; never erase another fresh source.
+        uint64_t now=utc_ms();
+        bool ours=shared->magic==GEOMETRY_MAGIC&&shared->version==GEOMETRY_VERSION&&shared->size==sizeof(*shared);
+        bool expired=now>=shared->utc_ms&&now-shared->utc_ms>1000;
+        if(!ours||(shared->flags!=0&&!expired)) {
+            UnmapViewOfFile(shared);shared=NULL;cleanup();return false;
+        }
     }
     LARGE_INTEGER counter;QueryPerformanceCounter(&counter);session=(uint64_t)counter.QuadPart;
     if(!session)session=1;
