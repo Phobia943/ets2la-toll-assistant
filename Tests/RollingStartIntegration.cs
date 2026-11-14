@@ -36,7 +36,8 @@ public static class RollingStartIntegration
         public Func<PlannedPathData?> Plan;
         public bool InstallSucceeds=true;
         public int Installs;
-        public Fixture(bool monitorSteering=false,Func<IPlugin?>? readLaneAssist=null,Action<string,string>? writeDiagnostic=null)
+        public Fixture(bool monitorSteering=false,Func<IPlugin?>? readLaneAssist=null,Action<string,string>? writeDiagnostic=null,
+            Func<RouteTrace?,Vector3,ETS2LA.Game.SDK.Semaphore[],object>? buildStatusGeometry=null)
         {
             var assembly=AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"../../../../References/AdaptiveCruiseControl.dll")));
             var type=assembly.GetType("AdaptiveCruiseControl.AdaptiveCruiseControlPlugin",true)!;
@@ -63,7 +64,8 @@ public static class RollingStartIntegration
                     Installs++;
                     if(!InstallSucceeds)return false;
                     published.PlannedPath=planned.PlannedPath;published.ErrorMessage=null;published.HasError=false;return true;
-                },monitorSteering:monitorSteering,readLaneAssist:readLaneAssist,writeDiagnostic:writeDiagnostic);
+                },monitorSteering:monitorSteering,readLaneAssist:readLaneAssist,writeDiagnostic:writeDiagnostic,
+                buildStatusGeometry:buildStatusGeometry);
             Plugin._IsRunning=true;
             Set("subscribed",true);Set("lastWrite",double.MaxValue);Set("position",Point);Set("headingTurns",.5d);
             Fresh();Set("path",Disabled());

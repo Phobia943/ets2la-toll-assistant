@@ -2,7 +2,8 @@ namespace MautAssistent;
 
 public enum BarrierState { Closing, Closed, Opening, Open, Unknown }
 public sealed record Gate(string Key, double Distance, BarrierState State);
-public sealed record TollInput(double Time, double Speed, bool Enabled, bool Fresh, Gate? Gate, bool ManualPayment = false);
+public sealed record TollInput(double Time, double Speed, bool Enabled, bool Fresh, Gate? Gate, bool ManualPayment = false,
+    double? ManualStopOffset = null);
 public sealed record TollDecision(string Phase, double? TargetSpeed, float MaxAcceleration, string? GateKey)
 {
     public bool RequiresTakeover { get; init; }
@@ -37,10 +38,11 @@ public sealed class TollController(TollOptions options)
     double lastTime = double.NaN;
     bool released;
     bool crossed;
+    double? manualOffset;
     public bool Tracking => tracked != null;
     public double ApproachHorizon(double speed)
         => Math.Max(200, speed * speed / (2 * options.ComfortableDeceleration) + Math.Max(0,speed) * 1.5 + 40);
-    public void Reset() { tracked = null; openSince = null; released = false; crossed=false; lastTime = double.NaN; }
+    public void Reset() { tracked = null; openSince = null; released = false; crossed=false; manualOffset=null; lastTime = double.NaN; }
 
     public TollDecision Step(TollInput input)
     {
@@ -70,7 +72,12 @@ public sealed class TollController(TollOptions options)
         else released=true; // A gate closing behind the truck is not a new stop line.
 
         double speed = Math.Max(0, input.Speed);
-        double remaining = Math.Max(0, gate.Distance - options.StopOffsetMetres - speed * 1.5);
+        if(input.ManualPayment && input.ManualStopOffset is double offset && double.IsFinite(offset) &&
+            offset>=options.StopOffsetMetres && offset<=50)manualOffset=Math.Max(manualOffset??options.StopOffsetMetres,offset);
+        // Losing optional model metadata must not move an established stop
+        // closer to the closed gate or silently start creeping again.
+        double stopOffset=input.ManualPayment ? manualOffset??options.StopOffsetMetres : options.StopOffsetMetres;
+        double remaining = Math.Max(0, gate.Distance - stopOffset - speed * 1.5);
         double approach = options.ApproachSpeedKph / 3.6;
         double passage = options.PassageSpeedKph / 3.6;
         double cap;

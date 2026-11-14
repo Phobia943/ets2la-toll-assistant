@@ -48,6 +48,49 @@ public static class RouteIntegration
         var truck=source.Interpolate(.03f,0)!.Value.Position;
         var sdk=descriptor.Semaphores.Select(s=>new ETS2LA.Game.SDK.Semaphore{position=s.Position,id=(int)s.SemaphoreId,
             type=ETS2LA.Game.SDK.SemaphoreType.GATE,state=1}).ToArray();
+        int prefetched=0;
+        var warming=new TollRouter(new PreferenceStore(Path.Combine(Path.GetTempPath(),Guid.NewGuid()+".json")),
+            prefetch:_=>prefetched++);
+        warming.Discover(data,truck,[]);
+        assert(prefetched==1&&warming.SelectedGate==null&&!warming.StopBoundary.HasValue&&ReferenceEquals(item.prefabPath,source),
+            "A future mapped plaza must warm its model before SDK gates arrive, without choosing or altering a lane");
+        var failedWarm=new TollRouter(new PreferenceStore(Path.Combine(Path.GetTempPath(),Guid.NewGuid()+".json")),
+            prefetch:_=>throw new IOException("Advisory warmup failed"));
+        failedWarm.Discover(data,truck,[]);
+        assert(failedWarm.PrefetchIssue!=null&&failedWarm.SelectedGate==null&&!failedWarm.StopBoundary.HasValue,
+            "Optional prefetch failure cannot invent a lane or create a road fault");
+        var paymentTarget=new TollRouter(new PreferenceStore(Path.Combine(Path.GetTempPath(),Guid.NewGuid()+".json")),
+            _=>new Dictionary<int,TollPayment>{{4,TollPayment.Manual}},_=>true,
+            readManualStop:(_,gate)=>gate==4?new ManualStopZone(11,19):null);
+        paymentTarget.Discover(data,truck,sdk);
+        assert(paymentTarget.SelectedGate==4&&paymentTarget.ManualStopOffset(8)==15,
+            "Selected manual lane receives only its own validated model target");
+        var failedTarget=new TollRouter(new PreferenceStore(Path.Combine(Path.GetTempPath(),Guid.NewGuid()+".json")),
+            _=>new Dictionary<int,TollPayment>{{4,TollPayment.Manual}},_=>true,
+            readManualStop:(_,_)=>throw new IOException("Optional target unavailable"));
+        failedTarget.Discover(data,truck,sdk);
+        assert(failedTarget.ManualStopOffset(8)==null&&failedTarget.ManualStopIssue!=null&&failedTarget.SelectedGate==4,
+            "Unavailable optional payment metadata must fall back without inventing a route failure");
+        var previewState=(ETS2LA.State.ApplicationState)RuntimeHelpers.GetUninitializedObject(typeof(ETS2LA.State.ApplicationState));
+        var previewPlanner=new RollingStartIntegration.Planner();
+        int previewClearanceChecks=0;
+        var preview=new TollPlugin(()=>previewState,(_,_)=>{},readAcc:()=>null,readPlanner:()=>previewPlanner,
+            readPayments:_=>new Dictionary<int,TollPayment>{{4,TollPayment.Automatic}},
+            readClearance:_=>{previewClearanceChecks++;return false;},
+            probeRoute:(_,_,_,_)=>RouteSnapshot.Capture(data),writeDiagnostic:(_,_)=>{});
+        const System.Reflection.BindingFlags previewFlags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+        void PreviewSet(string name,object value)=>typeof(TollPlugin).GetField(name,previewFlags)!.SetValue(preview,value);
+        var previewTrace=RouteMatcher.SampleForTracking(data,truck,0);var direction=previewTrace.DirectionAt(previewTrace.Project(truck).Along);
+        double heading=Math.Atan2(-direction.X,-direction.Z)/(2*Math.PI);if(heading<0)heading+=1;
+        double now=((System.Diagnostics.Stopwatch)typeof(TollPlugin).GetField("clock",previewFlags)!.GetValue(preview)!).Elapsed.TotalSeconds;
+        PreviewSet("preview",true);PreviewSet("previewGeneration",1);PreviewSet("previewNavigation",ConnectorStart.NavigationKey(previewPlanner));PreviewSet("position",truck);PreviewSet("headingTurns",heading);
+        PreviewSet("sdk",true);PreviewSet("paused",false);PreviewSet("gates",sdk);
+        foreach(var name in new[]{"telemetryAt","gatesAt","gameTimeChangedAt"})PreviewSet(name,now);
+        typeof(TollPlugin).GetMethod("CompletePreview",previewFlags)!.Invoke(preview,[1,previewPlanner,truck,heading,Array.Empty<Vector3>()]);
+        var result=(TollRouter?)typeof(TollPlugin).GetField("previewRouter",previewFlags)!.GetValue(preview);
+        assert(previewClearanceChecks>0&&(result==null||result.SelectedGate==null),
+            $"The actual start preview must apply the same clearance veto as active routing; checks={previewClearanceChecks}, status={preview.RouteStatus}");
+        typeof(TollPlugin).GetMethod("StopDiagnostics",previewFlags)!.Invoke(preview,null);
         bool clearanceValid=true;
         var clearanceRouter=new TollRouter(new PreferenceStore(Path.Combine(Path.GetTempPath(),"unused-clearance-"+Guid.NewGuid()+".json")),
             _=>new Dictionary<int,TollPayment>{{4,TollPayment.Automatic},{12,TollPayment.Automatic}},

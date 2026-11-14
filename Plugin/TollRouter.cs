@@ -15,12 +15,16 @@ public sealed class TollRouter
     public Vector3? StopBoundary {get;private set;}
     public string? StopKey {get;private set;}
     public double? StopDistance {get;private set;}
+    public string? PrefetchIssue {get;private set;}
+    public string? ManualStopIssue {get;private set;}
     public void CancelPlannedStop() {StopBoundary=null;StopKey=null;StopDistance=null;}
     public TollPayment PaymentFor(int gate)=>CurrentKey!=null&&preferences.Payments.TryGetValue(PaymentPolicy.Key(CurrentKey,gate),out var mode)?mode:
         modelPayments.GetValueOrDefault(gate);
     IReadOnlyDictionary<int,TollPayment> modelPayments = new Dictionary<int,TollPayment>();
     readonly Func<ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments;
     readonly Func<PrefabPath,bool>? readClearance;
+    readonly Action<ParsedPrefab>? prefetch;
+    readonly Func<ParsedPrefab,int,ManualStopZone?>? readManualStop;
     readonly Dictionary<int,PrefabPath> plans = new();
     readonly Dictionary<int,(bool ShortChange,int Changes)> entryCosts = new();
     double lastSearch = double.NegativeInfinity;
@@ -28,8 +32,29 @@ public sealed class TollRouter
     public bool HasShortChange => shortChangeRoad != null;
     readonly PreferenceStore preferences;
     public TollRouter(PreferenceStore preferences, Func<ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments=null,
-        Func<PrefabPath,bool>? readClearance=null)
-    {this.preferences=preferences;this.readPayments=readPayments;this.readClearance=readClearance;}
+        Func<PrefabPath,bool>? readClearance=null,Action<ParsedPrefab>? prefetch=null,
+        Func<ParsedPrefab,int,ManualStopZone?>? readManualStop=null)
+    {this.preferences=preferences;this.readPayments=readPayments;this.readClearance=readClearance;this.prefetch=prefetch;this.readManualStop=readManualStop;}
+    public double? ManualStopOffset(double safeOffset)
+    {
+        ManualStopIssue=null;
+        if(readManualStop==null)return null;
+        try {return ReadManualStopOffset(safeOffset);}
+        catch(Exception ex) {ManualStopIssue=ex.Message;return null;}
+    }
+    double? ReadManualStopOffset(double safeOffset)
+    {
+        if(SelectedGate is not int gate||PaymentFor(gate)!=TollPayment.Manual||!plans.TryGetValue(gate,out var plan))return null;
+        var original=PrefabRefinement.OriginalFor(plan);
+        if(original.CurveDirection!=Direction.Forward)return null;
+        var curves=original.Curves.Where(c=>c.SemaphoreId==gate).ToArray();
+        var signal=original.GetSemaphores().FirstOrDefault(s=>s.Semaphore.SemaphoreId==gate);
+        if(curves.Length!=1||signal==null)return null;
+        double local=Vector3.Distance(curves[0].StartPosition,curves[0].EndPosition);
+        double world=Vector3.Distance(signal.GetCurveStartWorldCoordinates().Position,signal.GetCurveEndWorldCoordinates().Position);
+        if(!double.IsFinite(local)||local<1||!double.IsFinite(world)||Math.Abs(local-world)>Math.Max(.01,local*.005))return null;
+        return readManualStop!(plan.Prefab,gate)?.Choose(safeOffset);
+    }
     public string Status {get;private set;}="Warte auf Route";
     readonly Dictionary<PrefabPath,PrefabPath> replacements=new();
     static readonly MethodInfo clone=typeof(object).GetMethod("MemberwiseClone",BindingFlags.Instance|BindingFlags.NonPublic)!;
@@ -46,6 +71,13 @@ public sealed class TollRouter
     public void Discover(PlannedPathData data,Vector3 truck,ETS2LA.Game.SDK.Semaphore[] sdkGates,double speed=0)
     {
         if(data.HasError)return;
+        // Warm only the bounded model worker; no lane or SDK gate is inferred.
+        // This can finish before the game's short-range gate feed sees the plaza.
+        PrefetchIssue=null;
+        if(prefetch!=null)foreach(var prefab in data.PlannedPath.Where(i=>i.prefabPath!=null)
+            .Select(i=>i.prefabPath!.Prefab).Where(p=>p.Descriptor?.NavCurves.Any(c=>c.SemaphoreId>=0)==true).Distinct().Take(4)) {
+            try {prefetch(prefab);}catch(Exception ex) {PrefetchIssue=ex.Message;}
+        }
         for(int index=0;index<data.PlannedPath.Count;index++) {
             var item=data.PlannedPath[index];
             var p=item.prefabPath;

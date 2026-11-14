@@ -9,6 +9,7 @@
     <p>@TollPlugin.Current?.Details</p>
     <p>@TollPlugin.Current?.DataStatus</p>
     <p>@TollPlugin.Current?.RouteStatus</p>
+    <p>Baustellen und Hindernisse werden nicht zuverlässig vorausblickend erkannt. Dort bitte manuell fahren. Die Kollisionsabschaltung kann erst nach einem Aufprall reagieren.</p>
     @if (TollPlugin.Current?.LaneChoices is { Length: >0 } choices) {
         <label>Lkw-taugliche Spur
             <select style="border:1px solid #777;border-radius:5px;padding:6px" @bind="lane" @bind:after="LaneChanged">

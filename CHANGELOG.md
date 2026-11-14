@@ -1,5 +1,12 @@
 # Änderungen
 
+## 0.3.14 – Vorabprüfung, einheitliche Vorschau und entkoppelte Statusgeometrie
+
+- Vorhandene Routensignale lösen eine begrenzte Modellvorbereitung aus, bevor SDK-Schranken eintreffen. Das wählt keine Spur und erteilt keine Öffnungsfreigabe. Fehler der optionalen Vorbereitung werden diagnostiziert, statt allein eine Fehlerbremsung auszulösen.
+- Die tatsächliche Startvorschau verwendet denselben Router samt Geometrieprüfung wie die aktive Assistenz. Die periodische Statusgeometrie läuft mit unveränderlichen Punktdaten auf dem Diagnosearbeiter; native Projektionen werden dort nicht vorgetäuscht. Gehaltene Statusgeometrie darf ACC, Routenempfang und F9 nicht aufhalten.
+- Eindeutige gerade manuelle Modelltrigger können einen früheren Zahlhaltepunkt liefern. Der bestehende sichere Schrankenabstand wird nicht verkleinert; fehlende Metadaten starten kein automatisches Vorrollen. Komplexe, skalierte oder mehrdeutige Trigger bleiben ohne Ziel. Keine automatische Zahlung und keine allgemeine Behebung aller Zahlzonen.
+- 84 Integrations- und 46 Logikprüfungen bestehen; beide griechischen Offline-Spurwahlen bleiben gültig. Einzelheiten und Grenzen: `VERSION_0314.md`. Baustellen-Vorausschau und Hintergrund-Pedale bleiben offen; noch keine Fahrprüfung mit dieser Fassung.
+
 ## 0.3.13 – Länderübergreifende Modellauflösung und Kollisionsabschaltung
 
 - Der Prefab-Definitionskatalog ersetzt den festen Modellordner. Die Bestandsaufnahme findet 16 zuvor ausgeschlossene Definitionen unter 81 Mautmodellen. Ältere manuelle Start-/End-/Einmal-Zahlpunkte und automatische Auslösung werden aus geprüften `tollgate`-Units ausgewertet, einschließlich SII-Token-/Linkdarstellung und Spezialauftragsstatus. Unbekannte Attribute oder Kindmodelle, fehlende Definitionen und widersprüchliche Doppeldefinitionen geben keine Spur frei. Manuelle Spuren werden nicht zu AutoPASS erklärt.

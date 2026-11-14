@@ -1,6 +1,12 @@
 # Fahrnachweis
 
-## Aktueller Prüfstand 0.3.13
+## Aktueller Prüfstand 0.3.14
+
+84 Integrations- und 46 unabhängige Logikprüfungen bestehen. Beide gespeicherten griechischen SDK-Spurwahlen bleiben gültig, mit weiterhin nur drei beziehungsweise fünf verifizierten Kartenabschnitten. Die neuen Prüfungen halten die Statusgeometrie an, rufen die tatsächliche Startvorschau mit gesperrter Geometrie auf und prüfen Modellvorbereitung ohne SDK-Schranken sowie deren Fehlerfall. Modell-Zahlhalteintervalle und das Beibehalten eines bereits etablierten früheren Halts sind mit synthetischer Geometrie geprüft. Keine reale Zahlzonen-, Fahr- oder Baustellenvalidierung. Die griechischen Modelle liefern keinen freigegebenen manuellen Zielpunkt. Einzelheiten: [VERSION_0314.md](VERSION_0314.md).
+
+0.3.14 ist vorbereitet, noch nicht installiert oder gestartet. Der Nutzer möchte heute keine weitere Fahrt. Keine Abschaltgrenze oder Pedaleinstellung gelockert; Baustellen-Vorausschau und TruckersMP-Hintergrundausgabe bleiben offen.
+
+## Prüfstand 0.3.13
 
 0.3.13 ist lokal gebaut; 81 Integrationstests, 45 unabhängige Logiktests und drei Inventurprüfungen bestehen. Auch die GitHub-Prüfungen einschließlich der 44 Aufnahmeprüfungen sind erfolgreich. Die Fassung ist bei geschlossenen Anwendungen mit Sicherung der 0.3.11 installiert; Dateiversion 0.3.13.0 und SHA256 `9AD018950CE10CFDA023611F51184235FFF20A3075977B57238412EA3F3B933A` sind bestätigt. Noch nicht gestartet oder gefahren. Routen-/Bremsgrenzen und F8/F9 bleiben erhalten; globale Einstellungen wurden nicht geändert.
 

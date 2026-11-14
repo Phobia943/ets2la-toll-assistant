@@ -5,6 +5,31 @@ using MautAssistent;
 
 public static class DiagnosticDeliveryIntegration
 {
+    public static void BlockedGeometry(Action<bool,string> assert)
+    {
+        using var entered=new ManualResetEventSlim();using var release=new ManualResetEventSlim();
+        int thread=0,caller=Environment.CurrentManagedThreadId;
+        var f=new RollingStartIntegration.Fixture(writeDiagnostic:(_,_)=>{},buildStatusGeometry:(trace,point,gates)=>{
+            thread=Environment.CurrentManagedThreadId;entered.Set();
+            if(!release.Wait(TimeSpan.FromSeconds(5)))throw new TimeoutException("Geometry was not released");
+            return StatusGeometry.Build(trace,point,gates);
+        });
+        f.F8();f.Probe();f.Fresh();f.Set("lastWrite",-100d);f.Set("lastMapWrite",0d);
+        try {
+            f.Plugin.Tick();
+            assert(entered.Wait(TimeSpan.FromSeconds(1))&&thread!=caller,"Status geometry must run on the storage worker");
+            var acc=Task.Run(()=>f.Call("Evaluate"));
+            assert(acc.Wait(TimeSpan.FromMilliseconds(300)),"Slow report geometry cannot hold the ACC callback");
+            var path=Task.Run(()=>f.Call("OnPath",f.Plan()));
+            assert(path.Wait(TimeSpan.FromMilliseconds(300)),"Slow report geometry cannot hold route delivery");
+            var cancel=Task.Run(f.F9);
+            assert(cancel.Wait(TimeSpan.FromMilliseconds(300))&&!f.State.EnableAssists&&!f.Plugin.FaultBraking,
+                "F9 cannot wait for status geometry");
+        } finally {
+            release.Set();f.Call("StopDiagnostics");
+            assert(SpinWait.SpinUntil(()=>f.Get<DiagnosticQueue>("diagnostics").IsIdle,TimeSpan.FromSeconds(2)),"Geometry worker must settle");
+        }
+    }
     public static void ConsistentAges(Action<bool,string> assert)
     {
         using var written=new ManualResetEventSlim();string? json=null;int delivered=0;

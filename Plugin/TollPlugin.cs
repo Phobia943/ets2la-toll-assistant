@@ -42,6 +42,10 @@ public sealed partial class TollPlugin : Plugin
     readonly PreferenceStore preferences = new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"ETS2LA-Mautassistent","settings.json"));
     readonly TollRouter router;
     readonly Func<ETS2LA.Game.Data.ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments;
+    readonly Func<ETS2LA.Game.Data.PrefabPath,bool>? readClearance;
+    readonly Action<ETS2LA.Game.Data.ParsedPrefab>? prefetch;
+    readonly Func<ETS2LA.Game.Data.ParsedPrefab,int,ManualStopZone?>? readManualStop;
+    readonly Func<RouteTrace?,Vector3,ETS2LA.Game.SDK.Semaphore[],object> buildStatusGeometry;
     readonly Func<ApplicationState> readState;
     readonly Func<IPlugin?> readAcc;
     readonly Func<IPlugin?> readPlanner;
@@ -60,23 +64,30 @@ public sealed partial class TollPlugin : Plugin
         ()=>GameTelemetry.Current.GetCurrentData().configBool.specialJob)) { }
     TollPlugin(TollModelEvidence modelEvidence) : this(() => ApplicationState.Current, Notify,
         output=>Events.Current.Publish(GameOutput.Current.EventString,output),
-        readPayments:modelEvidence.Read,readClearance:modelEvidence.IsClear,monitorSteering:true) { }
+        readPayments:modelEvidence.Read,readClearance:modelEvidence.IsClear,monitorSteering:true,
+        prefetch:modelEvidence.Prefetch,readManualStop:modelEvidence.ReadManualStop) { }
     internal TollPlugin(Func<ApplicationState> readState, Action<string,string> notify,Action<ControlEvent>? output=null,Func<IPlugin?>? readAcc=null,
         Func<ETS2LA.Game.Data.ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments=null, Func<IPlugin?>? readPlanner=null,
         Func<IPlugin,Vector3,double,Vector3[],PlannedPathData?>? probeRoute=null,
         Func<IPlugin,PlannedPathData,PlannedPathData,Vector3,double,bool>? installStart=null,bool monitorSteering=false,
         Func<IPlugin?>? readLaneAssist=null,Action<string,string>? writeDiagnostic=null,
-        Func<ETS2LA.Game.Data.PrefabPath,bool>? readClearance=null) {
+        Func<ETS2LA.Game.Data.PrefabPath,bool>? readClearance=null,
+        Action<ETS2LA.Game.Data.ParsedPrefab>? prefetch=null,
+        Func<ETS2LA.Game.Data.ParsedPrefab,int,ManualStopZone?>? readManualStop=null,
+        Func<RouteTrace?,Vector3,ETS2LA.Game.SDK.Semaphore[],object>? buildStatusGeometry=null) {
         this.monitorSteering=monitorSteering;
         this.readState=readState;this.readAcc=readAcc??FindAcc;this.notify=notify;this.readPayments=readPayments;
         this.readPlanner=readPlanner??FindPlanner;
         this.readLaneAssist=readLaneAssist??FindLaneAssist;
         this.writeDiagnostic=writeDiagnostic??File.WriteAllText;
+        this.readClearance=readClearance;this.prefetch=prefetch;this.readManualStop=readManualStop;
+        this.buildStatusGeometry=buildStatusGeometry??StatusGeometry.Build;
         this.probeRoute=probeRoute??ConnectorStart.Probe;
         this.installStart=installStart??ConnectorStart.TryInstallStart;
         publishOutput=output??(_=>{});
-        router=new(preferences,readPayments,readClearance);faultBrake=new(output??(_=>{}));
+        router=CreateRouter();faultBrake=new(output??(_=>{}));
     }
+    TollRouter CreateRouter()=>new(preferences,readPayments,readClearance,prefetch,readManualStop);
     string preparationReason="Automatische Vorbereitung wartet auf Stillstand und verbundene Module.";
     double lastStartWarning=double.NegativeInfinity;
     static void Notify(string title,string content) {
@@ -519,7 +530,7 @@ public sealed partial class TollPlugin : Plugin
             }
             try
             {
-                var testRouter = new TollRouter(preferences, readPayments);
+                var testRouter = CreateRouter();
                 testRouter.Discover(data, origin, gates);
                 testRouter.Apply(data, origin, out var issue);
                 ExitHandoff.RepairRoadConnections(data,origin);
@@ -782,7 +793,8 @@ public sealed partial class TollPlugin : Plugin
                 candidate = gate;
                 bool manual = router.SelectedGate is int selected && router.PaymentFor(selected)==TollPayment.Manual &&
                     gates.Any(g=>g.id==selected && gate?.Key==RouteMatcher.Key(g));
-                decision = controller.Step(new(now, speed, allow, Fresh(now), gate, manual));
+                decision = controller.Step(new(now, speed, allow, Fresh(now), gate, manual,
+                    manual?router.ManualStopOffset(options.StopOffsetMetres):null));
                 if(allow && Fresh(now) && router.StopBoundary.HasValue)
                     decision=ApproachStop.Evaluate(speed,router.UpdateStopDistance(path!,position,speed)!.Value);
                 else if (allow && sampled != null && path != null)
@@ -816,6 +828,7 @@ public sealed partial class TollPlugin : Plugin
                     // the tick-start clock may precede a command received here.
                     var observedSteering=Volatile.Read(ref lastSteeringCommand);
                     double observedAt=clock.Elapsed.TotalSeconds;
+                    var diagnosticTrace=safetyTrace;var diagnosticPosition=position;var diagnosticGates=gates;
                     var snapshot = new {
                         version=Info.Version, utc=DateTimeOffset.UtcNow, active, fresh=Fresh(observedAt), speedKph=speed*3.6,
                         connectorAttempted, connectorPending, connectorSeeded,
@@ -839,7 +852,9 @@ public sealed partial class TollPlugin : Plugin
                         impact=lastImpact,
                         sdk, paused, pathError=path?.ErrorMessage,
                         gateCount=gates.Count(g=>g.type==SemaphoreType.GATE), options,
-                        geometry=RouteMatcher.Diagnose(path,position,gates), routing=router.Status, routeFault, lastFault, previewStatus,routeTransition,
+                        geometry=(object?)null,manualStopOffset=router.ManualStopOffset(options.StopOffsetMetres),
+                        routing=router.Status,prefetchIssue=router.PrefetchIssue,manualStopIssue=router.ManualStopIssue,
+                        routeFault,lastFault,previewStatus,routeTransition,
                         assists=State.EnableAssists,mode=State.DrivingMode.ToString()
                     };
                     var log = Path.ChangeExtension(DiagnosticPath, ".log");
@@ -849,7 +864,9 @@ public sealed partial class TollPlugin : Plugin
                     // plugin state, routing containers or their lock from I/O.
                     diagnostics.Enqueue(DiagnosticQueue.Slot.Status,()=> {
                         Directory.CreateDirectory(Path.GetDirectoryName(DiagnosticPath)!);
-                        writeDiagnostic(DiagnosticPath,JsonSerializer.Serialize(snapshot,diagnosticJson));
+                        var report=JsonSerializer.SerializeToNode(snapshot,diagnosticJson)!.AsObject();
+                        report["geometry"]=JsonSerializer.SerializeToNode(buildStatusGeometry(diagnosticTrace,diagnosticPosition,diagnosticGates),diagnosticJson);
+                        writeDiagnostic(DiagnosticPath,report.ToJsonString(diagnosticJson));
                         if(logState==lastLogged)return;
                         if(File.Exists(log)&&new FileInfo(log).Length>2_000_000)File.Move(log,log+".previous",true);
                         File.AppendAllText(log,logLine);

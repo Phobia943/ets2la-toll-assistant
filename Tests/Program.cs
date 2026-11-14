@@ -46,6 +46,24 @@ void Run()
     var results=new List<string>();
     void Check(string name, Action test) { try {test(); results.Add("PASS "+name);} catch(Exception ex) {results.Add("FAIL "+name+": "+ex); } }
     void Assert(bool v,string message="Assertion failed") {if(!v)throw new Exception(message);}
+    Check("Manual trigger targets retain the existing safe distance and cannot modify automatic lanes",()=>{
+        Assert(new ManualStopZone(11,19).Choose(8)==15);
+        Assert(new ManualStopZone(-4,4).Choose(8)==null,"A closer payment zone cannot reduce the safe stop gap");
+        Assert(new ManualStopZone(6,12).Choose(8)==9);
+        Assert(new ManualStopZone(12,4).Choose(8)==null&&new ManualStopZone(4,double.NaN).Choose(8)==null);
+        var options=new TollOptions();
+        var normal=new TollController(options).Step(new(0,0,true,true,new("gate",15,BarrierState.Closed)));
+        var manual=new TollController(options).Step(new(0,0,true,true,new("gate",15,BarrierState.Closed),true,15));
+        Assert(normal.TargetSpeed>0&&manual.TargetSpeed==0,"A validated upstream payment zone stops earlier");
+        var retained=new TollController(options);
+        retained.Step(new(0,0,true,true,new("gate",15,BarrierState.Closed),true,15));
+        Assert(retained.Step(new(.1,0,true,true,new("gate",15,BarrierState.Closed),true)).TargetSpeed==0,
+            "Disappearing optional trigger metadata cannot restart creep toward a closed gate");
+        var unsafeTarget=new TollController(options).Step(new(0,0,true,true,new("gate",8,BarrierState.Closed),true,2));
+        Assert(unsafeTarget.TargetSpeed==0,"Unsafe closer targets must be ignored");
+        var auto=new TollController(options).Step(new(0,0,true,true,new("gate",15,BarrierState.Closed),false,15));
+        Assert(auto==normal,"Manual metadata cannot change the automatic payment controller");
+    });
     Check("Collision cutout requires a fresh local impact and contemporaneous body damage",()=>{
         ImpactFrame Frame(double t,double speed,float damage=.1f)=>new(t,(ulong)(t*1000000),(ulong)(t*1000000),true,false,true,speed,0,0,t*10,new(damage,.1f));
         var guard=new ImpactGuard();
@@ -161,6 +179,8 @@ void Run()
         }
     });
     #if INTEGRATION
+    Check("Blocked status geometry cannot stall driving callbacks or manual takeover",()=>DiagnosticDeliveryIntegration.BlockedGeometry(Assert));
+    Check("Manual trigger rectangles are matched to a straight gate lane with conservative bounds",()=>ManualTriggerIntegration.Run(Assert));
     Check("Legacy toll model registry includes multiple country folders without granting unknown payment",()=>ModelRegistryIntegration.Run(Assert));
     Check("Toll units distinguish legacy manual gates, automatic triggers and uninspected child models",()=>TollDefinitionIntegration.Run(Assert));
     Check("Confirmed impact cuts output before route work and manual takeover cancels pending braking",()=>ImpactSafetyIntegration.Run(Assert));

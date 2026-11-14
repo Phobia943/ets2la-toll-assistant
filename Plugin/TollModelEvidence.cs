@@ -26,7 +26,8 @@ public sealed class TollModelEvidence
     sealed class Entry {public ModelInspection? Result;}
     sealed record Job(IFileSystem Source,ModelRequest Request,Entry Entry);
     internal sealed record ModelRequest(string Model,string Variant,string[] Parts,bool SpecialJob,PrefabDescriptor Descriptor,string[] Archives);
-    public sealed record ModelInspection(IReadOnlyDictionary<int,TollPayment> Payments,bool[] BlockedCurves);
+    public sealed record ModelInspection(IReadOnlyDictionary<int,TollPayment> Payments,bool[] BlockedCurves)
+    { public IReadOnlyDictionary<int,ManualStopZone> ManualStops {get;init;}=new Dictionary<int,ManualStopZone>(); }
     static readonly IReadOnlyDictionary<int,TollPayment> Unknown = new Dictionary<int,TollPayment>();
     static readonly ModelInspection Rejected=new(Unknown,[]);
 
@@ -39,6 +40,15 @@ public sealed class TollModelEvidence
     {
         var entry=GetEntry(prefab);
         return entry==null?Unknown:Volatile.Read(ref entry.Result)?.Payments ?? Unknown;
+    }
+    public void Prefetch(ParsedPrefab prefab)
+    {
+        if(prefab.Descriptor?.NavCurves.Any(c=>c.SemaphoreId>=0)==true)_=GetEntry(prefab);
+    }
+    public ManualStopZone? ReadManualStop(ParsedPrefab prefab,int gate)
+    {
+        var entry=GetEntry(prefab);
+        return entry==null?null:Volatile.Read(ref entry.Result)?.ManualStops.GetValueOrDefault(gate);
     }
 
     public bool IsClear(PrefabPath input)
@@ -150,7 +160,10 @@ public sealed class TollModelEvidence
             return (l.Position,Payment:payment);
         })
             .Where(l=>l.Payment!=TollPayment.Unknown);
-        return new(Match(descriptor,markers),blocked);
+        return new(Match(descriptor,markers),blocked) {
+            ManualStops=tollUnits==null?new Dictionary<int,ManualStopZone>():
+                ManualTriggerEvidence.Read(descriptor,visible,pmg,tollUnits,specialJob)
+        };
     }
     internal static bool IsNonSolidHookup(Unit unit)
     {
@@ -217,7 +230,7 @@ public sealed class TollModelEvidence
             _ => TollPayment.Unknown
         };
 
-    static string? ReadHookup(ReadOnlySpan<byte> pmg,int offset)
+    internal static string? ReadHookup(ReadOnlySpan<byte> pmg,int offset)
     {
         if (pmg.Length < 96 || pmg[0] != 21 || offset < 0) return null;
         int table = BinaryPrimitives.ReadInt32LittleEndian(pmg[88..]);
