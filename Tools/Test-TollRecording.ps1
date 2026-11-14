@@ -35,9 +35,14 @@ try {
     $air=Read-TruckAirBuffer $airBytes
     Assert ($air.pressure -eq 4.5 -and $air.warningThreshold -eq 5 -and $air.emergencyThreshold -eq 4.25 -and
         $air.warning -and !$air.emergency -and $air.issues.Count -eq 0) 'Read pressure, vehicle-specific limits and actual warning flags without inferred units.';$checks++
+    [BitConverter]::GetBytes([single]-.024423394).CopyTo($airBytes,992);$airBytes[1569]=1
+    $air=Read-TruckAirBuffer $airBytes
+    $savedAir=$air|ConvertTo-Json -Compress|ConvertFrom-Json
+    Assert ($null -eq $savedAir.pressure -and [Math]::Abs($savedAir.rawPressure+.024423394) -lt .000001 -and
+        $savedAir.warning -and $savedAir.emergency -and $savedAir.issues -contains 'InvalidAirPressure:pressure') 'A finite negative near-empty source reading must survive capture without being reported as valid pressure or clearing warning flags.';$checks++
     [BitConverter]::GetBytes([single]::NaN).CopyTo($airBytes,992);$airBytes[1569]=2
     $air=Read-TruckAirBuffer $airBytes
-    Assert ($null -eq $air.pressure -and $null -eq $air.emergency -and $air.issues.Count -eq 2) 'Bad pressure and warning flags cannot be reported as safe readings.';$checks++
+    Assert ($null -eq $air.pressure -and $null -eq $air.rawPressure -and $null -eq $air.emergency -and $air.issues.Count -eq 2) 'Bad pressure and warning flags cannot be reported as safe readings.';$checks++
     $airBytes[40]=13;$rejected=$false
     try{Read-TruckAirBuffer $airBytes|Out-Null}catch{$rejected=$true}
     Assert $rejected 'Unknown telemetry layout cannot decode air pressure.';$checks++

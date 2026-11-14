@@ -103,6 +103,11 @@ function Read-TruckAirBuffer {
     # configured limits use the same SDK scale; no unit conversion is assumed.
     $issues=[Collections.Generic.List[string]]::new()
     $values=[ordered]@{}
+    # Preserve finite out-of-range source values separately. The game has been
+    # observed reporting a slightly negative value with both low-air flags on.
+    # Keep pressure invalid rather than silently clamping it to a safe reading.
+    $rawPressure=[double][BitConverter]::ToSingle($Bytes,992)
+    $values.rawPressure=if([double]::IsFinite($rawPressure)){$rawPressure}else{$null}
     foreach($field in @(@('pressure',992),@('warningThreshold',720),@('emergencyThreshold',724))) {
         $value=[double][BitConverter]::ToSingle($Bytes,$field[1])
         if(![double]::IsFinite($value) -or $value -lt 0){$issues.Add("InvalidAirPressure:$($field[0])");$value=$null}

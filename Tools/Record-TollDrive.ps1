@@ -75,6 +75,7 @@ try {
             airBrakes=(Read-TruckAirBuffer $telemetry)
             active=($telemetry[0] -ne 0);paused=($telemetry[4] -ne 0)
             speedMps=$speed;engineRpm=[BitConverter]::ToSingle($telemetry,952)
+            cruiseSpeedMps=[BitConverter]::ToSingle($telemetry,988)
             x=$x;y=$y;z=$z;heading=$heading;parkingBrake=($telemetry[1566] -ne 0)
             # Raw game input channels can include SDK overrides. They are not
             # proof of physical pedal activity; use the separate SDL brake input.

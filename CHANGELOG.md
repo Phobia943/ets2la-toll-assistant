@@ -1,5 +1,10 @@
 # Änderungen
 
+## Noch nicht veröffentlicht – Luftdruckbeobachtung und DLC-Befunde
+
+- Die Aufnahme bewahrt endliche negative Luftdruck-Rohwerte getrennt von der weiterhin ungültigen Druckmessung. Warn-/Notfallflags bleiben unabhängig erhalten; ein neuer Test prüft die vollständige Speicherung. 44 Aufnahmeprüfungen bestehen. Der spielinterne Tempomat-Sollwert wird künftig ebenfalls erfasst.
+- Laufzeitbeobachtung von 0.3.11, wiederholter Luftdruckverlust bei automatischer Bremsung und die Ablehnung einer griechischen Mautanlage mit aktivierten Zusatzteilen sind dokumentiert. Moderne/Standard-Pedalausgabe sind noch nicht kontrolliert verglichen; die Höhenbalkensperre bleibt bestehen. Keine Änderung an der installierten Plugin-DLL oder den Fahrentscheidungen.
+
 ## 0.3.11 – Zeitbezug der Diagnose und getrennte SDK-Ausfahrtmessung
 
 - Ein während des Fahrzyklus eintreffender Steuerbefehl konnte einen negativen Diagnose-Alterswert erzeugen, weil der Bezugszeitpunkt vom Zyklusbeginn stammte. Die Status- und Bewegungsaufzeichnung lesen jetzt ihre Befehlsreferenzen vor dem zugehörigen Zeitbezug. Der neue deterministische Integrationstest scheitert vor und besteht nach der Korrektur. Keine Änderung der Lenk-/Bremsentscheidungen oder Abschaltschwellen.
