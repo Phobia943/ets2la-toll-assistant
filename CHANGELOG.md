@@ -1,5 +1,12 @@
 # Änderungen
 
+## 0.3.13 – Länderübergreifende Modellauflösung und Kollisionsabschaltung
+
+- Der Prefab-Definitionskatalog ersetzt den festen Modellordner. Die Bestandsaufnahme findet 16 zuvor ausgeschlossene Definitionen unter 81 Mautmodellen. Ältere manuelle Start-/End-/Einmal-Zahlpunkte und automatische Auslösung werden aus geprüften `tollgate`-Units ausgewertet, einschließlich SII-Token-/Linkdarstellung und Spezialauftragsstatus. Unbekannte Attribute oder Kindmodelle, fehlende Definitionen und widersprüchliche Doppeldefinitionen geben keine Spur frei. Manuelle Spuren werden nicht zu AutoPASS erklärt.
+- Eine Kollisionssignatur aus abruptem Geschwindigkeitsverlust und gleichzeitig neuem Kabinen-/Fahrgestellschaden schaltet Assistenz aus und fordert unabhängig von der Routensperre Bremsung an. Physische Bremse und F9 lösen sie und verwerfen wartende Meldungen. Dies verhindert keinen ersten Aufprall und ist keine Baustellen-Hinderniserkennung. Die gesicherte alte Unfallaufnahme enthält keinen Schadenverlauf; die neue Diagnose bewahrt ihn mit tatsächlichen Spielpedalen und Simulationszeit.
+- Ein lokales Inventurwerkzeug erfasst vorhandene SDK-Aufzeichnungen und Fehlerberichte, ohne veralteten Status, nahe Nachbarspuren oder fehlende Länderangaben als erfolgreiche Mautfahrt auszugeben. Übersicht und Grenzen stehen in `TOLL_COVERAGE.md`.
+- 81 Integrationstests, 45 unabhängige Logiktests und drei Inventurprüfungen bestehen. Die beiden griechischen SDK-Fälle wählen wieder eine verbundene automatische Spur. Noch nicht installiert oder im Spiel geprüft; keine Änderung an Pedalmodus, globalen Einstellungen oder Abschaltschwellen.
+
 ## 0.3.12 – Modellvarianten und breite Mautdurchgänge
 
 - Aktivierte Modellteile werden zusätzlich zur Variantenmaske ausgewertet. Sichtbare statische Dreiecke sperren einen betroffenen Fahrkorridor; Zahlungsart und Durchfahrtsgeometrie bleiben getrennt. Der Korridor ist 3 m breit und 6 m hoch, kein gemessenes Fahrzeugprofil. Unbekannte Kindmodelle, animierte Geometrie und unpassende Archivquellen bleiben ohne Freigabe.

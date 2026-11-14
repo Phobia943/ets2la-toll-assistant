@@ -21,3 +21,5 @@ jobs:
       - name: Check recording analysis without a running game
         shell: pwsh
         run: ./Tools/Test-TollRecording.ps1
+      - name: Check historical evidence inventory
+        run: python -m unittest discover -s Tools -p test_toll_history.py

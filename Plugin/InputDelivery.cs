@@ -9,20 +9,28 @@ public sealed partial class TollPlugin
 {
     // SDK publishers are synchronous. Never make them wait for route/model work:
     // that would also prevent telemetry delivery to the host's other consumers.
-    sealed record TelemetryFrame(double Arrived,ulong Time,bool Active,bool Paused,double Speed,Vector3 Position,double Heading);
+    sealed record PhysicsObservation(ulong SimulatedTime,ulong RenderTime,float EngineDamage,float TransmissionDamage,
+        float CabinDamage,float ChassisDamage,float WheelDamage,float GameThrottle,float GameBrake);
+    sealed record TelemetryFrame(double Arrived,ulong Time,bool Active,bool Paused,double Speed,Vector3 Position,double Heading,
+        PhysicsObservation Physics);
     sealed record GateFrame(double Arrived,Semaphore[] Gates);
     TelemetryFrame? incomingTelemetry;
     TelemetryFrame? latestDeliveredTelemetry;
     GateFrame? incomingGates;
     double pathReceivedAt=-100;
     double routeWorkMilliseconds,maxRouteWorkMilliseconds;
+    PhysicsObservation? physicsObservation;
 
     void OnTelemetry(GameTelemetryData data)
     {
         var frame=new TelemetryFrame(clock.Elapsed.TotalSeconds,data.time,data.sdkActive,data.paused,
-            data.truckFloat.speed,data.truckPlacement.coordinate.ToVector3(),data.truckPlacement.rotation.X);
+            data.truckFloat.speed,data.truckPlacement.coordinate.ToVector3(),data.truckPlacement.rotation.X,
+            new(data.simulatedTime,data.renderTime,data.truckFloat.wearEngine,data.truckFloat.wearTransmission,
+                data.truckFloat.wearCabin,data.truckFloat.wearChassis,data.truckFloat.wearWheels,
+                data.truckFloat.gameThrottle,data.truckFloat.gameBrake));
         Interlocked.Exchange(ref incomingTelemetry,frame);
         Interlocked.Exchange(ref latestDeliveredTelemetry,frame);
+        ObserveImpact(frame);
         if(!Monitor.TryEnter(sync))return;
         try
         {
@@ -53,6 +61,7 @@ public sealed partial class TollPlugin
             telemetryAt=frame.Arrived;
             if(gameTime!=frame.Time) {gameTimeChangedAt=frame.Arrived;gameTime=frame.Time;}
             sdk=frame.Active;paused=frame.Paused;speed=frame.Speed;position=frame.Position;headingTurns=frame.Heading;
+            physicsObservation=frame.Physics;
             if(previewRouter!=null && (Math.Abs(speed)>.1 || Vector3.DistanceSquared(position,previewPosition)>1))previewRouter=null;
             if(!sdk || paused || (State.EnableAssists && Math.Abs(speed)>.1))connectorHistory.Clear();
             else if(!State.EnableAssists)connectorHistory.Observe(telemetryAt,position,speed);

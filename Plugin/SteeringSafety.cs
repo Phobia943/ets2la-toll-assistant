@@ -74,6 +74,7 @@ public sealed partial class TollPlugin
         {
             steeringGuard.Reset();steeringFeedState=SteeringFeedState.Off;
             lastSteeringCommand=null;lastAccCommand=null;collectingSteeringFailure=pendingSteeringFailure=lastSteeringFailure=null;
+            pendingImpact=lastImpact=null;impactGuard.Reset();
             steeringMonitoringLive=true;
             steeringTimer=new Timer(_=> {
                 CheckSteeringOutput();
@@ -91,6 +92,7 @@ public sealed partial class TollPlugin
             steeringMonitoringLive=false;State.EnableAssists=false;steeringGuard.Reset();
             steeringTimer?.Dispose();steeringTimer=null;
             collectingSteeringFailure=pendingSteeringFailure=null;
+            pendingImpact=null;impactGuard.Reset();
         }
     }
 
@@ -101,6 +103,7 @@ public sealed partial class TollPlugin
             State.EnableAssists=false;steeringGuard.Reset();steeringFeedState=SteeringFeedState.Off;
             faultBrake.Release();
             collectingSteeringFailure=pendingSteeringFailure=null;
+            pendingImpact=null;impactGuard.Reset();
         }
     }
 
@@ -113,7 +116,8 @@ public sealed partial class TollPlugin
 
     sealed record MotionSnapshot(double Time,DateTimeOffset Utc,bool Assists,double SpeedKph,double X,double Y,double Z,
         double Heading,double TelemetryAge,double PathAge,double? LateralOffset,double? HeightOffset,
-        float? Steering,double? SteeringAge,float? AccThrottle,float? AccBrake,double? AccAge,float ManualBrake);
+        float? Steering,double? SteeringAge,float? AccThrottle,float? AccBrake,double? AccAge,float ManualBrake,
+        PhysicsObservation? Game);
     readonly Queue<MotionSnapshot> motionHistory=new();
     double lastMotionAt=-100;
     void RecordMotion(double now,bool force=false)
@@ -127,6 +131,6 @@ public sealed partial class TollPlugin
         if(motionHistory.Count==240)motionHistory.Dequeue();
         motionHistory.Enqueue(new(now,DateTimeOffset.UtcNow,State.EnableAssists,speed*3.6,position.X,position.Y,position.Z,
             headingTurns,now-telemetryAt,now-pathAt,projected?.Offset,projected?.HeightOffset,
-            steering?.Value,steering!=null?now-steering.At:null,acc?.Throttle,acc?.Brake,acc!=null?now-acc.At:null,brakeInputValue));
+            steering?.Value,steering!=null?now-steering.At:null,acc?.Throttle,acc?.Brake,acc!=null?now-acc.At:null,brakeInputValue,physicsObservation));
     }
 }

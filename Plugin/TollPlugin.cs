@@ -258,6 +258,7 @@ public sealed partial class TollPlugin : Plugin
     DriveAction SafetyWatchdog(double now)
     {
         DrainInputFrames();
+        DrainImpactFailure();
         CheckSteeringOutput();
         DrainSteeringFailure();
         RecordMotion(now);
@@ -697,6 +698,7 @@ public sealed partial class TollPlugin : Plugin
             phase=decision.Phase, tracked, candidate, pathError=path?.ErrorMessage,
             action=action.ToString(), geometry,routeTracking=safetyTrace?.Diagnose(position),tracking=trackingGuard.LastDirectionFailure,
             steeringFailure=lastSteeringFailure is { } failure&&failure.Reason==reason?failure:null,
+            impact=reason==ImpactReason?lastImpact:null,
             motion=motionHistory.ToArray(),routePlan,
             routePlanSource=path is {HasError:false}?"Current":lastAcceptedPlan!=null?"LastAccepted":"Unavailable",
             lastAcceptedPlanAge=lastAcceptedPlan!=null?clock.Elapsed.TotalSeconds-lastAcceptedPlanAt:(double?)null,
@@ -834,6 +836,7 @@ public sealed partial class TollPlugin : Plugin
                         pathReceivedAge=observedAt-pathReceivedAt,routeWorkMilliseconds,maxRouteWorkMilliseconds,
                         steeringFeed=steeringFeedState.ToString(),steeringAge=observedSteering!=null?observedAt-observedSteering.At:(double?)null,
                         steeringFault=lastSteeringFailure,
+                        impact=lastImpact,
                         sdk, paused, pathError=path?.ErrorMessage,
                         gateCount=gates.Count(g=>g.type==SemaphoreType.GATE), options,
                         geometry=RouteMatcher.Diagnose(path,position,gates), routing=router.Status, routeFault, lastFault, previewStatus,routeTransition,

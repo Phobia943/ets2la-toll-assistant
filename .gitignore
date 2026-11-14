@@ -20,3 +20,4 @@ settings.json
 route-error.json
 *-settings.json
 TestResults/
+**/__pycache__/

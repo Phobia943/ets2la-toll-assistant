@@ -1,6 +1,16 @@
 # Fahrnachweis
 
-## Aktueller Prüfstand 0.3.12
+## Aktueller Prüfstand 0.3.13
+
+0.3.13 ist lokal gebaut; 81 Integrationstests, 45 unabhängige Logiktests und drei Inventurprüfungen bestehen. Die unveränderten 44 Aufnahmeprüfungen wurden zuletzt für 0.3.12 ausgeführt und werden im CI weiter geprüft. Die Fassung ist noch nicht installiert oder gefahren. Routen-/Bremsgrenzen und F8/F9 bleiben erhalten.
+
+Die aktuelle Archiv- und Modellprüfung ist in [TOLL_COVERAGE.md](TOLL_COVERAGE.md) dokumentiert. 24 SDK-Aufzeichnungen und 24 deduplizierte Fehlerzeit-/Meldungspaare wurden inventarisiert; Standprüfungen und überlappende Aufnahmen zählen dabei mit. 81 aktuelle Maut-Modelldefinitionen wurden auf Ordnerabdeckung und PMG-Format geprüft. 16 lagen außerhalb des früheren Suchordners. Die 35 referenzierten, aufgelösten Maut-Units sind mit dem Produktionsklassifizierer geprüft: im normalen Auftrag 31 manuell, drei automatisch und eine nur für Spezialauftrag. Keine Vollabdeckung aller Länder oder konkrete Freihöhe daraus ableiten.
+
+Beide griechischen gespeicherten SDK-Fälle wurden mit 0.3.13 erneut erfolgreich rekonstruiert: automatische Spur, verbundene Anwendung, kein geplanter Halt wegen unbekannter Spur. Es gelten weiterhin die unten genannten drei beziehungsweise fünf verifizierten Abschnitte und die Grenzen der Offline-Prüfung.
+
+Die Kollisionsabschaltung wurde mit synthetischen zusammenhängenden SDK-Eingaben geprüft, einschließlich eines blockierten Routenaufrufs, tatsächlicher Ausgabe des Bremskanals und manueller Übernahme vor/nach Diagnosezustellung. Alte Schäden, normale starke Bremsung, Pausen, deaktivierte Assistenz, fehlende Quellzeitfortschritte und Sprünge dürfen keinen Kollisionsbefund erzeugen. Die Unfallaufnahme vom 14. November enthält die benötigten Schadenswerte nicht und ist daher kein positiver Detektornachweis. Kein realer Brems-/Kollisionsversuch mit der neuen Fassung und keine vorausschauende Hinderniserkennung.
+
+## Prüfstand 0.3.12
 
 0.3.12 ist lokal gebaut; 77 Integrationstests, 44 unabhängige Logiktests und 44 Aufnahmeprüfungen bestehen. Installationsstatus: [NEXT_SESSION.md](NEXT_SESSION.md). Eine echte Mautdurchfahrt und die manuelle Übernahme mit dieser DLL sind noch nicht geprüft.
 

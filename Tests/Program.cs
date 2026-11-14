@@ -46,6 +46,27 @@ void Run()
     var results=new List<string>();
     void Check(string name, Action test) { try {test(); results.Add("PASS "+name);} catch(Exception ex) {results.Add("FAIL "+name+": "+ex); } }
     void Assert(bool v,string message="Assertion failed") {if(!v)throw new Exception(message);}
+    Check("Collision cutout requires a fresh local impact and contemporaneous body damage",()=>{
+        ImpactFrame Frame(double t,double speed,float damage=.1f)=>new(t,(ulong)(t*1000000),(ulong)(t*1000000),true,false,true,speed,0,0,t*10,new(damage,.1f));
+        var guard=new ImpactGuard();
+        Assert(guard.Observe(Frame(1,22))==null);
+        Assert(guard.Observe(Frame(1.06,.08f,.11f)) is {SpeedLoss:>20},"A physical abrupt stop with new body damage must trip");
+        guard.Reset();guard.Observe(Frame(1,22));
+        Assert(guard.Observe(Frame(1.06,0))==null,"Existing damage alone cannot turn a stop into a new collision");
+        guard.Reset();guard.Observe(Frame(1,22));
+        Assert(guard.Observe(Frame(1.06,21.5f,.11f))==null,"Damage without abrupt loss is not this impact signature");
+        foreach(var frame in new[]{Frame(2,0,.11f),Frame(1.06,0,.11f) with {X=100},
+            Frame(1.06,0,.11f) with {Paused=true},Frame(1.06,0,.11f) with {Sdk=false},
+            Frame(1.06,0,.11f) with {Enabled=false},Frame(1.06,0,.11f) with {SimulatedTime=1000000},
+            Frame(1.06,0,.11f) with {Damage=new(.11f,float.NaN)}}) {
+            guard.Reset();guard.Observe(Frame(1,22));Assert(guard.Observe(frame)==null,"Paused, disabled, stale, invalid or teleport-like frames cannot prove impact");
+        }
+        guard.Reset();guard.Observe(Frame(1,22));
+        Assert(guard.Observe(Frame(1.03,0,.11f) with {GameTime=1000000})==null,"Duplicate SDK sample cannot invent impact");
+        Assert(guard.Observe(Frame(1.06,0,.11f))!=null,"Duplicate delivery must not erase the last distinct source sample");
+        guard.Reset();
+        for(int i=0;i<21;i++)Assert(guard.Observe(Frame(1+i*.05,22-i*.7f,.1f+i*.00001f))==null,"Strong conventional braking must not trip");
+    });
     Check("Diagnostic storage coalesces bounded slots, resumes in order and survives write failures",()=>{
         using var entered=new ManualResetEventSlim();using var release=new ManualResetEventSlim();
         var writes=new List<int>();int failures=0;
@@ -140,6 +161,9 @@ void Run()
         }
     });
     #if INTEGRATION
+    Check("Legacy toll model registry includes multiple country folders without granting unknown payment",()=>ModelRegistryIntegration.Run(Assert));
+    Check("Toll units distinguish legacy manual gates, automatic triggers and uninspected child models",()=>TollDefinitionIntegration.Run(Assert));
+    Check("Confirmed impact cuts output before route work and manual takeover cancels pending braking",()=>ImpactSafetyIntegration.Run(Assert));
     Check("The inspected native event bus preserves synchronous route handoff and accepts the current host combination",()=>NativeEventBusIntegration.Run(Assert));
     Check("An empty native error retains detached prior route evidence without relaxing fault braking",()=>RouteFaultEvidenceIntegration.Run(Assert));
     Check("Verified native steering diagnostics are read-only, build-pinned and safe on lookup failures",()=>NativeSteeringDiagnosticsIntegration.Run(Assert));

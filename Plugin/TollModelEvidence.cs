@@ -87,6 +87,7 @@ public sealed class TollModelEvidence
     void RunWorker()
     {
         IndependentAssets? owned=null;IFileSystem? source=null;Dictionary<string,string>? models=null;HashSet<string>? nonSolid=null;
+        Dictionary<string,Unit>? tollUnits=null;
         try {
             while(true) {
                 Job job;
@@ -97,14 +98,14 @@ public sealed class TollModelEvidence
                     else {
                         if(!ReferenceEquals(source,job.Source)) {
                             owned?.Dispose();owned=new(job.Request.Archives);source=job.Source;models=ReadModels(owned.Files);
-                            nonSolid=ReadNonSolidHookups(owned);
+                            (nonSolid,tollUnits)=ReadHookupDefinitions(owned);
                         }
                         var request=job.Request;
                         if(!models!.TryGetValue(request.Model,out var pmd))result=Rejected;
                         else {
                             var model=Model.Open(pmd,owned!.Files);
                             result=InspectModel(request.Descriptor,model,request.Variant,request.Parts,
-                                owned.Files.ReadAllBytes(Path.ChangeExtension(pmd,".pmg")),request.SpecialJob,nonSolid);
+                                owned.Files.ReadAllBytes(Path.ChangeExtension(pmd,".pmg")),request.SpecialJob,nonSolid,tollUnits);
                         }
                     }
                 } catch(Exception ex) {
@@ -117,7 +118,7 @@ public sealed class TollModelEvidence
     }
 
     public static ModelInspection InspectModel(PrefabDescriptor descriptor,Model model,string variant,string[] extraParts,byte[] pmg,bool specialJob=false,
-        IReadOnlySet<string>? nonSolidHookups=null)
+        IReadOnlySet<string>? nonSolidHookups=null,IReadOnlyDictionary<string,Unit>? tollUnits=null)
     {
         var variants=model.Variants.Where(v=>v.Name.ToString()==variant).ToArray();
         if(variants.Length!=1||variants[0].Attributes.Count!=model.Parts.Count||
@@ -133,11 +134,21 @@ public sealed class TollModelEvidence
             // Unknown child hook-ups can instantiate geometry not in this PMG.
             // Do not silently treat an uninspected child model as empty space.
             var hookup=ReadHookup(pmg,locator.HookupOffset);
+            if(tollUnits!=null) {
+                if(hookup==""||hookup!=null&&nonSolidHookups?.Contains(hookup)==true)continue;
+                if(hookup!=null&&tollUnits.TryGetValue(hookup,out var unit)&&TollDefinition.Read(unit,specialJob).Known)continue;
+                return Rejected;
+            }
             if(hookup is not ("" or "tollgate.autopass.custom" or "tollgate.autopass.custom.wide" or
                 "tollgate.autopass.oversize" or "tollgate.autopass.ovs_disable" or "tollgate.autopass.ovs_disable.long" or
                 "tollgate.manual.ovs_disable" or "tollgate.custom") && (hookup==null||nonSolidHookups?.Contains(hookup)!=true))return Rejected;
         }
-        var markers=visible.SelectMany(p=>p.Locators).Select(l=>(l.Position,Payment:DecodeHookup(pmg,l.HookupOffset,specialJob)))
+        var markers=visible.SelectMany(p=>p.Locators).Select(l=> {
+            var hook=ReadHookup(pmg,l.HookupOffset);
+            var payment=tollUnits==null?DecodeHookup(pmg,l.HookupOffset,specialJob):
+                hook!=null&&tollUnits.TryGetValue(hook,out var unit)?TollDefinition.Read(unit,specialJob).Payment:TollPayment.Unknown;
+            return (l.Position,Payment:payment);
+        })
             .Where(l=>l.Payment!=TollPayment.Unknown);
         return new(Match(descriptor,markers),blocked);
     }
@@ -150,19 +161,26 @@ public sealed class TollModelEvidence
         };
         return keys.Length>0 && unit.Attributes.Count>0 && unit.Attributes.Keys.All(k=>keys.Contains(k,StringComparer.Ordinal));
     }
-    static HashSet<string> ReadNonSolidHookups(IndependentAssets assets)
+    static (HashSet<string>,Dictionary<string,Unit>) ReadHookupDefinitions(IndependentAssets assets)
     {
         var known=new Dictionary<string,bool>(StringComparer.Ordinal);
+        var tolls=new Dictionary<string,Unit>(StringComparer.Ordinal);
         foreach(var file in assets.FilesBelow("/unit/hookup").Where(p=>p.EndsWith(".sii",StringComparison.Ordinal))) {
             SiiFile definitions;try {definitions=SiiFile.Open(file,assets.Files);}catch {continue;}
             foreach(var unit in definitions.Units) {
                 bool harmless=IsNonSolidHookup(unit);
                 known[unit.Name]=harmless && (!known.TryGetValue(unit.Name,out bool previous)||previous);
+                if(tolls.TryGetValue(unit.Name,out var prior)&&
+                    (prior.Class!=unit.Class||prior.Attributes.Count!=unit.Attributes.Count||unit.Attributes.Any(p=>
+                        !prior.Attributes.TryGetValue(p.Key,out var value)||!Equals((object?)value,(object?)p.Value))))
+                    tolls[unit.Name]=new Unit("unsupported","ambiguous");
+                else tolls.TryAdd(unit.Name,unit);
             }
         }
-        return known.Where(p=>p.Value).Select(p=>p.Key).ToHashSet(StringComparer.Ordinal);
+        return (known.Where(p=>p.Value).Select(p=>p.Key).ToHashSet(StringComparer.Ordinal),
+            tolls.Where(p=>p.Value.Class=="tollgate").ToDictionary(p=>p.Key,p=>p.Value,StringComparer.Ordinal));
     }
-    static Dictionary<string,string> ReadModels(IFileSystem files)
+    internal static Dictionary<string,string> ReadModels(IFileSystem files)
     {
         var models = new Dictionary<string,string>();
         foreach (var path in files.GetFiles("/def/world/").Where(f => f.StartsWith("/def/world/prefab.") && f.EndsWith(".sii")))
@@ -172,12 +190,20 @@ public sealed class TollModelEvidence
             {
                 if (!unit.Attributes.TryGetValue("model_desc", out var model)) continue;
                 string? pmd = ((object?)model)?.ToString()?.Trim('"');
-                if (pmd?.StartsWith("/prefab2/tollgate/") != true || !pmd.EndsWith(".pmd")) continue;
+                // Prefab definitions are the registry, not a directory convention.
+                // Older tolls live under /prefab/tollgate and Scandinavian tolls
+                // directly under /prefab2. Payment and clearance are still proven
+                // from the requested model; accepting a path grants no lane.
+                if (pmd==null||!IsModelPath(pmd)) continue;
                 models.TryAdd(unit.Name.Split('.').Last(), pmd);
             }
         }
         return models;
     }
+
+    internal static bool IsModelPath(string? path) => path is {Length: > 5} &&
+        path.StartsWith('/') && path.EndsWith(".pmd",StringComparison.Ordinal) &&
+        !path.Contains('\\') && !path.Split('/').Any(p=>p is ".." or ".");
 
     // PMG v21: locator offsets point into the null-terminated hookup table.
     public static TollPayment DecodeHookup(ReadOnlySpan<byte> pmg, int offset,bool specialJob=false)
