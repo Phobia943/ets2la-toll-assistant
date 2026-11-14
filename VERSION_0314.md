@@ -1,6 +1,6 @@
 # 0.3.14: frühere Modellprüfung und weniger Diagnosearbeit im Fahrzyklus
 
-Stand: 14. November 2026. Offline gebaut und geprüft, noch nicht gefahren. Eine vollständige Behebung aller historischen Probleme wird nicht behauptet.
+Stand: 14. November 2026. Offline gebaut, geprüft und bei geschlossenen Anwendungen mit Sicherung der 0.3.13 installiert. Dateiversion und Prüfsumme sind bestätigt; noch nicht gestartet oder gefahren. Eine vollständige Behebung aller historischen Probleme wird nicht behauptet.
 
 ## Änderungen
 

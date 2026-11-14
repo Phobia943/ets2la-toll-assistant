@@ -4,7 +4,7 @@
 
 84 Integrations- und 46 unabhängige Logikprüfungen bestehen. Beide gespeicherten griechischen SDK-Spurwahlen bleiben gültig, mit weiterhin nur drei beziehungsweise fünf verifizierten Kartenabschnitten. Die neuen Prüfungen halten die Statusgeometrie an, rufen die tatsächliche Startvorschau mit gesperrter Geometrie auf und prüfen Modellvorbereitung ohne SDK-Schranken sowie deren Fehlerfall. Modell-Zahlhalteintervalle und das Beibehalten eines bereits etablierten früheren Halts sind mit synthetischer Geometrie geprüft. Keine reale Zahlzonen-, Fahr- oder Baustellenvalidierung. Die griechischen Modelle liefern keinen freigegebenen manuellen Zielpunkt. Einzelheiten: [VERSION_0314.md](VERSION_0314.md).
 
-0.3.14 ist vorbereitet, noch nicht installiert oder gestartet. Der Nutzer möchte heute keine weitere Fahrt. Keine Abschaltgrenze oder Pedaleinstellung gelockert; Baustellen-Vorausschau und TruckersMP-Hintergrundausgabe bleiben offen.
+0.3.14 ist mit Sicherung der 0.3.13 installiert; Dateiversion 0.3.14.0 und SHA256 `D76D4CDA96E71870FF116342FD41CD91EE795CCDA4E8526A9556E2C701FAB68D` sind bestätigt. ETS2LA und ETS2 waren geschlossen; keine Anwendung wurde gestartet. Auch die 44 Aufnahmeprüfungen und die GitHub-Prüfungen sind erfolgreich. Der Nutzer möchte heute keine weitere Fahrt. Keine Abschaltgrenze oder Pedaleinstellung gelockert; Baustellen-Vorausschau und TruckersMP-Hintergrundausgabe bleiben offen.
 
 ## Prüfstand 0.3.13
 
