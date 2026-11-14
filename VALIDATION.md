@@ -2,7 +2,7 @@
 
 ## Aktueller Prüfstand 0.3.13
 
-0.3.13 ist lokal gebaut; 81 Integrationstests, 45 unabhängige Logiktests und drei Inventurprüfungen bestehen. Die unveränderten 44 Aufnahmeprüfungen wurden zuletzt für 0.3.12 ausgeführt und werden im CI weiter geprüft. Die Fassung ist noch nicht installiert oder gefahren. Routen-/Bremsgrenzen und F8/F9 bleiben erhalten.
+0.3.13 ist lokal gebaut; 81 Integrationstests, 45 unabhängige Logiktests und drei Inventurprüfungen bestehen. Auch die GitHub-Prüfungen einschließlich der 44 Aufnahmeprüfungen sind erfolgreich. Die Fassung ist bei geschlossenen Anwendungen mit Sicherung der 0.3.11 installiert; Dateiversion 0.3.13.0 und SHA256 `9AD018950CE10CFDA023611F51184235FFF20A3075977B57238412EA3F3B933A` sind bestätigt. Noch nicht gestartet oder gefahren. Routen-/Bremsgrenzen und F8/F9 bleiben erhalten; globale Einstellungen wurden nicht geändert.
 
 Die aktuelle Archiv- und Modellprüfung ist in [TOLL_COVERAGE.md](TOLL_COVERAGE.md) dokumentiert. 24 SDK-Aufzeichnungen und 24 deduplizierte Fehlerzeit-/Meldungspaare wurden inventarisiert; Standprüfungen und überlappende Aufnahmen zählen dabei mit. 81 aktuelle Maut-Modelldefinitionen wurden auf Ordnerabdeckung und PMG-Format geprüft. 16 lagen außerhalb des früheren Suchordners. Die 35 referenzierten, aufgelösten Maut-Units sind mit dem Produktionsklassifizierer geprüft: im normalen Auftrag 31 manuell, drei automatisch und eine nur für Spezialauftrag. Keine Vollabdeckung aller Länder oder konkrete Freihöhe daraus ableiten.
 

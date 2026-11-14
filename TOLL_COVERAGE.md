@@ -1,6 +1,6 @@
 # Mautabdeckung und Baustellenbefund – 0.3.13
 
-Stand: 14. November 2026. Diese Übersicht trennt Archivbefunde, Modellprüfung und tatsächliche Fahrnachweise. 0.3.13 ist vorbereitet, noch nicht installiert oder gefahren.
+Stand: 14. November 2026. Diese Übersicht trennt Archivbefunde, Modellprüfung und tatsächliche Fahrnachweise. 0.3.13 ist bei geschlossenen Anwendungen installiert und per Dateiversion sowie Prüfsumme bestätigt, aber noch nicht gestartet oder gefahren.
 
 ## Was rückwirkend untersucht wurde
 
