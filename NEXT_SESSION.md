@@ -1,6 +1,10 @@
 # Nächste Sitzung
 
-**Neuester vorbereiteter Stand: 0.3.16, nicht installiert.** Zusätzliche asynchrone Kurvenvorschau mit begrenzter Bremsanforderung und Korrektur verlorener Schrankenpositionen im Modelllader. Bei der simulierten 90-km/h-Anfahrt liegt das Tempo im 40-m-Kurvenabschnitt bei höchstens rund 24 km/h, ohne Halt. Die zwei griechischen Offline-Spurwahlen bleiben gültig; keine neuen manuellen Zahlpunkte in diesen Fällen. [VERSION_0316.md](VERSION_0316.md) beschreibt Nachweise und Grenzen. Installiert bleibt die bereits nachgewiesene 0.3.14. Die heute gewünschte Offline-Arbeit erfordert keinen Spielstart.
+**Aktuell installiert: 0.3.16 seit 15. November 2026.** Dateiversion 0.3.16.0 und SHA256 `CE3A742F2B49E2CB410967A8577DE3F681C789D3522DE4C866321C228069EBAC` sind bestätigt. Das rein lesende TruckersMP-Messmodul ist zusätzlich im Spiel installiert, Komponentenstand 0.3.15, SHA256 `7D293BA480A11C0AA68EE1632F5B79357A02F5DAB0014C3BC195C7DD632EC6AD`. Die bisherige 0.3.14 und der Installationsnachweis sind unter `outputs/Mautassistent-0.3.16-installation-20261115-091433` außerhalb des Repositorys gesichert. Beide Anwendungen waren beim tatsächlichen Austausch geschlossen. Keine Einstellungen geändert und nichts gestartet. Noch kein geladener Versions-, SDK-Handshake- oder Fahrnachweis für diese Installation.
+
+Nächster Start über die üblichen Verknüpfungen: SDK-Hinweis im Spiel bestätigen, Lkw mit Feststellbremse stehen lassen und F8 zunächst nicht drücken. Dann geladene 0.3.16, frische SDK-Daten, Fahrzeugmessung und manuelle Übernahme prüfen. Die zusätzliche Kurvenvorschau ist standardmäßig an und separat im Stand abschaltbar. Hintergrundfahrt und allgemeine Baustellenwahrnehmung bleiben offen. [VERSION_0316.md](VERSION_0316.md) beschreibt die neuen Funktionen und Prüfgrenzen.
+
+## Historische Arbeitsnotizen vom 14. November
 
 Zusätzliche Offline-Arbeit: **0.3.15 ist vorbereitet, nicht installiert.** Sie ergänzt eine Warnung für fehlende Spielreaktion auf frische Bremsanforderungen und ein optionales, rein lesendes TruckersMP-Fahrzeugmessmodul. Bau- und Protokollprüfungen laufen ohne Spiel. Hintergrundfahrt, vorausschauende Baustellenerkennung und engere manuelle Zahlhaltepositionen sind damit nicht gelöst. Details: [VERSION_0315.md](VERSION_0315.md). Vor einer späteren Installation den aktuellen Prozesszustand und Stillstand erneut bestätigen. Heute weiterhin keine Anwendungen starten oder Fahrprüfung verlangen.
 
@@ -33,7 +37,7 @@ Die Aufnahme vom 14. November zeigt wiederholten starken Luftdruckverlust bei ak
 ## Nächste praktische Prüfung
 
 1. Nutzer startet TruckersMP und ETS2LA über die gewohnten Verknüpfungen und lädt den Lkw im Stand. Assistenz aus, Feststellbremse an. Motor im Leerlauf laufen lassen und bei Bedarf mit leichtem Gas Luft aufbauen; die Simulation muss laufen. Erst aktuelle Druckwerte und erloschene Warn-/Notfallflags bestätigen.
-2. Beim nächsten freiwilligen Start geladene 0.3.14, aktuelle SDK-Daten, vier eingeschaltete Module, Full Self-Driving und die gespeicherte Kurveneinstellung prüfen. Keine Fahrfreigabe aus einer alten Statusdatei ableiten.
+2. Beim nächsten freiwilligen Start geladene 0.3.16, aktuelle SDK-Daten, vier eingeschaltete Module, Full Self-Driving und die gespeicherte Kurveneinstellung prüfen. Keine Fahrfreigabe aus einer alten Statusdatei ableiten.
 3. Zuerst mit Feststellbremse F8 aktivieren und die physische Bremsübernahme beziehungsweise F9 testen. Ausgeschaltete Assistenz und normale Controller-Lenkung tatsächlich bestätigen.
 4. Danach vorsichtiger Kurvenvergleich mit Auflieger: frische Lenkbefehle, Abstand zur Route und tatsächliche Innen-/Außenfreiheit beobachten. Die abgeschaltete Zusatzaufweitung ist noch kein Fahrnachweis.
 5. Vollständige klassische Mautdurchfahrt einschließlich Halt, falls das Tor geschlossen bleibt, und verzögerter Freigabe prüfen. Dieselbe Aufnahme muss Anfahrt, Tor, Passage, Ausfahrt und anschließende manuelle Übernahme enthalten. Einen offenen oder vorzeitig geöffneten Übergang entsprechend als Teilnachweis kennzeichnen.

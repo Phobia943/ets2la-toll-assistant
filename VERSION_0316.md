@@ -1,6 +1,6 @@
 # 0.3.16: Kurvenvorschau und korrigierte Zahlzonen-Vorbereitung
 
-Offline-Testfassung, noch nicht installiert oder im Spiel gefahren. Lokal installiert bleibt 0.3.14. Die Ergänzungen aus der vorbereiteten 0.3.15 sind enthalten. Das optionale native TruckersMP-Messmodul bleibt unverändert auf Komponentenstand 0.3.15 und liefert weiterhin keine automatische Freigabe für engere Zahlhaltepositionen.
+Am 15. November 2026 mit Sicherung der bisherigen 0.3.14 lokal installiert; noch nicht gestartet oder im Spiel gefahren. Dateiversion 0.3.16.0 und SHA256 `CE3A742F2B49E2CB410967A8577DE3F681C789D3522DE4C866321C228069EBAC` sind bestätigt. Auch das rein lesende TruckersMP-Messmodul ist jetzt installiert, unverändert auf Komponentenstand 0.3.15 mit SHA256 `7D293BA480A11C0AA68EE1632F5B79357A02F5DAB0014C3BC195C7DD632EC6AD`. Es liefert weiterhin keine automatische Freigabe für engere Zahlhaltepositionen. Alle Ergänzungen der 0.3.15 sind enthalten. Keine Einstellungen geändert und keine Anwendung gestartet.
 
 ## Früher vor Kurven verlangsamen
 

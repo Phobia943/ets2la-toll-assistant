@@ -1,6 +1,6 @@
 # Optional TruckersMP vehicle geometry observer
 
-Prepared for Mautassistent 0.3.15. **Not installed or validated against a running TruckersMP client.** This module only observes model bounds. It does not control pedals, keep the game focused, identify construction barriers, or authorize a closer stop at a closed gate.
+Component version 0.3.15, locally installed alongside Mautassistent 0.3.16 on 15 November 2026. **Not yet validated against a running TruckersMP client.** This module only observes model bounds. It does not control pedals, keep the game focused, identify construction barriers, or authorize a closer stop at a closed gate.
 
 ## Purpose and public API
 

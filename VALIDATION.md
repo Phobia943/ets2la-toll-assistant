@@ -1,8 +1,10 @@
 # Fahrnachweis
 
-## Vorbereitete Offline-Fassung 0.3.16
+## Installierte Fassung 0.3.16 – Fahrprüfung offen
 
-Noch nicht installiert oder im Spiel gefahren. 96 lokale Integrations- und 53 unabhängige Logikprüfungen einschließlich des optionalen C-Protokollrahmens bestehen, außerdem 44 Aufnahme- und drei Inventurprüfungen. Die zusätzliche Kurvenvorschau bremst im vereinfachten Modell bei einer 90-km/h-Anfahrt vor einer 40-m-Kurve auf etwa 24 km/h. Dabei sind eine Sekunde zusätzliche Befehlsverzögerung und höchstens 1,2 m/s² angeforderte Zusatzverzögerung angesetzt. Das ist kein Fahr-, Kipp- oder Bremswegbeweis für das Spiel.
+Am 15. November mit Sicherung und bestätigten Dateiprüfsummen installiert, einschließlich des lesenden Spiel-Messmoduls. ETS2LA wurde schonend beendet; ein zwischenzeitlich gestartetes Spiel stoppte den ersten Austauschversuch vor jeder Änderung. Nach bestätigtem Spielende und erneuter Prozessprüfung wurden beide Dateien installiert. Keine Einstellungen geändert, keine Anwendung danach gestartet. Der echte SDK-Handshake und die Fahrprüfung fehlen noch. Der lokale Nachweis liegt unter `outputs/Mautassistent-0.3.16-installation-20261115-091433/installation.json` außerhalb des Repositorys.
+
+96 lokale Integrations- und 53 unabhängige Logikprüfungen einschließlich des optionalen C-Protokollrahmens bestehen, außerdem 44 Aufnahme- und drei Inventurprüfungen. Die zusätzliche Kurvenvorschau bremst im vereinfachten Modell bei einer 90-km/h-Anfahrt vor einer 40-m-Kurve auf etwa 24 km/h. Dabei sind eine Sekunde zusätzliche Befehlsverzögerung und höchstens 1,2 m/s² angeforderte Zusatzverzögerung angesetzt. Das ist kein Fahr-, Kipp- oder Bremswegbeweis für das Spiel.
 
 Die Integration prüft den echten ACC-Rückruf, den Erhalt stärkerer Halteanforderungen, die separate Abschaltung der Zusatzvorschau, Lane-only-Modus und manuelle Übernahme. Absichtlich blockierte Vorschauarbeit hält weder ACC noch Route noch F9 auf; eine verspätete Antwort reaktiviert nichts. Die Modelllader-Regression prüft einen gültigen manuellen Zahlhaltebereich mit kopierten Schrankenankern und nachträglicher Mutation der Originalkarte. Der bisherige Sicherheitsabstand wird nicht verkleinert.
 
