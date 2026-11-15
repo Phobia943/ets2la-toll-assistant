@@ -10,5 +10,7 @@
     <Compile Include="../Tests/Program.cs" Link="Program.cs" />
     <Compile Include="../Tests/GeometryBrakeTests.cs" Link="GeometryBrakeTests.cs" />
     <Compile Include="../Tests/CurveSpeedTests.cs" Link="CurveSpeedTests.cs" />
+    <Compile Include="../Tests/ApproachStopTests.cs" Link="ApproachStopTests.cs" />
+    <Compile Include="../Tests/CruisePolicyTests.cs" Link="CruisePolicyTests.cs" />
   </ItemGroup>
 </Project>

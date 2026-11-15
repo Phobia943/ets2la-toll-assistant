@@ -36,7 +36,8 @@ internal static class NativeSteeringDiagnostics
     {
         if(plugin==null)return new(false,false,null,null,null,null,null,null,null,null,"ProviderUnavailable");
         var type=plugin.GetType();var module=type.Module.ModuleVersionId;
-        if(module!=KnownModule || type.FullName!="LaneAssist.LaneAssistPlugin")
+        if(type.FullName!="LaneAssist.LaneAssistPlugin"||module!=KnownModule&&
+            !PinnedHostBuild.Matches(type,"Plugins/tumppi066.laneassist/LaneAssist.dll"))
             return new(false,plugin._IsRunning,module,null,null,null,null,null,null,null,"UnverifiedBuild");
         try {
             object? Field(string name)=>type.GetField(name,Hidden)?.GetValue(plugin);

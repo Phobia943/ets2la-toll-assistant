@@ -4,6 +4,10 @@ namespace MautAssistent;
 public static class ApproachStop
 {
     public const double BufferMetres = 15;
+    // The soft stopping target is 15 m before the uncertain branch. Keep a
+    // separate protected origin clearance rather than treating every response
+    // margin at the soft target as an already unavoidable collision.
+    public const double ProtectedClearanceMetres=8;
     public static float BeforeRouteGap(double speed, double connectedAhead)
     {
         if (!double.IsFinite(speed) || !double.IsFinite(connectedAhead))
@@ -23,9 +27,11 @@ public static class ApproachStop
         // Reserve for host smoothing and vehicle response. Distance already ends
         // before the first unconfirmed branch, not at the payment booth.
         double usable = distance - speed * 1.5 - 3;
-        if (speed > .5 && (usable <= 0 || speed * speed / (2 * usable) > 2.5))
+        double protectedRemaining=distance+BufferMetres-ProtectedClearanceMetres;
+        double emergencyUsable=protectedRemaining-speed*1.5;
+        if (speed > .1 && (emergencyUsable <= 0 || speed * speed / (2 * emergencyUsable) > 2.5))
             throw new InvalidOperationException("Unbestätigte Mautspur zu spät erkannt: Anhalteweg vor der Aufteilung reicht nicht.");
-        if (distance < -1)
+        if (protectedRemaining < 0)
             throw new InvalidOperationException("Haltegrenze vor unbestätigter Mautspur überschritten.");
         if (usable <= .5 && speed < .1)
             return new("Warten auf Mautspur-Freigabe – F9 zur Übernahme", 0, -.35f, null);
@@ -34,5 +40,25 @@ public static class ApproachStop
         double limit = usable <= .5 ? 0 : Math.Min(Math.Sqrt(1.8 * usable), .6 * usable);
         float acceleration = (float)Math.Clamp((limit-speed)*.8, -deceleration, .35);
         return new("Geplanter Halt vor unbestätigter Mautspur", limit, acceleration, null);
+    }
+}
+
+/// <summary>Once a planned uncertain-lane stop is reached, hold until routing resolves it or the driver cancels.</summary>
+public sealed class ApproachStopController
+{
+    public bool Holding {get;private set;}
+    public string? StopKey {get;private set;}
+    public void Reset(){Holding=false;StopKey=null;}
+    public TollDecision Step(string stopKey,double speed,double distance)
+    {
+        if(string.IsNullOrWhiteSpace(stopKey))throw new InvalidOperationException("Haltepunkt nicht eindeutig zugeordnet.");
+        if(StopKey!=stopKey){Holding=false;StopKey=stopKey;}
+        var decision=ApproachStop.Evaluate(speed,distance); // Always retain the physical-boundary emergency check.
+        if(decision.TargetSpeed==0)Holding=true;
+        if(!Holding)return decision;
+        // ACC 2.1.1 returns before publishing when v<0.5 and the target is
+        // [-0.5,+0.1]. Stay strictly below that dead band for an actual hold.
+        return new("Warten auf Mautspur-Freigabe – F9 zur Übernahme",0,
+            Math.Min(decision.MaxAcceleration,-.6f),null);
     }
 }

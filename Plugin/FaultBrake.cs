@@ -6,7 +6,20 @@ namespace MautAssistent;
 public sealed class FaultBrake(Action<ControlEvent> publish)
 {
     volatile bool latched;
+    readonly object sync=new();
+    readonly AsyncLocal<long?> operation=new();
+    long generation;
     public bool Latched => latched;
+    public IDisposable BeginOperation()
+    {
+        var previous=operation.Value;
+        operation.Value=previous??Interlocked.Read(ref generation);
+        return new Operation(()=>operation.Value=previous);
+    }
+    sealed class Operation(Action restore):IDisposable {public void Dispose()=>restore();}
+    public bool OperationCurrent=>operation.Value is not long expected||expected==Interlocked.Read(ref generation);
+    public bool RunCurrent(Action action)
+    {lock(sync){if(!OperationCurrent)return false;action();return true;}}
     public const string ChannelId="local.mautassistent.fault-brake";
     void Send(float pedal) => publish(new ControlEvent {
         ChannelDefinition=new() {Id=ChannelId,Timeout=.2f},
@@ -18,14 +31,16 @@ public sealed class FaultBrake(Action<ControlEvent> publish)
         // can remain in output memory while our brake channel stays alive.
         Variables=new() {abackward=pedal,steering=0}
     });
-    public void Trip() {latched=true;Send(-1);}
-    public void Refresh() {if(Latched)Send(-1);}
+    public void Trip() {lock(sync){if(!OperationCurrent)return;latched=true;Send(-1);}}
+    public void Refresh() {lock(sync){if(latched&&OperationCurrent)Send(-1);}}
     public void Release()
     {
-        if(!Latched)return;
-        latched=false;
-        // Explicit zero is required: expiry alone may leave legacy pedal memory
-        // unchanged while another channel (e.g. steering) is still present.
-        Send(0);
+        lock(sync) {
+            generation++; // Invalidate old route work even when no brake was latched yet.
+            if(!latched)return;
+            latched=false;
+            // Expiry alone may retain a legacy pedal value beside live steering.
+            Send(0);
+        }
     }
 }

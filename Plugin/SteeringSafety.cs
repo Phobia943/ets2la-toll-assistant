@@ -32,10 +32,12 @@ public sealed partial class TollPlugin
     // while a route callback is busy; diagnostics are consumed afterwards.
     void CheckSteeringOutput()
     {
+        using var operation=faultBrake.BeginOperation();
         if(!monitorSteering)return;
         SteeringFailure failure;
         lock(steeringSync)
         {
+            if(!faultBrake.OperationCurrent)return;
             // Keep an existing stop alive even while route bookkeeping is busy.
             if(faultBrake.Latched)faultBrake.Refresh();
             var state=State;var command=Volatile.Read(ref lastSteeringCommand);
@@ -50,10 +52,11 @@ public sealed partial class TollPlugin
             failure=new SteeringFailure(now,DateTimeOffset.UtcNow,"Lenkausgabe ausgefallen: keine frischen Steuerbefehle der Spurhilfe.",
                 command!=null?now-command.At:null,command?.Value,
                 new(false,false,null,null,null,null,null,null,null,null,"CapturePending"));
-            state.EnableAssists=false;
-            // FaultBrake uses the public output contract; no route or ACC lock.
-            faultBrake.Trip();
-            collectingSteeringFailure=failure;
+            if(!faultBrake.RunCurrent(()=> {
+                state.EnableAssists=false;
+                faultBrake.Trip();
+                collectingSteeringFailure=failure;
+            }))return;
         }
         // Native lookup is observational work. Neither the first stop, future
         // brake refreshes nor manual acknowledgement may wait for it. If the
@@ -76,7 +79,10 @@ public sealed partial class TollPlugin
             lastSteeringCommand=null;lastAccCommand=null;collectingSteeringFailure=pendingSteeringFailure=lastSteeringFailure=null;
             pendingImpact=lastImpact=null;impactGuard.Reset();
             ClearBrakeResponse();
+            ResetCruiseStartPreference();
             steeringMonitoringLive=true;
+            ConnectCoasting();
+            using var suppressed=ExecutionContext.SuppressFlow();
             steeringTimer=new Timer(_=> {
                 CheckSteeringOutput();
                 if(!Monitor.TryEnter(sync))return;
@@ -91,10 +97,13 @@ public sealed partial class TollPlugin
         lock(steeringSync)
         {
             steeringMonitoringLive=false;State.EnableAssists=false;steeringGuard.Reset();
+            DisconnectCoasting();
+            faultBrake.Release();
             steeringTimer?.Dispose();steeringTimer=null;
             collectingSteeringFailure=pendingSteeringFailure=null;
             pendingImpact=null;impactGuard.Reset();
             ClearBrakeResponse();
+            ResetCruiseStartPreference();
         }
     }
 
@@ -102,11 +111,13 @@ public sealed partial class TollPlugin
     {
         lock(steeringSync)
         {
+            CancelRollingStart();
             State.EnableAssists=false;steeringGuard.Reset();steeringFeedState=SteeringFeedState.Off;
             faultBrake.Release();
             collectingSteeringFailure=pendingSteeringFailure=null;
             pendingImpact=null;impactGuard.Reset();
             ClearBrakeResponse();
+            ResetCruiseStartPreference();
         }
     }
 

@@ -27,9 +27,12 @@ public sealed class TollModelEvidence
     sealed record Job(IFileSystem Source,ModelRequest Request,Entry Entry);
     internal sealed record ModelRequest(string Model,string Variant,string[] Parts,bool SpecialJob,PrefabDescriptor Descriptor,string[] Archives);
     public sealed record ModelInspection(IReadOnlyDictionary<int,TollPayment> Payments,bool[] BlockedCurves)
-    { public IReadOnlyDictionary<int,ManualStopZone> ManualStops {get;init;}=new Dictionary<int,ManualStopZone>(); }
+    { public IReadOnlyDictionary<int,ManualStopZone> ManualStops {get;init;}=new Dictionary<int,ManualStopZone>();
+      public string? Issue {get;init;} }
+    public sealed record ModelDiagnostic(bool Completed,string? Issue,int PaymentCount,int BlockedCount);
     static readonly IReadOnlyDictionary<int,TollPayment> Unknown = new Dictionary<int,TollPayment>();
     static readonly ModelInspection Rejected=new(Unknown,[]);
+    static ModelInspection Reject(string issue)=>new(Unknown,[]){Issue=issue};
 
     public TollModelEvidence(Func<IFileSystem?> readFiles,Func<bool>? readSpecialJob=null)
         :this(readFiles,readSpecialJob,null) { }
@@ -44,6 +47,11 @@ public sealed class TollModelEvidence
     public void Prefetch(ParsedPrefab prefab)
     {
         if(prefab.Descriptor?.NavCurves.Any(c=>c.SemaphoreId>=0)==true)_=GetEntry(prefab);
+    }
+    public ModelDiagnostic Diagnose(ParsedPrefab prefab)
+    {
+        var entry=GetEntry(prefab);var result=entry==null?null:Volatile.Read(ref entry.Result);
+        return new(result!=null,result?.Issue,result?.Payments.Count??0,result?.BlockedCurves.Count(b=>b)??0);
     }
     public ManualStopZone? ReadManualStop(ParsedPrefab prefab,int gate)
     {
@@ -116,7 +124,7 @@ public sealed class TollModelEvidence
                             (nonSolid,tollUnits)=ReadHookupDefinitions(owned);
                         }
                         var request=job.Request;
-                        if(!models!.TryGetValue(request.Model,out var pmd))result=Rejected;
+                        if(!models!.TryGetValue(request.Model,out var pmd))result=Reject("Mautmodell fehlt im Definitionskatalog: "+request.Model);
                         else {
                             var model=Model.Open(pmd,owned!.Files);
                             result=InspectModel(request.Descriptor,model,request.Variant,request.Parts,
@@ -124,7 +132,7 @@ public sealed class TollModelEvidence
                         }
                     }
                 } catch(Exception ex) {
-                    result=Rejected;
+                    result=Reject("Modellprüfung: "+ex.GetType().Name+": "+ex.Message);
                     try {ETS2LA.Logging.Logger.Warn("Maut-Modellprüfung nicht möglich: "+ex.Message);} catch { }
                 }
                 Volatile.Write(ref job.Entry.Result,result);
@@ -139,7 +147,7 @@ public sealed class TollModelEvidence
         if(variants.Length!=1||variants[0].Attributes.Count!=model.Parts.Count||
             variants[0].Attributes.Any(a=>a.Tag.ToString()!="visible"||a.Value>1)||
             model.Parts.GroupBy(p=>p.Name).Any(g=>g.Count()>1)||
-            extraParts.Any(name=>!model.Parts.Any(p=>p.Name.ToString()==name)))return Rejected;
+            extraParts.Any(name=>!model.Parts.Any(p=>p.Name.ToString()==name)))return Reject("Unbekannte Modellvariante, Sichtbarkeit oder Zusatzteile");
         // Additional parts enable named parts in addition to the variant mask.
         // Their names do not establish payment type or obstacle clearance.
         var visible=model.Parts.Where((p,i)=>variants[0].Attributes[i].Value==1||extraParts.Contains(p.Name.ToString(),StringComparer.Ordinal)).ToArray();
@@ -152,11 +160,11 @@ public sealed class TollModelEvidence
             if(tollUnits!=null) {
                 if(hookup==""||hookup!=null&&nonSolidHookups?.Contains(hookup)==true)continue;
                 if(hookup!=null&&tollUnits.TryGetValue(hookup,out var unit)&&TollDefinition.Read(unit,specialJob).Known)continue;
-                return Rejected;
+                return Reject("Nicht geprüfter Modell-Hookup: "+(hookup??"ungültiger Verweis"));
             }
             if(hookup is not ("" or "tollgate.autopass.custom" or "tollgate.autopass.custom.wide" or
                 "tollgate.autopass.oversize" or "tollgate.autopass.ovs_disable" or "tollgate.autopass.ovs_disable.long" or
-                "tollgate.manual.ovs_disable" or "tollgate.custom") && (hookup==null||nonSolidHookups?.Contains(hookup)!=true))return Rejected;
+                "tollgate.manual.ovs_disable" or "tollgate.custom") && (hookup==null||nonSolidHookups?.Contains(hookup)!=true))return Reject("Nicht geprüfter Modell-Hookup: "+(hookup??"ungültiger Verweis"));
         }
         var markers=visible.SelectMany(p=>p.Locators).Select(l=> {
             var hook=ReadHookup(pmg,l.HookupOffset);

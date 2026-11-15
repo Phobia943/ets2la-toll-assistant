@@ -33,12 +33,13 @@ public static class RollingStartIntegration
         public readonly Vector3 Point;
         public Action? DuringProbe;
         public Action? DuringReadAcc;
+        public Action? DuringInstall;
         public Func<PlannedPathData?> Plan;
         public bool InstallSucceeds=true;
         public int Installs;
         public Fixture(bool monitorSteering=false,Func<IPlugin?>? readLaneAssist=null,Action<string,string>? writeDiagnostic=null,
             Func<RouteTrace?,Vector3,ETS2LA.Game.SDK.Semaphore[],object>? buildStatusGeometry=null,
-            Func<RouteTrace,Vector3,CurveSpeedProfile>? buildCurveProfile=null)
+            Func<RouteTrace,Vector3,CurveSpeedProfile>? buildCurveProfile=null,Func<CruiseLimits>? readCruiseLimits=null)
         {
             var assembly=AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"../../../../References/AdaptiveCruiseControl.dll")));
             var type=assembly.GetType("AdaptiveCruiseControl.AdaptiveCruiseControlPlugin",true)!;
@@ -63,10 +64,11 @@ public static class RollingStartIntegration
                 readPlanner:()=>Planner,probeRoute:(_,_,_,_)=> {DuringProbe?.Invoke();return Plan();},
                 installStart:(_,planned,published,_,_)=> {
                     Installs++;
+                    DuringInstall?.Invoke();
                     if(!InstallSucceeds)return false;
                     published.PlannedPath=planned.PlannedPath;published.ErrorMessage=null;published.HasError=false;return true;
                 },monitorSteering:monitorSteering,readLaneAssist:readLaneAssist,writeDiagnostic:writeDiagnostic,
-                buildStatusGeometry:buildStatusGeometry,buildCurveProfile:buildCurveProfile);
+                buildStatusGeometry:buildStatusGeometry,buildCurveProfile:buildCurveProfile,readCruiseLimits:readCruiseLimits);
             Plugin._IsRunning=true;
             Set("subscribed",true);Set("lastWrite",double.MaxValue);Set("position",Point);Set("headingTurns",.5d);
             Fresh();Set("path",Disabled());
@@ -165,10 +167,14 @@ public static class RollingStartIntegration
             f.F9();
         };
         f.Probe();
-        assert(f.State.DrivingMode==DrivingMode.FullSelfDriving&&!f.State.EnableAssists&&f.Installs==0&&f.Outputs.Count==0,
+        assert(f.State.DrivingMode==DrivingMode.FullSelfDriving&&!f.State.EnableAssists&&f.Installs==0&&f.Outputs.All(e=>
+            (e.Variables.aforward??0)==0&&(e.Variables.abackward??0)==0&&(e.Variables.steering??0)==0),
             "F9 cancels an in-flight result and retains the driving mode");
         f.DuringProbe=()=>f.Plugin.SetActive(false);f.Fresh();f.F8();f.Probe();
         assert(!f.State.EnableAssists&&f.Installs==0,"A late result cannot reactivate an explicitly stopped plugin");
+        var late=new Fixture();late.F8();late.DuringInstall=late.F9;late.Probe();
+        assert(late.Installs==1&&!late.State.EnableAssists&&!late.Get<bool>("active"),
+            "Cancellation inside the native installer cannot be followed by a stale enable commit");
         var plannerAssembly=AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(Environment.GetEnvironmentVariable("EtsRoot")!,"Plugins/tumppi066.pathfinding/Pathfinding.dll"));
         var planner=(IPlugin)RuntimeHelpers.GetUninitializedObject(plannerAssembly.GetType("Pathfinding.PathfindingPlugin",true)!);
         planner._IsRunning=true;

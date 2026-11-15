@@ -1,0 +1,33 @@
+{
+  "version": "0.3.17-host-3",
+  "preparedOnly": true,
+  "installed": false,
+  "accPublisherSites": 1,
+  "lanePublisherSites": 2,
+  "files": [
+    {
+      "file": "ETS2LA.Game.dll",
+      "originalSha256": "69E608A881E09C611DC467B5AB183A102844904C8755553BF3F9752AD646AE2D",
+      "preparedSha256": "1A6167B0430DBE929889005422A1256D7C74262A381707B1E2530EB340B24D0D",
+      "module": "c9de4493-65de-4a22-ac0c-a9c1d10a7b43"
+    },
+    {
+      "file": "ETS2LA.State.dll",
+      "originalSha256": "1EF2ACA012A613ED87FAF717F7C45F2BA05D5C8C268B0D5CC4C99AD25527A297",
+      "preparedSha256": "04DB94C303A9398780FC0531FE734347A016704AC9E371043F31B2F22B6E0600",
+      "module": "e7a01e92-aaee-4db3-8418-fae72a176399"
+    },
+    {
+      "file": "Plugins/tumppi066.adaptivecruisecontrol/AdaptiveCruiseControl.dll",
+      "originalSha256": "52DE460350B224918AD86792FE60B9631BF43CB64159E1516EEF5046F6CBD282",
+      "preparedSha256": "E066F42BA2E4FF7B0F29BCDCA5ED7EE4AAC5AC686AA913CAA2E20641EA425E9F",
+      "module": "00df8085-0529-4da4-8730-c7d3ee629451"
+    },
+    {
+      "file": "Plugins/tumppi066.laneassist/LaneAssist.dll",
+      "originalSha256": "8984FD27F3DFF0C11C9CE45A0326E573FDDD328E58B9C45C3EB2E72960466D2C",
+      "preparedSha256": "5010C2CE6F0111FA82F8612C84D1C642B72338037FA9A466428C7278E12019D8",
+      "module": "2955b6a7-bab2-44fc-9a78-69dd011d005d"
+    }
+  ]
+}

@@ -9,7 +9,7 @@ public sealed partial class TollPlugin
 {
     const double RollingStartTimeout=4;
     readonly Func<IPlugin,PlannedPathData,PlannedPathData,Vector3,double,bool> installStart;
-    bool rollingStartPending,rollingStartCalculating;
+    volatile bool rollingStartPending,rollingStartCalculating;
     int rollingStartGeneration;
     double rollingStartAt;
     ulong rollingStartNavigation;
@@ -33,7 +33,7 @@ public sealed partial class TollPlugin
         startCheck=null;
         rollingStartPending=true;
         rollingStartCalculating=false;
-        rollingStartGeneration++;
+        Interlocked.Increment(ref rollingStartGeneration);
         rollingStartAt=now;
         rollingStartNavigation=ConnectorStart.NavigationKey(planner);
         rollingStartMode=State.DrivingMode;
@@ -44,17 +44,16 @@ public sealed partial class TollPlugin
     void CancelRollingStart()
     {
         rollingStartPending=rollingStartCalculating=false;
-        rollingStartGeneration++;
+        Interlocked.Increment(ref rollingStartGeneration);
     }
 
     void FailRollingStart(string reason)
     {
-        CancelRollingStart();
-        State.EnableAssists=false;
-        active=false;
+        if(!faultBrake.RunCurrent(()=> {
+            CancelRollingStart();State.EnableAssists=false;active=false;
+            automaticPreparation.Request();preparationReason=rollingStartStatus=reason;
+        }))return;
         ResetDriving();
-        automaticPreparation.Request();
-        preparationReason=rollingStartStatus=reason;
         // A refused request while driving manually is not a tracking failure.
         // It must not emit a brake or steering command.
         notify("Start nicht übernommen – selbst weiterfahren",reason);
@@ -63,6 +62,7 @@ public sealed partial class TollPlugin
     void CompleteRollingStart(int request,IPlugin? planner,PlannedPathData published,
         Vector3 origin,double heading,Vector3[] history)
     {
+        using var operation=faultBrake.BeginOperation();
         PlannedPathData? planned=null;
         string? failure=null;
         try { if(planner!=null) planned=probeRoute(planner,origin,heading,history); }
@@ -121,17 +121,18 @@ public sealed partial class TollPlugin
                 {
                     FailRollingStart("Die geprüfte Route konnte nicht an Pathfinding übergeben werden.");return;
                 }
-                CancelRollingStart();
-                active=true;
-                automaticPreparation.Cancel();
-                ResetDriving();controller.Reset();passage.Reset();tracked=null;candidate=null;
-                safetyTrace=trace;
+                if(!faultBrake.RunCurrent(()=> {
+                    if(!rollingStartPending||request!=Volatile.Read(ref rollingStartGeneration))return;
+                    CancelRollingStart();
+                    active=true;
+                    automaticPreparation.Cancel();
+                    ResetDriving();controller.Reset();passage.Reset();tracked=null;candidate=null;
+                    safetyTrace=trace;
+                    pathAt=now;decision=initial;evaluatedAt=now;decisionArmed=true;
+                    State.EnableAssists=true;
+                })||!active||!State.EnableAssists)return;
                 RequestCurvePreview(trace);
-                pathAt=now;
-                decision=initial;
-                evaluatedAt=now;
-                decisionArmed=true;
-                State.EnableAssists=true;
+                ApplyCruiseStartPreference();
                 preparationReason="";
                 rollingStartStatus="Route geprüft – Fahrassistenz während der Fahrt gestartet.";
                 SafetyWatchdog(now);

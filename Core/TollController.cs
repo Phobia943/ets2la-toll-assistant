@@ -13,6 +13,9 @@ public sealed record TollDecision(string Phase, double? TargetSpeed, float MaxAc
 public sealed record TollOptions
 {
     public bool CurvePreviewEnabled {get;init;}=true;
+    public bool BriskOpenRoads {get;init;}=true;
+    public double RoadCruiseSpeedKph {get;init;}=100;
+    public bool CoastOnOpenRoads {get;init;}=true;
     public double ApproachSpeedKph { get; init; } = 20;
     public double PassageSpeedKph { get; init; } = 10;
     // Distance from the telemetry truck origin, not a measured bumper gap.
@@ -22,11 +25,11 @@ public sealed record TollOptions
     public double ComfortableDeceleration { get; init; } = 1.2;
     public void Validate()
     {
-        var values = new[] { ApproachSpeedKph, PassageSpeedKph, StopOffsetMetres, OpenDelaySeconds, ExitDistanceMetres, ComfortableDeceleration };
+        var values = new[] { ApproachSpeedKph, PassageSpeedKph, StopOffsetMetres, OpenDelaySeconds, ExitDistanceMetres, ComfortableDeceleration,RoadCruiseSpeedKph };
         if (values.Any(x => !double.IsFinite(x)) || ApproachSpeedKph is < 5 or > 30 ||
             PassageSpeedKph is < 3 or > 15 || PassageSpeedKph > ApproachSpeedKph ||
             StopOffsetMetres is < 4 or > 15 || OpenDelaySeconds is < 1 or > 10 ||
-            ExitDistanceMetres is < 10 or > 80 || ComfortableDeceleration is < .5 or > 2)
+            ExitDistanceMetres is < 10 or > 80 || ComfortableDeceleration is < .5 or > 2 || RoadCruiseSpeedKph is <30 or >130)
             throw new ArgumentException("Ungültige Maut-Einstellungen.");
     }
 }

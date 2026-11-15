@@ -9,13 +9,21 @@ public sealed partial class TollPlugin
         return $"Kurvenvorschau: jetzt {curve.AllowedSpeed*3.6:F0} km/h · Kurve in {Math.Max(0,curve.CurveDistance):F0} m mit "+
             $"{curve.CurveSpeed*3.6:F0} km/h"+(curve.Late?" · Bremsreserve knapp; bitte manuell bremsbereit bleiben.":"");
     }}}
-    void RequestCurvePreview(RouteTrace trace) {if(options.CurvePreviewEnabled)curvePreview.RequestProfile(trace,position);}
+    double RequiredCurveCoverage=>Math.Min(CurveSpeedProfile.MaximumHorizon-74,
+        CurveSpeedProfile.RequiredCoverage(Math.Max(0,Math.Max(speed,State.DesiredSpeed)),options.ComfortableDeceleration));
+    double PreferredCruiseCoverage=>CurveSpeedProfile.RequiredCoverage(options.RoadCruiseSpeedKph/3.6,options.ComfortableDeceleration);
+    void RequestCurvePreview(RouteTrace trace) {
+        if(options.CurvePreviewEnabled)curvePreview.RequestProfile(trace,position,
+            options.BriskOpenRoads?Math.Max(RequiredCurveCoverage,PreferredCruiseCoverage):RequiredCurveCoverage);
+    }
     float LimitForCurve(float existing)
     {
         curveDecision=null;
         if(!options.CurvePreviewEnabled||safetyTrace is not { } trace)return existing;
         RequestCurvePreview(trace);
-        curveDecision=curvePreview.Read(trace)?.Evaluate(position,speed,options.ComfortableDeceleration);
+        bool brisk=options.BriskOpenRoads&&!controller.Tracking&&!router.StopBoundary.HasValue&&!router.HasShortChange&&
+            !trace.EndsAtGap&&!(candidate is { } gate&&gate.Distance<=controller.ApproachHorizon(speed));
+        curveDecision=curvePreview.Read(trace,position,RequiredCurveCoverage)?.Evaluate(position,speed,options.ComfortableDeceleration,brisk);
         if(curveDecision is not {MaxAcceleration:var limit}||!float.IsFinite(limit))return existing;
         return float.IsFinite(existing)?Math.Min(existing,limit):limit;
     }

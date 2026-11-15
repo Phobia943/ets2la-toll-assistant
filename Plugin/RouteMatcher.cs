@@ -108,10 +108,11 @@ public static class RouteMatcher
         path = RouteSnapshot.Capture(path);
         var points=new List<Vector3>();
         var connectorEnds=new List<int>();
+        var identities=new List<string>();string previousKey="";bool identityKnown=true;
         RouteTrace Gap(string reason)
         {
             if(truck.HasValue&&points.Count>=2) {
-                var prefix=new RouteTrace(points,connectorEnds) {EndsAtGap=true,EndReason=reason};
+                var prefix=new RouteTrace(points,connectorEnds,identities) {EndsAtGap=true,EndReason=reason,IdentityKnown=identityKnown};
                 var projected=prefix.ProjectForTracking(truck.Value);
                 double ahead=prefix.Length-projected.Along;
                 if(projected.Offset<=3 && ahead>requiredAhead)return prefix;
@@ -123,6 +124,12 @@ public static class RouteMatcher
         // one-metre boundary tolerance. Sample each item directly instead.
         for(int itemIndex=0;itemIndex<path.PlannedPath.Count;itemIndex++) {
             var item=path.PlannedPath[itemIndex];
+            bool resolved=item.prefabPath==null||item.prefabPath.Prefab?.Prefab!=null&&item.prefabPath.Prefab.Descriptor!=null;
+            identityKnown&=resolved;
+            string key=$"{item.item.GetType().FullName}:{item.startNode.Uid}:{item.endNode.Uid}:{item.direction}:"+
+                $"{item.laneIndex}:{item.targetLaneIndex}:{item.allowedToLaneChange}:"+
+                (item.prefabPath==null?"":!resolved?Guid.NewGuid().ToString():
+                    $"{item.prefabPath.Prefab!.Prefab.Uid}:"+string.Join(',',item.prefabPath.Curves.Select(c=>item.prefabPath.Prefab!.Descriptor!.NavCurves.IndexOf(c))));
             int count=Math.Clamp((int)Math.Ceiling(item.GetLength()),2,6000);
             for(int i=0;i<=count;i++) {
                 float t=Math.Clamp((float)i/count,.00001f,.99999f);
@@ -136,9 +143,11 @@ public static class RouteMatcher
                         $"Nicht verbundene Route: Übergang {itemIndex-1}->{itemIndex}, {gap:F2} m; {previous.item.GetType().Name}/{previous.direction}/Spur {previous.laneIndex} -> {item.item.GetType().Name}/{item.direction}/Spur {item.laneIndex}"));
                 }
                 if(i==0&&points.Count>0)connectorEnds.Add(points.Count);
+                if(points.Count>0)identities.Add(i==0?$"seam:{previousKey}->{key}":key);
                 points.Add(point.Value.Position);
             }
+            previousKey=key;
         }
-        return new(points,connectorEnds);
+        return new(points,connectorEnds,identities) {IdentityKnown=identityKnown};
     }
 }

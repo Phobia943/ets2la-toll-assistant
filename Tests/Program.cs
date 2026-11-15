@@ -53,6 +53,11 @@ void Run()
     Check("Curve speed preview slows ahead without increasing native bounds or stopping a slow truck",()=>CurveSpeedTests.Limits(Assert));
     Check("Delayed 90 km/h approach simulation slows before the curve without hard braking",()=>CurveSpeedTests.ApproachSimulation(Assert));
     Check("Curve preview work is bounded, coalesced and invalidated on takeover",()=>CurveSpeedTests.Worker(Assert));
+    Check("Curve preview remains available during faster identical route refreshes",()=>CurveSpeedTests.ContinuousUpdates(Assert));
+    Check("Curve preview reuse proves lane, level, future branches, seams and remaining coverage",()=>CurveSpeedTests.CorridorCoverage(Assert));
+    Check("Planned toll holds separate observed soft-target incidents from genuine emergencies",()=>ApproachStopTests.RecordedCases(Assert));
+    Check("Planned hold survives host response delay and low-speed output dead band",()=>ApproachStopTests.DelayedHold(Assert));
+    Check("Preferred cruise target obeys configured maxima and known road rules",()=>CruisePolicyTests.Limits(Assert));
     Check("Vehicle bounds require coherent fresh frames and never grant clearance",()=>GeometryBrakeTests.Protocol(Assert));
     Check("Missing brake response requires one second of coherent effective commands",()=>GeometryBrakeTests.Brake(Assert));
     if(!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MAUT_GEOMETRY_FIXTURE")))
@@ -183,13 +188,17 @@ void Run()
         Assert(ApproachStop.Evaluate(speed,distance).MaxAcceleration<0,"Hold must persist");
     });
     Check("Too little approach distance or invalid geometry cannot relax the emergency stop",()=>{
-        foreach(var scenario in new[]{(25d,60d),(2d,-1.1d),(double.NaN,200d),(0d,double.NaN)}) {
+        foreach(var scenario in new[]{(25d,60d),(2d,-6d),(0d,-7.01d),(double.NaN,200d),(0d,double.NaN)}) {
             bool rejected=false;
             try {ApproachStop.Evaluate(scenario.Item1,scenario.Item2);}catch(InvalidOperationException){rejected=true;}
             Assert(rejected);
         }
     });
     #if INTEGRATION
+    Check("Old fault work and publishing refresh cannot outlive manual takeover",()=>FaultLeaseIntegration.Run(Assert));
+    Check("Exact host package identity rejects originals and preserves verified Lane diagnostics",()=>HostCompatibilityIntegration.Run(Assert));
+    Check("Cruise preset requires sufficient preview and preserves SET/off behaviour",()=>CruiseOptionsIntegration.Cruise(Assert));
+    Check("Actual settings UI roundtrip preserves non-displayed options",()=>CruiseOptionsIntegration.UiRoundTrip(Assert));
     Check("Actual ACC curve bound preserves stronger stops, lane-only mode and F9",()=>CurveSpeedIntegration.ActiveBound(Assert));
     Check("Held curve preview cannot block ACC, route delivery or manual takeover",()=>CurveSpeedIntegration.BlockedWorker(Assert));
     Check("Async model snapshots retain detached payment signal geometry",()=>ManualTriggerIntegration.WorkerSnapshot(Assert));

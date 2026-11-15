@@ -1,5 +1,7 @@
 # ETS2LA Mautassistent
 
+**Entwicklungsstand 0.3.17:** lokal geprüft und vorbereitet, noch nicht installiert oder im Fahrbetrieb freigegeben. Dieser Entwurf benötigt ein zusammengehöriges Paket aus Plugin und vier exakt geprüften Ausgabekomponenten; nur die Plugin-DLL zu kopieren genügt nicht. Anleitung und Grenzen: [HostCompatibility](Tools/HostCompatibility/README.md), [kritischer Review](REVIEW_0317.md). Der letzte laufende lokale Stand bleibt 0.3.16.
+
 Experimentelle Erweiterung für **ETS2LA** in Euro Truck Simulator 2: langsam an Mautstellen heranfahren, eine bestätigte Lkw-Spur verwenden und nach dem Öffnen der Schranke verzögert weiterfahren.
 
 Die Erweiterung ergänzt Pathfinding, Lane Assist und Adaptive Cruise Control. Sie ist kein eigenständiges Fahrsystem. Oberfläche und Meldungen sind auf Deutsch.

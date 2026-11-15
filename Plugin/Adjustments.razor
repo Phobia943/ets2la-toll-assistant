@@ -11,6 +11,7 @@
     <p>@TollPlugin.Current?.RouteStatus</p>
     <p>@TollPlugin.Current?.VehicleGeometryStatus</p>
     @if (!string.IsNullOrEmpty(TollPlugin.Current?.CurveStatus)) {<p>@TollPlugin.Current?.CurveStatus</p>}
+    @if (!string.IsNullOrEmpty(TollPlugin.Current?.RoadCruiseStatus)) {<p>@TollPlugin.Current?.RoadCruiseStatus</p>}
     @if (!string.IsNullOrEmpty(TollPlugin.Current?.BrakeResponseStatus)) {<p role="alert">@TollPlugin.Current?.BrakeResponseStatus</p>}
     <p>Baustellen und Hindernisse werden nicht zuverlässig vorausblickend erkannt. Dort bitte manuell fahren. Die Kollisionsabschaltung kann erst nach einem Aufprall reagieren.</p>
     @if (TollPlugin.Current?.LaneChoices is { Length: >0 } choices) {
@@ -40,6 +41,11 @@
     <p>Der Messpunkt ist nicht die Stoßstange. Der passende Wert muss mit deinem Lkw geprüft werden.</p>
     <label>Warten nach vollständig geöffneter Schranke (s) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="1" max="10" step="0.5" @bind="delay" /></label>
     <label><input type="checkbox" @bind="curvePreviewEnabled" /> Zusätzliche Kurvenvorschau verwenden</label>
+    <label><input type="checkbox" @bind="brisk" /> Freie Strecken zügiger fahren</label>
+    <label><input type="checkbox" @bind="coast" /> Kleine Tempokorrekturen auf freier Strecke rollen lassen</label>
+    <p>Rollen benötigt aktuelle Strecken- und Verkehrsdaten. Kurven, vorausfahrende Fahrzeuge, Mautstellen und erforderliche Bremsungen behalten Vorrang.</p>
+    <label>Wunschtempo freie Strecke (km/h) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="30" max="130" @bind="roadCruise" /></label>
+    <p>Das höhere Wunschtempo benötigt ausreichend geprüfte Strecke voraus. Eingestellte Spielbegrenzungen, Kurven, Verkehr und Mautstellen bleiben vorrangig. F10 startet weiterhin mit dem gesetzten Tempo.</p>
     <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="Apply">Einstellungen speichern</button>
     <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="Observe">Nur beobachten / Fehlerbremsung lösen</button>
     <button style="padding:10px;border:1px solid #b58a6f;border-radius:6px" @onclick="Activate">Vorbereitung jetzt prüfen (optional)</button>
@@ -52,6 +58,9 @@
 @code {
     double approach=20, passage=10, offset=8, delay=2;
     bool curvePreviewEnabled=true;
+    bool brisk=true;
+    bool coast=true;
+    double roadCruise=100;
     string message="";
     int lane=-1;
     TollPayment payment=TollPayment.Unknown;
@@ -59,14 +68,18 @@
     protected override void OnInitialized() {
         var o=TollPlugin.Current?.Options;
         lane=TollPlugin.Current?.SelectedLane ?? -1;
-        if(o != null) { approach=o.ApproachSpeedKph; passage=o.PassageSpeedKph; offset=o.StopOffsetMetres; delay=o.OpenDelaySeconds; curvePreviewEnabled=o.CurvePreviewEnabled; }
+        if(o != null) { approach=o.ApproachSpeedKph; passage=o.PassageSpeedKph; offset=o.StopOffsetMetres; delay=o.OpenDelaySeconds; curvePreviewEnabled=o.CurvePreviewEnabled; brisk=o.BriskOpenRoads;roadCruise=o.RoadCruiseSpeedKph;coast=o.CoastOnOpenRoads; }
         _=Refresh();
     }
     async Task Refresh() {
         try { using var timer=new PeriodicTimer(TimeSpan.FromSeconds(1)); while(await timer.WaitForNextTickAsync(stop.Token)) await InvokeAsync(StateHasChanged); }
         catch(OperationCanceledException) { }
     }
-    void Apply() => message=TollPlugin.Current?.Configure(new TollOptions { ApproachSpeedKph=approach, PassageSpeedKph=passage, StopOffsetMetres=offset, OpenDelaySeconds=delay, CurvePreviewEnabled=curvePreviewEnabled }) ?? "Plugin fehlt";
+    void Apply() {
+        var plugin=TollPlugin.Current;
+        message=plugin?.Configure(plugin.Options with {ApproachSpeedKph=approach,PassageSpeedKph=passage,StopOffsetMetres=offset,
+            OpenDelaySeconds=delay,CurvePreviewEnabled=curvePreviewEnabled,BriskOpenRoads=brisk,RoadCruiseSpeedKph=roadCruise,CoastOnOpenRoads=coast})??"Plugin fehlt";
+    }
     void Observe() => message=TollPlugin.Current?.SetActive(false) ?? "Plugin fehlt";
     void Preview() => message=TollPlugin.Current?.PreviewRoute() ?? "Plugin fehlt";
     void ConfirmLane() => message=TollPlugin.Current?.ConfirmLane(lane,payment) ?? "Plugin fehlt";

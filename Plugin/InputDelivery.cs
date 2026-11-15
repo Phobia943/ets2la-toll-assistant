@@ -10,7 +10,8 @@ public sealed partial class TollPlugin
     // SDK publishers are synchronous. Never make them wait for route/model work:
     // that would also prevent telemetry delivery to the host's other consumers.
     sealed record PhysicsObservation(ulong SimulatedTime,ulong RenderTime,float EngineDamage,float TransmissionDamage,
-        float CabinDamage,float ChassisDamage,float WheelDamage,float GameThrottle,float GameBrake);
+        float CabinDamage,float ChassisDamage,float WheelDamage,float GameThrottle,float GameBrake)
+    { public float SpeedLimitMps {get;init;} }
     sealed record TelemetryFrame(double Arrived,ulong Time,bool Active,bool Paused,double Speed,Vector3 Position,double Heading,
         PhysicsObservation Physics);
     sealed record GateFrame(double Arrived,Semaphore[] Gates);
@@ -23,11 +24,12 @@ public sealed partial class TollPlugin
 
     void OnTelemetry(GameTelemetryData data)
     {
+        using var operation=faultBrake.BeginOperation();
         var frame=new TelemetryFrame(clock.Elapsed.TotalSeconds,data.time,data.sdkActive,data.paused,
             data.truckFloat.speed,data.truckPlacement.coordinate.ToVector3(),data.truckPlacement.rotation.X,
             new(data.simulatedTime,data.renderTime,data.truckFloat.wearEngine,data.truckFloat.wearTransmission,
                 data.truckFloat.wearCabin,data.truckFloat.wearChassis,data.truckFloat.wearWheels,
-                data.truckFloat.gameThrottle,data.truckFloat.gameBrake));
+                data.truckFloat.gameThrottle,data.truckFloat.gameBrake){SpeedLimitMps=data.truckFloat.speedLimit});
         Interlocked.Exchange(ref incomingTelemetry,frame);
         Interlocked.Exchange(ref latestDeliveredTelemetry,frame);
         ObserveImpact(frame);
@@ -75,6 +77,7 @@ public sealed partial class TollPlugin
 
     void OnPath(PathLib.PlannedPathData data)
     {
+        using var operation=faultBrake.BeginOperation();
         double started=clock.Elapsed.TotalSeconds;
         try {ProcessPath(data);}
         finally

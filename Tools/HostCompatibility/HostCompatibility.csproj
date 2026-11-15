@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup>
+  <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+  <CecilRoot Condition="'$(CecilRoot)' == ''">$(NuGetPackageRoot)microsoft.net.illink.tasks/10.0.9/tools/net</CecilRoot>
+ </PropertyGroup>
+ <ItemGroup Condition="Exists('$(CecilRoot)/Mono.Cecil.dll')">
+  <Reference Include="Mono.Cecil"><HintPath>$(CecilRoot)/Mono.Cecil.dll</HintPath></Reference>
+  <Reference Include="Mono.Cecil.Rocks"><HintPath>$(CecilRoot)/Mono.Cecil.Rocks.dll</HintPath></Reference>
+ </ItemGroup>
+ <ItemGroup Condition="!Exists('$(CecilRoot)/Mono.Cecil.dll')"><PackageReference Include="Mono.Cecil" Version="0.11.6" /></ItemGroup>
+ <ItemGroup><Reference Include="$(EtsRoot)/ETS2LA.Game.dll" Private="false" /></ItemGroup>
+ <ItemGroup>
+  <Reference Include="$(EtsRoot)/ETS2LA.State.dll" Private="false" />
+  <Reference Include="$(EtsRoot)/ETS2LA.Shared.dll" Private="false" />
+  <Reference Include="$(EtsRoot)/ETS2LA.Settings.dll" Private="false" />
+  <Reference Include="$(EtsRoot)/TruckLib.dll" Private="false" />
+  <Reference Include="$(EtsRoot)/TruckLib.Core.dll" Private="false" />
+  <Reference Include="PathLib"><HintPath>../../References/PathLib.dll</HintPath><Private>false</Private></Reference>
+  <Reference Include="$(EtsRoot)/Plugins/tumppi066.adaptivecruisecontrol/AdaptiveCruiseControl.dll" Private="false" />
+  <Reference Include="$(EtsRoot)/Libraries/tumppi066.pidlib/PIDLib.dll" Private="false" />
+ </ItemGroup>
+</Project>

@@ -92,7 +92,8 @@ public static class CurveSpeedTests
             release.Set();assert(SpinWait.SpinUntil(()=>cache.IsIdle,TimeSpan.FromSeconds(3)),"The worker must drain");
             assert(calls==2&&cache.Read(latest)!=null&&cache.Read(first)==null,"Keep one active build and only the latest pending route");
             entered.Reset();release.Reset();cache.RequestProfile(first,Vector3.Zero);
-            assert(entered.Wait(TimeSpan.FromSeconds(2))&&cache.Read(latest)==null,"A new request invalidates even a retained older result");
+            assert(entered.Wait(TimeSpan.FromSeconds(2))&&cache.Read(first)==null&&cache.Read(latest)!=null,
+                "Keep the old profile only for its still compatible corridor, never for the changed branch");
             cache.Clear();release.Set();
             assert(SpinWait.SpinUntil(()=>cache.IsIdle,TimeSpan.FromSeconds(3))&&cache.Read(first)==null,
                 "A result completed after manual takeover must not reappear");
@@ -100,5 +101,50 @@ public static class CurveSpeedTests
         var failed=new CurvePreview((_,_)=>throw new IOException());failed.RequestProfile(first,Vector3.Zero);
         assert(SpinWait.SpinUntil(()=>failed.IsIdle,TimeSpan.FromSeconds(2))&&failed.Read(first)==null&&failed.ErrorFor(first)==nameof(IOException),
             "Optional preview failure must be reported without invented geometry");
+    }
+    public static void ContinuousUpdates(Action<bool,string> assert)
+    {
+        int builds=0,availableDuringUpdates=0;
+        var cache=new CurvePreview((route,origin)=>{Interlocked.Increment(ref builds);Thread.Sleep(60);return CurveSpeedProfile.Build(route,origin);});
+        for(int i=0;i<20;i++) {
+            var fresh=Approach();cache.RequestProfile(fresh,Vector3.Zero,350);
+            Thread.Sleep(50);
+            if(cache.Read(fresh,Vector3.Zero,350)!=null)availableDuringUpdates++;
+        }
+        assert(SpinWait.SpinUntil(()=>cache.IsIdle,TimeSpan.FromSeconds(3))&&availableDuringUpdates>=15&&builds<=3,
+            $"Profiles must remain usable during 50 ms route updates with a 60 ms builder: available={availableDuringUpdates}, builds={builds}");
+        cache.Clear();
+    }
+    public static void CorridorCoverage(Action<bool,string> assert)
+    {
+        RouteTrace Straight(int skip=0,string lane="road-A",float level=0,bool gap=false)=>new(
+            Enumerable.Range(skip,1201-skip).Select(i=>new Vector3(0,level,i)),null,
+            Enumerable.Repeat(lane,1200-skip)) {EndsAtGap=gap};
+        var original=Straight();var profile=CurveSpeedProfile.Build(original,Vector3.Zero);
+        var position=new Vector3(0,0,150);
+        assert(profile.Covers(Straight(100),position,350),"Pruning an identical directed corridor behind the truck may reuse a profile");
+        assert(!profile.Covers(Straight(100,"road-B"),position,350),"Geometrically coincident different lane identities must not reuse it");
+        assert(!profile.Covers(Straight(100,level:1),position,350),"Another road level cannot inherit a profile");
+        assert(!profile.Covers(Straight(),new(0,0,400),350),"The built 600 m coverage cannot extrapolate with vehicle progress");
+        var extended=CurveSpeedProfile.Build(original,new(0,0,400));
+        assert(extended.Covers(Straight(300),new(0,0,410),350),"A new build at the current truck position restores coverage");
+        var branch=new RouteTrace(Enumerable.Range(0,1201).Select(i=>new Vector3(i>250?(i-250)*.2f:0,0,i)),null,Enumerable.Repeat("road-A",1200));
+        assert(!profile.Covers(branch,position,350),"A route diverging 100 m ahead cannot inherit the old profile");
+        var seam=new RouteTrace(Enumerable.Range(0,1201).Select(i=>new Vector3(0,0,i)),[250],Enumerable.Repeat("road-A",1200));
+        assert(!profile.Covers(seam,position,350),"Changed connector markings are a changed corridor");
+        var reversed=new RouteTrace(Enumerable.Range(0,1201).Reverse().Select(i=>new Vector3(0,0,i)),null,Enumerable.Repeat("road-A",1200));
+        assert(!profile.Covers(reversed,position,350),"Opposite direction cannot reuse the preview");
+        var shortRoad=new RouteTrace([new(0,0,0),new(0,0,100)]);
+        var shortProfile=CurveSpeedProfile.Build(shortRoad,Vector3.Zero);
+        assert(shortProfile.Covers(shortRoad,Vector3.Zero,350)&&!shortProfile.HasFullCoverage(shortRoad,Vector3.Zero,350),
+            "Reuse up to a short known ending must not authorize a higher cruise speed");
+        assert(!shortProfile.Covers(new RouteTrace([new(0,0,0),new(0,0,100)]){EndsAtGap=true},Vector3.Zero,350),
+            "A newly missing connection cannot inherit a known road ending");
+        double cautious=CurveSpeedProfile.RequiredCoverage(100/3.6,.5);
+        var adaptive=new CurvePreview();adaptive.RequestProfile(original,Vector3.Zero,cautious);
+        assert(SpinWait.SpinUntil(()=>adaptive.IsIdle,TimeSpan.FromSeconds(3))&&
+            adaptive.Read(original,Vector3.Zero,cautious)?.HasFullCoverage(original,Vector3.Zero,cautious)==true,
+            "Supported cautious deceleration must build more than 600 m instead of disabling the normal preview");
+        adaptive.Clear();
     }
 }

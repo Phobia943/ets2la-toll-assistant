@@ -11,19 +11,23 @@ public sealed partial class TollPlugin
 
     void ObserveImpact(TelemetryFrame frame)
     {
+        using var operation=faultBrake.BeginOperation();
         // No route lock, model read, map query or disk operation on this path.
         // Manual takeover uses this same short lock and cancels pending reports.
         lock(steeringSync) {
+            if(!faultBrake.OperationCurrent)return;
             var state=State;
             var hit=impactGuard.Observe(new(frame.Arrived,frame.Time,frame.Physics.SimulatedTime,
                 _IsRunning&&Volatile.Read(ref active)&&state.EnableAssists&&!Volatile.Read(ref preview),
                 frame.Paused,frame.Active,frame.Speed,frame.Position.X,frame.Position.Y,frame.Position.Z,
                 new(frame.Physics.CabinDamage,frame.Physics.ChassisDamage)));
             if(hit==null)return;
-            state.EnableAssists=false;
-            faultBrake.Trip();
-            collectingSteeringFailure=pendingSteeringFailure=null;
-            pendingImpact=new(DateTimeOffset.UtcNow,hit);
+            faultBrake.RunCurrent(()=> {
+                state.EnableAssists=false;
+                faultBrake.Trip();
+                collectingSteeringFailure=pendingSteeringFailure=null;
+                pendingImpact=new(DateTimeOffset.UtcNow,hit);
+            });
         }
     }
 

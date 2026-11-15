@@ -7,18 +7,51 @@ public sealed class RouteTrace
     readonly Vector3[] points;
     readonly double[] distances;
     readonly HashSet<int> connectorEnds;
+    readonly string[]? segmentKeys;
     public double Length => distances[^1];
     public bool EndsAtGap { get; init; }
+    public bool IdentityKnown { get; init; }
     public string? EndReason { get; init; }
     public RouteTrace(IEnumerable<Vector3> source,IEnumerable<int>? connectorEndIndexes=null)
+        :this(source,connectorEndIndexes,null) { }
+    public RouteTrace(IEnumerable<Vector3> source,IEnumerable<int>? connectorEndIndexes,IEnumerable<string>? segmentIdentities)
     {
         points=source.ToArray(); distances=new double[points.Length];
+        segmentKeys=segmentIdentities?.ToArray();
+        IdentityKnown=segmentKeys!=null;
         connectorEnds=connectorEndIndexes?.ToHashSet()??[];
         if(points.Length<2 || points.Any(p=>!float.IsFinite(p.X)||!float.IsFinite(p.Y)||!float.IsFinite(p.Z)))
             throw new ArgumentException("Ungültige Routenpunkte");
         if(connectorEnds.Any(i=>i<1||i>=points.Length||Vector3.Distance(points[i-1],points[i])>2))
             throw new ArgumentException("Ungültige Abschnittsverbindung");
+        if(segmentKeys!=null&&(segmentKeys.Length!=points.Length-1||segmentKeys.Any(string.IsNullOrEmpty)))
+            throw new ArgumentException("Ungültige Korridorzuordnung");
         for(int i=1;i<points.Length;i++) distances[i]=distances[i-1]+Vector3.Distance(points[i-1],points[i]);
+    }
+    // Compare directed samples, topology and every seam through the required
+    // future corridor. Pruning behind the truck is permitted; extrapolation,
+    // merely similar headings, another lane/level or a branch are not.
+    public bool MatchesAhead(RouteTrace other,Vector3 origin,double requiredAhead,out double ownAlong,out double otherAlong)
+    {
+        ownAlong=otherAlong=0;
+        if(!double.IsFinite(requiredAhead)||requiredAhead<0)return false;
+        var a=ProjectForTracking(origin);var b=other.ProjectForTracking(origin);
+        if(a.Offset>3||b.Offset>3||Math.Abs(a.HeightOffset)>2||Math.Abs(b.HeightOffset)>2)return false;
+        int i=a.SegmentEndIndex,j=b.SegmentEndIndex;
+        if(i<1||j<1||(segmentKeys==null)!=(other.segmentKeys==null))return false;
+        ownAlong=a.Along;otherAlong=b.Along;
+        double needed=Math.Min(requiredAhead,other.Length-b.Along);
+        for(;;i++,j++) {
+            if(i>=points.Length||j>=other.points.Length)
+                return i==points.Length&&j==other.points.Length&&EndsAtGap==other.EndsAtGap;
+            if(points[i-1]!=other.points[j-1]||points[i]!=other.points[j]||
+                connectorEnds.Contains(i)!=other.connectorEnds.Contains(j)||
+                (segmentKeys!=null&&segmentKeys[i-1]!=other.segmentKeys![j-1]))return false;
+            if(distances[i]-a.Along>=needed) {
+                bool atEnd=i==points.Length-1||j==other.points.Length-1;
+                return !atEnd||(i==points.Length-1&&j==other.points.Length-1&&EndsAtGap==other.EndsAtGap);
+            }
+        }
     }
     public TraceProjection Project(Vector3 point)
     {

@@ -29,6 +29,7 @@ public sealed partial class TollPlugin : Plugin
     readonly Stopwatch clock = Stopwatch.StartNew();
     readonly AccBridge bridge = new();
     readonly DriveSupervisor supervisor = new();
+    readonly ApproachStopController approachStop=new();
     readonly ConnectorHistory connectorHistory = new();
     readonly Queue<(DriveCheckpoint Before, DriveSample Sample)> driveHistory = new();
     DriveAction driveAction;
@@ -47,6 +48,7 @@ public sealed partial class TollPlugin : Plugin
     readonly Func<ETS2LA.Game.Data.ParsedPrefab,int,ManualStopZone?>? readManualStop;
     readonly Func<RouteTrace?,Vector3,ETS2LA.Game.SDK.Semaphore[],object> buildStatusGeometry;
     readonly Func<ApplicationState> readState;
+    readonly Func<CruiseLimits> readCruiseLimits;
     readonly Func<IPlugin?> readAcc;
     readonly Func<IPlugin?> readPlanner;
     readonly Func<IPlugin?> readLaneAssist;
@@ -66,7 +68,7 @@ public sealed partial class TollPlugin : Plugin
     TollPlugin(TollModelEvidence modelEvidence) : this(() => ApplicationState.Current, Notify,
         output=>Events.Current.Publish(GameOutput.Current.EventString,output),
         readPayments:modelEvidence.Read,readClearance:modelEvidence.IsClear,monitorSteering:true,
-        prefetch:modelEvidence.Prefetch,readManualStop:modelEvidence.ReadManualStop) { }
+        prefetch:modelEvidence.Prefetch,readManualStop:modelEvidence.ReadManualStop,readCruiseLimits:ReadHostCruiseLimits,requireHostCompatibility:true) { }
     internal TollPlugin(Func<ApplicationState> readState, Action<string,string> notify,Action<ControlEvent>? output=null,Func<IPlugin?>? readAcc=null,
         Func<ETS2LA.Game.Data.ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments=null, Func<IPlugin?>? readPlanner=null,
         Func<IPlugin,Vector3,double,Vector3[],PlannedPathData?>? probeRoute=null,
@@ -76,10 +78,12 @@ public sealed partial class TollPlugin : Plugin
         Action<ETS2LA.Game.Data.ParsedPrefab>? prefetch=null,
         Func<ETS2LA.Game.Data.ParsedPrefab,int,ManualStopZone?>? readManualStop=null,
         Func<RouteTrace?,Vector3,ETS2LA.Game.SDK.Semaphore[],object>? buildStatusGeometry=null,
-        Func<RouteTrace,Vector3,CurveSpeedProfile>? buildCurveProfile=null) {
+        Func<RouteTrace,Vector3,CurveSpeedProfile>? buildCurveProfile=null,Func<CruiseLimits>? readCruiseLimits=null,bool requireHostCompatibility=false) {
         curvePreview=new(buildCurveProfile);
         this.monitorSteering=monitorSteering;
+        this.requireHostCompatibility=requireHostCompatibility;
         this.readState=readState;this.readAcc=readAcc??FindAcc;this.notify=notify;this.readPayments=readPayments;
+        this.readCruiseLimits=readCruiseLimits??(()=>new(0,false));
         this.readPlanner=readPlanner??FindPlanner;
         this.readLaneAssist=readLaneAssist??FindLaneAssist;
         this.writeDiagnostic=writeDiagnostic??File.WriteAllText;
@@ -103,10 +107,14 @@ public sealed partial class TollPlugin : Plugin
     // restart interlock, not an atomic veto in the host's input/output system.
     bool RejectUnpreparedStart()
     {
+        if(!faultBrake.OperationCurrent)return true;
         if(!State.EnableAssists)return false;
-        if(brakeHeld || clock.Elapsed.TotalSeconds<takeoverUntil) {State.EnableAssists=false;return true;}
+        if(CheckHostCompatibility() is { } hostIssue) {
+            faultBrake.RunCurrent(()=>State.EnableAssists=false);preparationReason=hostIssue;return true;
+        }
+        if(brakeHeld || clock.Elapsed.TotalSeconds<takeoverUntil) {faultBrake.RunCurrent(()=>State.EnableAssists=false);return true;}
         if(active && !preview && (supervisor.Checkpoint.Started.HasValue || CanStartNow(clock.Elapsed.TotalSeconds)))return false;
-        State.EnableAssists=false;
+        if(!faultBrake.RunCurrent(()=>State.EnableAssists=false))return true;
         if (rollingStartPending) return true;
         if (Math.Abs(speed)>.1 && RequestRollingStart()) return true;
         if (active && !preview)
@@ -220,7 +228,7 @@ public sealed partial class TollPlugin : Plugin
             Events.Current.Subscribe<ControlEvent>(GameOutput.Current.EventString,OnControlOutput);
             ControlsBackend.Current.On(DefaultControls.Cancel.Id,OnCancel);
             ControlsBackend.Current.On(DefaultControls.Increase.Id,OnStart);
-            ControlsBackend.Current.On(DefaultControls.Decrease.Id,OnStart);
+            ControlsBackend.Current.On(DefaultControls.Decrease.Id,OnSetStart);
             ControlsBackend.Current.On(BrakeControl.Id,OnBrakeInput);
             subscribed = true;
         }
@@ -230,20 +238,31 @@ public sealed partial class TollPlugin : Plugin
     }
 
     void OnStart(object? sender,ControlChangeEventArgs e)
+        =>HandleStartControl(e,true);
+    void OnSetStart(object? sender,ControlChangeEventArgs e)
+        =>HandleStartControl(e,false);
+    void HandleStartControl(ControlChangeEventArgs e,bool usePreset)
     {
         // The host enables on both edges. Intercept immediately after its
         // listener instead of waiting for the next telemetry/ACC/plugin tick.
-        lock(sync) {DrainInputFrames();RejectUnpreparedStart();}
+        lock(sync) {
+            RecordCruiseStart(e,usePreset);
+            DrainInputFrames();RejectUnpreparedStart();
+            ApplyCruiseStartPreference();
+        }
     }
     void OnCancel(object? sender,ControlChangeEventArgs e)
     {
         // Same release edge as the host's F9 / Cancel control.
         if(e.NewValue is not false)return;
+        bool canceledPendingStart=rollingStartPending;
+        var canceledMode=rollingStartMode;
         CancelSteeringSession();
+        ReleaseAssistOutputs();
         lock(sync) {
             // The host cycles modes when it sees assists off. A pending start
             // is still a cancel operation, so retain the requested driving mode.
-            if (rollingStartPending) State.DrivingMode=rollingStartMode;
+            if (canceledPendingStart) State.DrivingMode=canceledMode;
             CancelRollingStart();
             State.EnableAssists=false;
             faultBrake.Release();ResetDriving();
@@ -262,6 +281,7 @@ public sealed partial class TollPlugin : Plugin
     }
     void ResetDriving()
     {
+        approachStop.Reset();
         curvePreview.Clear();curveDecision=null;
         supervisor.Reset();
         trackingGuard.Reset();
@@ -274,6 +294,8 @@ public sealed partial class TollPlugin : Plugin
 
     DriveAction SafetyWatchdog(double now)
     {
+        using var operation=faultBrake.BeginOperation();
+        if(!faultBrake.OperationCurrent)return DriveAction.Idle;
         DrainInputFrames();
         DrainImpactFailure();
         CheckSteeringOutput();
@@ -281,8 +303,7 @@ public sealed partial class TollPlugin : Plugin
         RecordMotion(now);
         if (faultBrake.Latched)
         {
-            State.EnableAssists = false;
-            faultBrake.Refresh();
+            faultBrake.RunCurrent(()=>{State.EnableAssists=false;faultBrake.Refresh();});
             return DriveAction.EmergencyStop;
         }
         if (!active || !State.EnableAssists || preview)
@@ -476,7 +497,7 @@ public sealed partial class TollPlugin : Plugin
                 try {
                     if(State.DrivingMode==DrivingMode.LaneAssistOnly)
                         throw new InvalidOperationException("Unbestätigte Mautspur: Ohne Tempomat ist kein geplanter Halt möglich. Bitte übernehmen.");
-                    decision=ApproachStop.Evaluate(speed,router.UpdateStopDistance(data,position,speed)!.Value);
+                    decision=approachStop.Step(router.StopKey!,speed,router.UpdateStopDistance(data,position,speed)!.Value);
                     evaluatedAt=clock.Elapsed.TotalSeconds;decisionArmed=true;
                     if(warnedStopKey!=router.StopKey) {
                         controller.Reset();passage.Reset();tracked=null;candidate=null;
@@ -625,6 +646,7 @@ public sealed partial class TollPlugin : Plugin
             try { newOptions.Validate(); } catch (ArgumentException e) { return e.Message; }
             try {preferences.Save(newOptions,preferences.Gates);} catch(Exception ex) {return "Einstellungen nicht gespeichert: "+ex.Message;}
             options = newOptions; controller = new(options); tracked = null; active = false;  bridge.Detach();
+            ResetCruiseStartPreference();
             curvePreview.Clear();curveDecision=null;
             startCheck=null;
             automaticPreparation.Request();
@@ -634,6 +656,7 @@ public sealed partial class TollPlugin : Plugin
     }
     string? PreparationBlock(double now)
     {
+        if(CheckHostCompatibility() is { } hostIssue)return hostIssue;
         if(faultBrake.Latched)return "Zuerst F9 zur manuellen Übernahme drücken und selbst die Bremse halten.";
         if(brakeHeld || now<takeoverUntil)return "Manuelle Bremsübernahme: zum Starten zuerst die Bremse loslassen.";
         if(!_IsRunning)return "Zuerst das Mautassistent-Plugin einschalten.";
@@ -695,14 +718,16 @@ public sealed partial class TollPlugin : Plugin
 
     void StopDriving(string reason, DriveAction action, bool retryAtStandstill = false)
     {
-        if (retryAtStandstill) automaticPreparation.Request(); else automaticPreparation.Cancel();
-        driveAction = action;
+        if(!faultBrake.OperationCurrent)return;
         RecordMotion(clock.Elapsed.TotalSeconds,true);
-        bool brake=action==DriveAction.EmergencyStop && (faultBrake.Latched || active&&State.EnableAssists&&!preview);
-        preparationReason=reason;
-        active=false; State.EnableAssists=false;
-        startCheck=null;
-        if(brake)faultBrake.Trip();
+        bool brake=false;
+        if(!faultBrake.RunCurrent(()=> {
+            if (retryAtStandstill) automaticPreparation.Request(); else automaticPreparation.Cancel();
+            driveAction=action;
+            brake=action==DriveAction.EmergencyStop && (faultBrake.Latched || active&&State.EnableAssists&&!preview);
+            preparationReason=reason;active=false;State.EnableAssists=false;startCheck=null;
+            if(brake)faultBrake.Trip();
+        }))return;
         object? geometry;object? routePlan=null;object? previousAcceptedPlan=null;
         try {
             var snapshot=path!=null&&!path.HasError?RouteSnapshot.Capture(path):lastAcceptedPlan;
@@ -733,6 +758,7 @@ public sealed partial class TollPlugin : Plugin
 
     float Evaluate()
     {
+        using var operation=faultBrake.BeginOperation();
         lock(sync)
         {
             DrainInputFrames();
@@ -744,18 +770,19 @@ public sealed partial class TollPlugin : Plugin
             if (action == DriveAction.Recover) return -.5f;
             if (action != DriveAction.Drive) return float.NaN;
             if (decision.RequiresTakeover) { Disarm(decision.Phase); return -5f; }
+            ApplyCruiseStartPreference();
 
             try
             {
                 float limit = router.StopBoundary.HasValue
-                    ? ApproachStop.Evaluate(speed,router.UpdateStopDistance(path!,position,speed)!.Value).MaxAcceleration
+                    ? approachStop.Step(router.StopKey!,speed,router.UpdateStopDistance(path!,position,speed)!.Value).MaxAcceleration
                     : decision.MaxAcceleration;
                 if (safetyTrace is { EndsAtGap: true } trace)
                 {
                     float routeLimit = ApproachStop.BeforeRouteGap(speed, trace.Length - trace.Project(position).Along);
                     limit = float.IsFinite(limit) ? Math.Min(limit, routeLimit) : routeLimit;
                 }
-                return LimitForCurve(limit);
+                return LimitForPreferredCruise(LimitForCurve(limit));
             }
             catch(Exception ex) {Disarm(ex.Message);return -5f;}
         }
@@ -763,6 +790,7 @@ public sealed partial class TollPlugin : Plugin
 
     public override void Tick()
     {
+        using var operation=faultBrake.BeginOperation();
         lock(sync)
         {
             if (!subscribed) return;
@@ -782,6 +810,7 @@ public sealed partial class TollPlugin : Plugin
             {
                 var state = State;
                 bool allow = state.EnableAssists && (!active || state.DrivingMode != DrivingMode.LaneAssistOnly);
+                if(!router.StopBoundary.HasValue)approachStop.Reset();
                 if (!state.EnableAssists) {passage.Reset();controller.Reset();tracked=null;}
                 RouteTrace? sampled=null;
                 Gate? gate = Fresh(now) && path != null ? RouteMatcher.Select(path, position, gates, tracked,out sampled,speed) : null;
@@ -805,7 +834,7 @@ public sealed partial class TollPlugin : Plugin
                 decision = controller.Step(new(now, speed, allow, Fresh(now), gate, manual,
                     manual?router.ManualStopOffset(options.StopOffsetMetres):null));
                 if(allow && Fresh(now) && router.StopBoundary.HasValue)
-                    decision=ApproachStop.Evaluate(speed,router.UpdateStopDistance(path!,position,speed)!.Value);
+                    decision=approachStop.Step(router.StopKey!,speed,router.UpdateStopDistance(path!,position,speed)!.Value);
                 else if (allow && sampled != null && path != null)
                     decision=router.LimitShortChange(path,sampled,position,speed,decision);
                 tracked = decision.GateKey;
@@ -844,6 +873,8 @@ public sealed partial class TollPlugin : Plugin
                         connectorAttempted, connectorPending, connectorSeeded,
                         driveAction=driveAction.ToString(),
                         plannedStop=router.StopBoundary.HasValue,stopDistance=router.StopDistance,
+                        plannedStopHolding=approachStop.Holding,desiredCruiseSpeedKph=State.DesiredSpeed*3.6,
+                        reportedSpeedLimitKph=physicsObservation?.SpeedLimitMps*3.6,
                         automaticPreparationPending=automaticPreparation.Requested,
                         startBlocked=!(active&&State.EnableAssists)&&!CanStartNow(observedAt), readyToStart=CanStartNow(observedAt),
                         startRouteFailure=startCheck?.Failure,preparationReason,selectedLane=(previewRouter??router).SelectedGate,plaza=(previewRouter??router).CurrentKey,
@@ -917,7 +948,7 @@ public sealed partial class TollPlugin : Plugin
                 Events.Current.Unsubscribe<ControlEvent>(GameOutput.Current.EventString,OnControlOutput);
                 ControlsBackend.Current.UnregisterListener(DefaultControls.Cancel.Id,OnCancel);
                 ControlsBackend.Current.UnregisterListener(DefaultControls.Increase.Id,OnStart);
-                ControlsBackend.Current.UnregisterListener(DefaultControls.Decrease.Id,OnStart);
+                ControlsBackend.Current.UnregisterListener(DefaultControls.Decrease.Id,OnSetStart);
                 ControlsBackend.Current.UnregisterListener(BrakeControl.Id,OnBrakeInput);
                 subscribed = false;
             }

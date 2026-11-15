@@ -10,6 +10,7 @@ public static class InputDeliveryIntegration
         var f=new RollingStartIntegration.Fixture();f.F8();f.Probe();
         var router=f.Get<TollRouter>("router");
         typeof(TollRouter).GetProperty("StopBoundary")!.SetValue(router,f.Point+new System.Numerics.Vector3(0,0,260));
+        typeof(TollRouter).GetProperty("StopKey")!.SetValue(router,"fixture-plaza");
         var sync=typeof(TollPlugin).GetField("sync",BindingFlags.Instance|BindingFlags.NonPublic)!.GetValue(f.Plugin)!;
         using var stop=new CancellationTokenSource();
         int deliveries=0;

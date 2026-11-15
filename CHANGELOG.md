@@ -1,5 +1,12 @@
 # Änderungen
 
+## 0.3.17 – lokal geprüfter Entwurf, nicht installiert
+
+- Kleine Wunschtempo-Korrekturen können auf belegter freier Strecke rollen. Tatsächliche Pedalneutralität wird im nativen Tick geprüft; erkannte Fahrzeug-, Kurven-, Semaphoren- und Mautgrenzen bleiben vorrangig. Fehlende Daten und unsichere Routen erteilen keine Freigabe.
+- Separate lokale Ausgabekorrektur für zwei nachgewiesene native Fehler: ausgelassene Pedalveröffentlichung bei sehr langsamer Fahrt und stehengebliebene Achsen bei abgelaufenem Besitzer. Sitzungskennungen verhindern verspätete Befehle nach manueller Übernahme.
+- Weiche Mauthaltepunkte werden von der geschützten Grenze getrennt. Kurvenvorschau bleibt bei passenden Routenupdates verfügbar und verlangt tatsächlich abgedeckte Reichweite. Wunschtempo beachtet Begrenzungen und spätere manuelle Eingaben. Speichern erhält übrige Optionen.
+- 104 Integrationsprüfungen, 57 Logikprüfungen und 51 isolierte native Prüfungen bestehen. Sie ersetzen keine reale Gesamtprüfung. Vollständige französische Kindobjektgeometrie, ein gespeicherter Anschluss und Hintergrundpedale bleiben offen. [Nachweise und Review](REVIEW_0317.md).
+
 ## 0.3.14 – Vorabprüfung, einheitliche Vorschau und entkoppelte Statusgeometrie
 
 - Vorhandene Routensignale lösen eine begrenzte Modellvorbereitung aus, bevor SDK-Schranken eintreffen. Das wählt keine Spur und erteilt keine Öffnungsfreigabe. Fehler der optionalen Vorbereitung werden diagnostiziert, statt allein eine Fehlerbremsung auszulösen.
