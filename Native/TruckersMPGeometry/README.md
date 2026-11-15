@@ -1,8 +1,8 @@
 # Optional TruckersMP vehicle geometry observer
 
-Component version 0.3.16 fixes retention of the SDK entry host. The installed 0.3.15 initialized in a real game process, but emitted no valid body bounds while the user confirmed a server connection. **The corrected component was installed after confirmed game exit on 15 November; successful real-client vehicle measurement remains unverified pending restart.** This module only observes model bounds. It does not control pedals, keep the game focused, identify construction barriers, or authorize a closer stop at a closed gate.
+Component version 0.3.16 fixes retention of the SDK entry host. The installed 0.3.15 initialized in a real game process, but emitted no valid body bounds while the user confirmed a server connection. **After installation and user restart on 15 November, coherent live truck and trailer measurements are confirmed from the actual game process.** This module only observes model bounds. It does not control pedals, keep the game focused, identify construction barriers, or authorize a closer stop at a closed gate.
 
-The host descriptor passed to `truckersmp_init` is now copied into module-owned storage. Keeping the caller's pointer across callbacks was unsafe; the official C++ session wrapper also retains the context and API function values instead of the entry descriptor's address. A regression clears the fake entry host after initialization: the old implementation loses vehicle data, the corrected implementation keeps it. This is a reproduced defect and plausible cause of the live failure, not yet proof that every failed SDK getter on that client is fixed.
+The host descriptor passed to `truckersmp_init` is now copied into module-owned storage. Keeping the caller's pointer across callbacks was unsafe; the official C++ session wrapper also retains the context and API function values instead of the entry descriptor's address. A regression clears the fake entry host after initialization: the old implementation loses vehicle data, the corrected implementation keeps it. The regression and subsequent live restart confirm this correction for the observed failure: fresh flags 7, diagnostic code 0, and known/present truck and trailer data. At standstill the model reference position matches SCS telemetry within one centimetre and heading dot is above 0.9999. Moving samples are asynchronous and must not be interpreted as a measured bumper gap or proof of cargo coverage.
 
 ## Purpose and public API
 
@@ -33,7 +33,7 @@ Component 0.3.16 uses four previously reserved bytes at offset 180 for an option
 
 The consumer opens existing memory read-only and never creates it. It rejects changed, stale (>300 ms), future (>100 ms), malformed or unverified game-process frames. A changed PID/session is revalidated. Reader work runs on the diagnostic worker, away from driving callbacks. Raw truck/trailer bounds and pose are included in `status.vehicleShape`; front reach is only a diagnostic value when SDK origin and orientation agree. Rejection or absence of this optional observer cannot stop the driving assistant.
 
-## First real-client validation remains outstanding
+## Real-client validation and remaining checks
 
 The official getting-started guide requires TruckersMP client 0.7.4.0 or newer and loading game-side DLLs through the game plugins directory after the SDK disclaimer. Do not copy this DLL into ETS2LA's managed plugin directory. Future installation requires closed applications and a backup; no installation is performed by these scripts.
 
