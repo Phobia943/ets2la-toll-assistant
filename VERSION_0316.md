@@ -2,6 +2,12 @@
 
 Am 15. November 2026 mit Sicherung der bisherigen 0.3.14 lokal installiert; noch nicht gestartet oder im Spiel gefahren. Dateiversion 0.3.16.0 und SHA256 `CE3A742F2B49E2CB410967A8577DE3F681C789D3522DE4C866321C228069EBAC` sind bestätigt. Auch das rein lesende TruckersMP-Messmodul ist jetzt installiert, unverändert auf Komponentenstand 0.3.15 mit SHA256 `7D293BA480A11C0AA68EE1632F5B79357A02F5DAB0014C3BC195C7DD632EC6AD`. Es liefert weiterhin keine automatische Freigabe für engere Zahlhaltepositionen. Alle Ergänzungen der 0.3.15 sind enthalten. Keine Einstellungen geändert und keine Anwendung gestartet.
 
+## Erste Laufzeitprüfung und vorbereitete Messmodul-Korrektur
+
+Nach dem normalen Neustart am 15. November ist die geladene Mautassistent-Version 0.3.16 mit frischen SDK-Daten und eingeschalteter Kurvenvorschau bestätigt. Die Assistenz wurde dabei vom Prüfer weder gestartet noch umgeschaltet. Das installierte Messmodul 0.3.15 initialisiert ebenfalls: Es erzeugt frische Protokollrahmen aus dem tatsächlichen Spielprozess. Diese enthalten jedoch keine gültigen Körperdaten; der Nutzer bestätigt eine TruckersMP-Serververbindung. Ein funktionierender SDK-Handshake ist damit ein Teilnachweis, keine bestätigte Abmessungsmessung oder Fahrprüfung.
+
+Ein konkreter Lebensdauerfehler ist im isolierten Host reproduziert: Das Modul behielt die Adresse des nur bei der Initialisierung übergebenen Host-Deskriptors. Komponentenfassung 0.3.16 kopiert dessen Werte in eigenen Speicher. Der neue Test überschreibt den Aufrufspeicher vor dem nächsten Frame und liefert erst nach der Korrektur weiter gültige Fahrzeugdaten. Ob diese Korrektur den gesamten beobachteten Live-Ausfall behebt, muss nach einem späteren Spielneustart geprüft werden. Optionales Diagnosefeld und 22 isolierte Host-Prüfungen sind unter [Native/TruckersMPGeometry/README.md](Native/TruckersMPGeometry/README.md) beschrieben. Die korrigierte Komponente ist zunächst vorbereitet, nicht während der Fahrt ausgetauscht. Der verwaltete Assistent und seine Fahrregeln bleiben unverändert.
+
 ## Früher vor Kurven verlangsamen
 
 Die Erweiterung berechnet aus der bereits geprüften Route eine zusätzliche Geschwindigkeitsgrenze für kommende Kurven. Sie verwendet echte Streckenmeter und horizontal gemessene Krümmung, unabhängig vom nativen Punktabstand, dessen Radiusaufweitung oder einer dort eingestellten Mindestgeschwindigkeit. Die vorhandenen nativen ACC-Begrenzungen bleiben aktiv; die Erweiterung kann deren stärkere Bremsanforderung nicht aufheben.

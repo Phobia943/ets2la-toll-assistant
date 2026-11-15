@@ -8,6 +8,7 @@
 // Only public, read-only vehicle getters. No input API, hooks, game offsets,
 // network requests, player identities, or disk writes.
 static const TruckersMP_Host *host;
+static TruckersMP_Host owned_host;
 static const TruckersMP_Core *core;
 static const TruckersMP_Players *players;
 static const TruckersMP_PlayerHandle *player_api;
@@ -37,20 +38,25 @@ static bool body(GeometryBody *out,TruckersMP_Placement placement,TruckersMP_Bou
     float rot[4]={placement.rotation.x,placement.rotation.y,placement.rotation.z,placement.rotation.w};
     float low[3]={bounds.min.x,bounds.min.y,bounds.min.z};
     float high[3]={bounds.max.x,bounds.max.y,bounds.max.z};
+    // Raw values remain diagnostic-only when validation fails: validity flags
+    // stay clear, so the managed reader cannot use them as vehicle geometry.
+    memcpy(out->position,pos,sizeof(pos));memcpy(out->rotation_xyzw,rot,sizeof(rot));
+    memcpy(out->minimum,low,sizeof(low));memcpy(out->maximum,high,sizeof(high));
     double norm=0;
     for(int i=0;i<4;i++){if(!isfinite(rot[i]))return false;norm+=rot[i]*rot[i];}
     if(fabs(norm-1)>.01)return false;
     for(int i=0;i<3;i++)if(!isfinite(pos[i])||!isfinite(low[i])||!isfinite(high[i])||high[i]<=low[i]||high[i]-low[i]>50)return false;
-    memcpy(out->position,pos,sizeof(pos));memcpy(out->rotation_xyzw,rot,sizeof(rot));
-    memcpy(out->minimum,low,sizeof(low));memcpy(out->maximum,high,sizeof(high));return true;
+    return true;
 }
 static void sample(void) {
     GeometryFrame frame={0};
     TruckersMP_Player_Handle player={0};TruckersMP_Vehicle_Handle vehicle={0};
     TruckersMP_Placement placement={0};TruckersMP_Bounds bounds={0};
-    if(!players->GetLocalPlayer(host->m_ctx,&player)||!player_api->GetVehicle(host->m_ctx,player,&vehicle)||
-        !vehicles->GetPlacement(host->m_ctx,vehicle,&placement)||!vehicles->GetBoundingBox(host->m_ctx,vehicle,&bounds)||
-        !body(&frame.truck,placement,bounds)){publish(&frame);return;}
+    if(!players->GetLocalPlayer(host->m_ctx,&player)){frame.diagnostic_code=GEOMETRY_NO_LOCAL_PLAYER;publish(&frame);return;}
+    if(!player_api->GetVehicle(host->m_ctx,player,&vehicle)){frame.diagnostic_code=GEOMETRY_NO_VEHICLE;publish(&frame);return;}
+    if(!vehicles->GetPlacement(host->m_ctx,vehicle,&placement)){frame.diagnostic_code=GEOMETRY_NO_PLACEMENT;publish(&frame);return;}
+    if(!vehicles->GetBoundingBox(host->m_ctx,vehicle,&bounds)){frame.diagnostic_code=GEOMETRY_NO_BOUNDS;publish(&frame);return;}
+    if(!body(&frame.truck,placement,bounds)){frame.diagnostic_code=GEOMETRY_INVALID_BODY;publish(&frame);return;}
     frame.flags=GEOMETRY_TRUCK;
     TruckersMP_Float3 velocity={0};
     if(vehicles->GetLinearVelocity&&vehicles->GetLinearVelocity(host->m_ctx,vehicle,&velocity)&&
@@ -76,21 +82,24 @@ static void TMP_API on_frame(void *context,uint64_t event,void *payload,uint32_t
 static void cleanup(void) {
     if(listening&&core&&host)core->RemoveListener(host->m_ctx,TRUCKERSMP_EVT_RENDER_PRE_RENDER,on_frame,NULL);
     listening=false;
-    if(shared){GeometryFrame empty={0};publish(&empty);UnmapViewOfFile(shared);shared=NULL;}
+    if(shared){GeometryFrame empty={0};empty.diagnostic_code=GEOMETRY_SHUTDOWN;publish(&empty);UnmapViewOfFile(shared);shared=NULL;}
     if(mapping){CloseHandle(mapping);mapping=NULL;}
     if(writer_mutex){ReleaseMutex(writer_mutex);CloseHandle(writer_mutex);writer_mutex=NULL;}
-    host=NULL;core=NULL;players=NULL;player_api=NULL;vehicles=NULL;trailers=NULL;last_sample=0;
+    host=NULL;memset(&owned_host,0,sizeof(owned_host));core=NULL;players=NULL;player_api=NULL;vehicles=NULL;trailers=NULL;last_sample=0;
 }
 TMP_EXPORT bool TMP_API truckersmp_init(const TruckersMP_Host *h,TruckersMP_PluginDesc *desc) {
     if(host||!h||h->m_size<sizeof(*h)||!h->DeclareVersion||!h->GetApi||!desc)return false;
     if(h->DeclareVersion(h->m_ctx,TRUCKERSMP_SDK_VERSION)!=TruckersMP_Result_Ok)return false;
-    host=h;core=h->GetApi(h->m_ctx,TRUCKERSMP_API_CORE);players=h->GetApi(h->m_ctx,TRUCKERSMP_API_PLAYERS);
-    player_api=h->GetApi(h->m_ctx,TRUCKERSMP_API_PLAYER_HANDLE);vehicles=h->GetApi(h->m_ctx,TRUCKERSMP_API_VEHICLE);
-    trailers=h->GetApi(h->m_ctx,TRUCKERSMP_API_TRAILER);
+    // The entry descriptor itself may be temporary. Retain values, as the
+    // official C++ Session wrapper does, never a pointer to the caller's host.
+    owned_host=*h;host=&owned_host;
+    core=host->GetApi(host->m_ctx,TRUCKERSMP_API_CORE);players=host->GetApi(host->m_ctx,TRUCKERSMP_API_PLAYERS);
+    player_api=host->GetApi(host->m_ctx,TRUCKERSMP_API_PLAYER_HANDLE);vehicles=host->GetApi(host->m_ctx,TRUCKERSMP_API_VEHICLE);
+    trailers=host->GetApi(host->m_ctx,TRUCKERSMP_API_TRAILER);
     if(!core||!core->AddListener||!core->RemoveListener||!players||!players->GetLocalPlayer||!player_api||!player_api->GetVehicle||
         !vehicles||!vehicles->GetPlacement||!vehicles->GetBoundingBox){cleanup();return false;}
     SetLastError(ERROR_SUCCESS);
-    writer_mutex=CreateMutexW(NULL,TRUE,L"Local\\ETS2LA-MautGeometry-v1-writer");
+    writer_mutex=CreateMutexW(NULL,TRUE,GEOMETRY_WRITER_MUTEX);
     if(!writer_mutex){cleanup();return false;}
     if(GetLastError()==ERROR_ALREADY_EXISTS) {
         DWORD acquired=WaitForSingleObject(writer_mutex,0);
@@ -120,7 +129,7 @@ TMP_EXPORT bool TMP_API truckersmp_init(const TruckersMP_Host *h,TruckersMP_Plug
     listening=true;
     memset(desc,0,sizeof(*desc));desc->m_size=sizeof(*desc);
     strcpy(desc->m_name,"Mautassistent Vehicle Geometry");strcpy(desc->m_author,"Mautassistent");
-    strcpy(desc->m_version,"0.3.15");strcpy(desc->m_description,"Read-only local truck and trailer model bounds. No input control.");
+    strcpy(desc->m_version,"0.3.16");strcpy(desc->m_description,"Read-only local truck and trailer model bounds. No input control.");
     sample();return true;
 }
 TMP_EXPORT void TMP_API truckersmp_shutdown(void){cleanup();}

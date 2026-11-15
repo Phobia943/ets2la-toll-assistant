@@ -20,9 +20,14 @@ $env:ZIG_LOCAL_CACHE_DIR=Join-Path $out 'zig-local-cache'
 & $Zig cc -target x86_64-windows-gnu -std=c11 -O2 -shared '-Wall' '-Wextra' "-I$(Join-Path $SdkRoot 'include')" (Join-Path $PSScriptRoot 'Observer.c') -o (Join-Path $out 'MautGeometry.dll')
 if($LASTEXITCODE){throw 'Native observer build failed'}
 if($Test) {
-    & $Zig cc -target x86_64-windows-gnu -std=c11 -O2 '-Wall' '-Wextra' "-I$(Join-Path $SdkRoot 'include')" (Join-Path $PSScriptRoot 'FakeHostTest.c') -o (Join-Path $out 'GeometryHostTest.exe')
+    # A unique test-only map/mutex pair prevents fake SDK hosts from opening
+    # or modifying a live game's measurement channel, even when it is running.
+    $testDefine='-DMAUT_GEOMETRY_TEST_ID=run_'+[Guid]::NewGuid().ToString('N')
+    & $Zig cc -target x86_64-windows-gnu -std=c11 -O2 -shared '-Wall' '-Wextra' $testDefine "-I$(Join-Path $SdkRoot 'include')" (Join-Path $PSScriptRoot 'Observer.c') -o (Join-Path $out 'MautGeometry.Test.dll')
+    if($LASTEXITCODE){throw 'Native test-only observer build failed'}
+    & $Zig cc -target x86_64-windows-gnu -std=c11 -O2 '-Wall' '-Wextra' $testDefine "-I$(Join-Path $SdkRoot 'include')" (Join-Path $PSScriptRoot 'FakeHostTest.c') -o (Join-Path $out 'GeometryHostTest.exe')
     if($LASTEXITCODE){throw 'Native fake-host build failed'}
-    & (Join-Path $out 'GeometryHostTest.exe') (Join-Path $out 'MautGeometry.dll') (Join-Path $out 'native-fixture.bin')
+    & (Join-Path $out 'GeometryHostTest.exe') (Join-Path $out 'MautGeometry.Test.dll') (Join-Path $out 'native-fixture.bin')
     if($LASTEXITCODE){throw 'Native fake-host checks failed'}
 }
 Get-FileHash -LiteralPath (Join-Path $out 'MautGeometry.dll')|Select-Object Hash,Path

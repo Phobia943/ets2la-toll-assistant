@@ -1,6 +1,8 @@
 # Optional TruckersMP vehicle geometry observer
 
-Component version 0.3.15, locally installed alongside Mautassistent 0.3.16 on 15 November 2026. **Not yet validated against a running TruckersMP client.** This module only observes model bounds. It does not control pedals, keep the game focused, identify construction barriers, or authorize a closer stop at a closed gate.
+Component version 0.3.16 fixes retention of the SDK entry host. The installed 0.3.15 initialized in a real game process, but emitted no valid body bounds while the user confirmed a server connection. **The corrected component is prepared; successful real-client vehicle measurement remains unverified.** This module only observes model bounds. It does not control pedals, keep the game focused, identify construction barriers, or authorize a closer stop at a closed gate.
+
+The host descriptor passed to `truckersmp_init` is now copied into module-owned storage. Keeping the caller's pointer across callbacks was unsafe; the official C++ session wrapper also retains the context and API function values instead of the entry descriptor's address. A regression clears the fake entry host after initialization: the old implementation loses vehicle data, the corrected implementation keeps it. This is a reproduced defect and plausible cause of the live failure, not yet proof that every failed SDK getter on that client is fixed.
 
 ## Purpose and public API
 
@@ -21,11 +23,13 @@ $env:MAUT_GEOMETRY_FIXTURE=(Resolve-Path './Native/TruckersMPGeometry/bin/native
 dotnet run --project CoreTests -c Release
 ```
 
-Output: `bin/MautGeometry.dll`, plus the fake-host executable and a binary frame fixture when `-Test` is used. The native fake host checks loading, ABI, truck/trailer reads, unknown/absent trailer distinctions, invalid data, duplicate initialization, despawn, shutdown, reload, and missing APIs. The actual native frame is decoded by the managed tests. No game process is started, attached to, or controlled. CI repeats this path on Windows.
+Output: `bin/MautGeometry.dll`, plus `MautGeometry.Test.dll`, the fake-host executable and a binary frame fixture when `-Test` is used. Only the production DLL is an installable artifact. The test pair uses a unique test-only mapping and writer mutex for every build: it cannot open or replace the live game's production measurement channel. Initialization failure terminates the fake host immediately instead of dispatching a missing callback. The 22 native checks include host-descriptor reuse, individual missing SDK getters, loading, ABI, truck/trailer reads, unknown/absent trailer distinctions, invalid data, duplicate initialization, despawn, shutdown, reload, and missing APIs. The actual native frame is decoded by the managed tests. No game process is started, attached to, or controlled. CI repeats this path on Windows.
 
 ## Protocol
 
 One writer publishes the 256-byte layout in `Protocol.h` to `Local\ETS2LA-MautGeometry-v1`. The odd/even sequence is checked around the complete reader copy. A writer mutex excludes another producer; the frame carries process ID, unique session, UTC milliseconds, explicit truck/trailer validity, world placement, local bounds, and optional velocity. Shutdown publishes invalidity before unmapping. If a reader retains the mapping across game restarts, the next exclusive writer may reclaim only a known protocol frame that is invalidated or more than one second stale. Fresh foreign frames are not erased. Fake-host tests cover these cases.
+
+Component 0.3.16 uses four previously reserved bytes at offset 180 for an optional diagnostic code: 0 success, 1 local player unavailable, 2 vehicle unavailable, 3 placement unavailable, 4 bounds unavailable, 5 invalid body data, 6 shutdown. Frame version, size, offsets and validity rules are unchanged; existing readers ignore the optional field. Invalid body values may remain in the diagnostic payload, always with truck validity cleared. They are never returned as valid geometry. No player identity is collected.
 
 The consumer opens existing memory read-only and never creates it. It rejects changed, stale (>300 ms), future (>100 ms), malformed or unverified game-process frames. A changed PID/session is revalidated. Reader work runs on the diagnostic worker, away from driving callbacks. Raw truck/trailer bounds and pose are included in `status.vehicleShape`; front reach is only a diagnostic value when SDK origin and orientation agree. Rejection or absence of this optional observer cannot stop the driving assistant.
 
