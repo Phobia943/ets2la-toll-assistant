@@ -20,7 +20,7 @@ internal sealed class Replay
     object host=null!,state=null!,acc=null!;
     Type outputType=null!,stateType=null!,eventType=null!,definitionType=null!,variablesType=null!,propertiesType=null!;
     object bus=null!;
-    bool block;
+    bool block,blockEvaluation;
     readonly ManualResetEventSlim entered=new(),release=new();
     const B All=B.Public|B.NonPublic|B.Instance|B.Static;
     const string AccId="AdaptiveCruiseControl.Acceleration",LaneId="LaneAssist.SteeringCorrection";
@@ -92,8 +92,10 @@ internal sealed class Replay
             var type=accModule.GetType("AdaptiveCruiseControl.AdaptiveCruiseControlPlugin");
             var settings=accModule.GetType("AdaptiveCruiseControl.ACCSettings");BodyReturnStatic(settings,"get_Current","ReplayCurrent");ForbidConstructors(settings);
             var target=new FieldDefinition("ReplayTarget",Mono.Cecil.FieldAttributes.Public,accModule.TypeSystem.Single);type.Fields.Add(target);
+            var afterEvaluation=new FieldDefinition("ReplayAfterEvaluation",Mono.Cecil.FieldAttributes.Public|Mono.Cecil.FieldAttributes.Static,accModule.ImportReference(typeof(Action)));type.Fields.Add(afterEvaluation);
             var evaluate=Rewrite.Method(type,"EvaluateConstraints");evaluate.Body=new(evaluate);var il=evaluate.Body.GetILProcessor();
-            il.Emit(OpCodes.Ldarg_0);il.Emit(OpCodes.Ldfld,target);il.Emit(OpCodes.Ret);
+            il.Emit(OpCodes.Ldarg_0);il.Emit(OpCodes.Ldfld,target);
+            il.Emit(OpCodes.Ldsfld,afterEvaluation);il.Emit(OpCodes.Callvirt,accModule.ImportReference(typeof(Action).GetMethod("Invoke")!));il.Emit(OpCodes.Ret);
             accModule.Write(Path.Combine(sandbox,"AdaptiveCruiseControl.dll"));
         }
         using(var laneModule=ModuleDefinition.ReadModule(Path.Combine(prepared,"Plugins/tumppi066.laneassist/LaneAssist.dll"),parameters)) {
@@ -144,14 +146,19 @@ internal sealed class Replay
         outputType.GetField("ReplayWriteFloat")!.SetValue(null,(Action<MemoryMappedViewAccessor,int,float>)((map,offset,value)=>Write(map,offset,value)));
         outputType.GetField("ReplayWriteBool")!.SetValue(null,(Action<MemoryMappedViewAccessor,int,bool>)((map,offset,value)=>Write(map,offset,value?1:0)));
         outputType.GetField("ReplayWriteDouble")!.SetValue(null,(Action<MemoryMappedViewAccessor,int,double>)Write);
+        // Compile the transplanted output terminals before assigning short-lived
+        // native timestamps. First JIT latency must not become a test grace.
+        foreach(string name in new[]{"OnControlEvent","MautFrame","MautAccept","MautSnapshotDefinition"})
+            RuntimeHelpers.PrepareMethod(outputType.GetMethod(name,All)!.MethodHandle);
         void Assert(bool ok,string message){if(!ok)throw new Exception(message);checks++;Console.WriteLine("PASS "+message);}
         void Frame(bool modernOutput=false)=>outputType.GetMethod("MautFrame")!.Invoke(host,[modernOutput]);
         float Gas()=>(float)legacy.GetValueOrDefault(offsets["aforward"]);
         float Brake()=>(float)legacy.GetValueOrDefault(offsets["abackward"]);
         void Enable(bool value)=>stateType.GetProperty("EnableAssists")!.SetValue(state,value);
         long Epoch()=>(long)outputType.GetMethod("MautCaptureEpoch")!.Invoke(null,null)!;
-        object Send(string id,long epoch,float pedal=0,float? steering=null,float timeout=1) {
-            var definition=Activator.CreateInstance(definitionType)!;Set(definition,"Id",id);Set(definition,"Timeout",timeout);Set(definition,"MautEpoch",epoch);
+        object Send(string id,long epoch,float pedal=0,float? steering=null,float timeout=1,long? issuedAt=null) {
+            long origin=issuedAt??Stopwatch.GetTimestamp();
+            var definition=Activator.CreateInstance(definitionType)!;Set(definition,"Id",id);Set(definition,"Timeout",timeout);Set(definition,"MautEpoch",epoch);Set(definition,"MautIssuedAt",origin);
             var properties=Activator.CreateInstance(propertiesType)!;Set(properties,"Weight",1f);
             var variables=Activator.CreateInstance(variablesType)!;
             if(steering.HasValue)Set(variables,"steering",steering.Value);else Set(variables,pedal<0?"abackward":"aforward",pedal);
@@ -181,6 +188,15 @@ internal sealed class Replay
         Assert(Math.Abs(Gas()-.2)<.001,"Late old session cannot replace or remove a fresh new-session result");
         var reused=Send(AccId,Epoch(),.4f);Enable(false);Enable(true);Set(reused,"MautEpoch",Epoch());Frame();
         Assert(Gas()==0,"Mutating a reused result definition cannot relabel the queued old epoch");
+        Send(AccId,Epoch(),.2f);Send(AccId,Epoch(),1,issuedAt:Stopwatch.GetTimestamp()-Stopwatch.Frequency);Frame();
+        Assert(Math.Abs(Gas()-.2)<.001,"A same-session stale issue cannot replace a fresh channel at ingestion");
+        foreach(long invalid in new[]{0L,long.MinValue,long.MaxValue,Stopwatch.GetTimestamp()+Stopwatch.Frequency}) {
+            Send(AccId,Epoch(),1,issuedAt:invalid);Frame();
+            Assert(Math.Abs(Gas()-.2)<.001,"Missing, negative or future native issue timestamp is rejected without removing a fresh result: "+invalid);
+        }
+        var issuedReuse=Send(AccId,Epoch(),.6f);Set(issuedReuse,"MautIssuedAt",Stopwatch.GetTimestamp()+Stopwatch.Frequency);
+        Thread.Sleep(230);Set(issuedReuse,"MautIssuedAt",Stopwatch.GetTimestamp());Frame();
+        Assert(Gas()==0,"Reusing and refreshing a publisher definition cannot renew the stored origin timestamp; frame independently enforces 200 ms age");
         Enable(false);Send(AccId,next,1);Send(LaneId,next,steering:1);Frame();
         Assert(Gas()==0&&Brake()==0&&modern[0]==0&&modern[4]==0,"Disabled assists reject late native gas and steering");
         Send("local.mautassistent.fault-brake",0,-1);Frame();
@@ -196,6 +212,7 @@ internal sealed class Replay
         mode.SetValue(state,Enum.ToObject(mode.PropertyType,1));
         PrepareAcc(context,gameAsm,stateAsm,sandbox);
         Set(acc,"ReplayTarget",-.35f);outputType.GetMethod("OnControlEvent")!.Invoke(host,[NewNeutralEvent()]);
+        TickAcc();Frame(); // Warm the real Tick/PID/event path without relaxing production age checks.
         int before=published.Count;TickAcc();Frame();
         Assert((float)Get(acc,"currentSpeed")! == .3f&&published.Count==before+1&&Brake()>0&&Gas()==0,
             "Actual native 0.3 m/s tick publishes a brake for the former no-publish band");
@@ -206,6 +223,69 @@ internal sealed class Replay
         try {Enable(false);Enable(true);Send(AccId,Epoch(),.25f);}finally{release.Set();}
         if(!oldTick.Wait(TimeSpan.FromSeconds(3)))throw new Exception("Native publish did not finish");block=false;Frame();
         Assert(Math.Abs(Gas()-.25)<.001,"Actual delayed native tick cannot rearm after disable and re-enable");
+        // Delay INSIDE the real native Tick, after its constraint result is
+        // known but before it constructs/publishes the output definition. A
+        // stamp taken at publication would incorrectly pass this same-session case.
+        ((System.Collections.IDictionary)Get(host,"Channels")!).Clear();
+        long sameSession=Epoch();Set(acc,"ReplayTarget",1f);blockEvaluation=true;entered.Reset();release.Reset();
+        Task oldCalculation=Task.Run(TickAcc);
+        if(!entered.Wait(TimeSpan.FromSeconds(2)))throw new Exception("Native evaluation boundary was not intercepted");
+        Thread.Sleep(230);release.Set();
+        if(!oldCalculation.Wait(TimeSpan.FromSeconds(3)))throw new Exception("Native delayed calculation did not finish");
+        blockEvaluation=false;
+        var delayedDefinition=Get(published[^1],"ChannelDefinition")!;
+        long originalIssue=(long)Get(delayedDefinition,"MautIssuedAt")!;
+        Assert(Epoch()==sameSession&&Stopwatch.GetTimestamp()-originalIssue>Stopwatch.Frequency/5&&
+            !((System.Collections.IDictionary)Get(host,"Channels")!).Contains(AccId),
+            "Actual native Tick delayed after Evaluate and before publication is rejected at ingestion without a session change");
+        Frame();Assert(Gas()==0&&Brake()==0,"Stale native calculation cannot become newly stamped gas in the physical frame");
+        TickAcc();Frame();Assert(Gas()>0&&Brake()==0,"A genuinely new Tick in the same session can publish fresh output after the delayed result is rejected");
+        Enable(false);Frame();Assert(Gas()==0&&Brake()==0,"F9 still clears fresh native output immediately after age rejection");
+        Enable(true);
+        var holdMethod=outputType.GetMethod("MautSetPlannedHold")!;
+        void Hold(long epoch,string? key,float floor,long? issuedAt=null)=>holdMethod.Invoke(null,[epoch,key,floor,issuedAt??Stopwatch.GetTimestamp()]);
+        Hold(Epoch(),"delayed-calculation-hold",1,originalIssue);Frame();
+        Assert(Brake()==0,"The real delayed Tick origin cannot acquire a freshly stamped planned hold in the same session");
+        Hold(Epoch(),"origin-deadline",.35f,Stopwatch.GetTimestamp()-Stopwatch.Frequency*15/100);
+        Frame();Assert(Brake()>=.35f,"An accepted still-current hold can use its remaining origin lease");
+        Thread.Sleep(120);Frame();Assert(Brake()==0,"Hold expiry is bounded by its original issue time, not the later publish time");
+        Enable(false);Enable(true);
+        long orderedNow=Stopwatch.GetTimestamp(),olderOrigin=orderedNow-Stopwatch.Frequency*8/100,newerOrigin=orderedNow-Stopwatch.Frequency*2/100;
+        Send(AccId,Epoch(),-.7f,issuedAt:newerOrigin);Send(AccId,Epoch(),1,issuedAt:olderOrigin);Frame();
+        Assert(Brake()>.69&&Gas()==0,"Same-session older throttle cannot overwrite a newer native brake within their valid TTL");
+        ((System.Collections.IDictionary)Get(host,"Channels")!).Clear();Send(AccId,Epoch(),1,issuedAt:olderOrigin);Frame();
+        Assert(Brake()==0&&Gas()==0,"Native origin watermark survives removal of the channel and prevents resurrection");
+        Hold(Epoch(),"newer-hold",.65f,newerOrigin);Hold(Epoch(),null,0,olderOrigin);Frame();
+        Assert(Brake()>=.65f&&Gas()==0,"Same-session older clear cannot erase a newer planned hold");
+        Enable(false);Enable(true);Send(AccId,Epoch(),.2f,issuedAt:olderOrigin);Frame();
+        Assert(Gas()>.19&&Brake()==0,"Changing assist epoch resets native and hold origin watermarks");
+        Set(Get(Get(acc,"telemetryData")!,"truckFloat")!,"speed",.384f);Set(acc,"ReplayTarget",-.9f);
+        TickAcc();Frame();
+        Assert(Brake() is >.08f and <.10f&&Gas()==0,"Actual native tick reproduces the recorded approximately 8.9 percent brake at creeping speed");
+        Hold(Epoch(),"plaza-A",.35f);Frame();
+        Assert(Math.Abs(Brake()-.35f)<.001&&Gas()==0,"Planned hold applies a physical pedal floor after real native aggregation");
+        Send("test.strong-throttle",0,1);Frame();
+        Assert(Brake()>=.35f&&Gas()==0,"Another weighted throttle owner cannot dilute an authorized planned brake hold");
+        ((System.Collections.IDictionary)Get(host,"Channels")!).Remove("test.strong-throttle");
+        Send(AccId,Epoch(),-.9f);Frame();Assert(Brake()>.89f,"Hold never weakens a stronger native brake");
+        Hold(Epoch(),"plaza-A",1);Frame();Assert(Brake()==1&&Gas()==0,"Creep escalation reaches full physical brake");
+        Hold(Epoch(),"plaza-B",.65f);Send(AccId,Epoch(),.8f,timeout:.001f);Thread.Sleep(10);Frame();
+        Assert(Brake()>=.65f&&Gas()==0,"Expiring the last native axis cannot reset the authorized hold back to zero");
+        ((System.Collections.IDictionary)Get(host,"Channels")!).Clear();Frame();
+        Assert(Brake()>=.65f&&Gas()==0,"An empty channel collection still respects the separate authorized planned hold");
+        Frame(true);Assert(Math.Abs(modern[13]+.65)<.001&&modern[17]==1&&Gas()==0&&Brake()==0,"Modern output receives the same planned brake floor and clears legacy pedals");
+        long oldHoldEpoch=Epoch();Enable(false);Frame(true);
+        Assert(modern[13]==0&&modern[17]==0&&Gas()==0&&Brake()==0,"Manual cancellation immediately releases planned hold in both output paths");
+        Enable(true);Send(AccId,Epoch(),.2f);Hold(oldHoldEpoch,"late-old-plaza",1);Frame();
+        Assert(Gas()>.19&&Brake()==0,"A delayed hold result from the old session cannot stop a new session");
+        Hold(Epoch(),"new-plaza",.35f);Hold(oldHoldEpoch,null,0);Frame();
+        Assert(Brake()>=.35f&&Gas()==0,"A delayed old clear cannot release a newer planned hold");
+        Hold(Epoch(),null,0);Frame();Assert(Gas()>.19&&Brake()==0,"Resolution of the current stop releases only the current planned floor");
+        Hold(Epoch(),"expires",.35f);Thread.Sleep(280);Frame();
+        Assert(Brake()==0,"A hold without renewed data authority cannot silently extend its lease");
+        Hold(Epoch(),"mode-change",.35f);mode.SetValue(state,Enum.ToObject(mode.PropertyType,2));Frame();
+        Assert(Brake()==0&&Gas()==0,"Lane-only mode revokes all planned pedal rights");
+        mode.SetValue(state,Enum.ToObject(mode.PropertyType,1));
         var accType=acc.GetType();var settingsType=accType.Assembly.GetType("AdaptiveCruiseControl.ACCSettings",true)!;
         object trustedPath=new();
         outputType.GetField("MautNativePathPermission")!.SetValue(null,(Func<object,bool>)(p=>ReferenceEquals(p,trustedPath)));
@@ -307,13 +387,17 @@ internal sealed class Replay
         RuntimeHelpers.PrepareMethod(laneType.GetMethod("Tick")!.MethodHandle);
         Assert(true,"Rewritten native Lane.Tick is JIT-valid without executing its live algorithm");
         Set(lane,"telemetryData",Get(acc,"telemetryData"));
-        void Pause(long origin){Set(lane,"wasActive",true);Set(lane,"tickCounter",6);laneType.GetMethod("CheckPlaySound",All)!.Invoke(lane,[false,false,origin]);}
+        void Pause(long origin,long? issuedAt=null){Set(lane,"wasActive",true);Set(lane,"tickCounter",6);laneType.GetMethod("CheckPlaySound",All)!.Invoke(lane,[false,false,origin,issuedAt??Stopwatch.GetTimestamp()]);}
         long pauseEpoch=Epoch();Pause(pauseEpoch);Frame();
         Assert(legacy.GetValueOrDefault(offsets["pause"])==1,"Actual native lane-error helper emits an authorized pause pulse");
         Enable(false);Frame();Thread.Sleep(70);Frame();
         Assert(legacy.GetValueOrDefault(offsets["pause"])==0,"Pause pulse is cleared on takeover without a deferred toggle task");
         Enable(true);Pause(pauseEpoch);Frame();
         Assert(legacy.GetValueOrDefault(offsets["pause"])==0,"Actual old-origin lane-error helper cannot pause a new session");
+        Pause(Epoch(),Stopwatch.GetTimestamp()-Stopwatch.Frequency);Frame();
+        Assert(legacy.GetValueOrDefault(offsets["pause"])==0,"Actual same-session lane pause helper preserves its old tick origin and cannot freshly stamp a stale calculation");
+        if(Environment.GetEnvironmentVariable("MAUT_PLUGIN_CANDIDATE") is {Length:>0} pluginCandidate)
+            PluginHoldReplay.Run(pluginCandidate,root,prepared,sandbox,context,gameAsm,stateAsm,host,state,Frame,Gas,Brake,Enable,Epoch,Assert,()=> (float)modern.GetValueOrDefault(13));
         File.WriteAllText(Path.Combine(prepared,"native-replay.json"),System.Text.Json.JsonSerializer.Serialize(new{checks,passed=true,liveMapsOpened=false,outputThreadsStarted=false,fixtureDirectory=sandbox}));
         Console.WriteLine($"{checks} isolated native replay checks passed; no live maps or output threads.");
     }
@@ -331,6 +415,10 @@ internal sealed class Replay
         outputType.GetMethod("OnControlEvent")!.Invoke(host,[message]);
     }
     void TickAcc()=>acc.GetType().GetMethod("Tick")!.Invoke(acc,null);
+    void AfterEvaluation()
+    {
+        if(blockEvaluation){entered.Set();if(!release.Wait(TimeSpan.FromSeconds(3)))throw new TimeoutException("Native evaluation release timed out");}
+    }
     void PrepareAcc(AssemblyLoadContext context,Assembly game,Assembly stateAssembly,string sandbox)
     {
         var camera=game.GetType("ETS2LA.Game.SDK.CameraProvider",true)!;
@@ -339,6 +427,7 @@ internal sealed class Replay
         Set(cameraValue,"truckRotation",System.Numerics.Quaternion.Identity);camera.GetField("ReplayData")!.SetValue(null,cameraValue);
         var accAssembly=context.LoadFromAssemblyPath(Path.Combine(sandbox,"AdaptiveCruiseControl.dll"));
         var type=accAssembly.GetType("AdaptiveCruiseControl.AdaptiveCruiseControlPlugin",true)!;acc=RuntimeHelpers.GetUninitializedObject(type);
+        type.GetField("ReplayAfterEvaluation")!.SetValue(null,(Action)AfterEvaluation);
         var settingsType=accAssembly.GetType("AdaptiveCruiseControl.ACCSettings",true)!;
         var settings=RuntimeHelpers.GetUninitializedObject(settingsType);Set(settings,"IgnoredConstraints",new List<string>());settingsType.GetField("ReplayCurrent")!.SetValue(null,settings);
         var telemetryType=type.GetField("telemetryData",All)!.FieldType;var telemetry=Activator.CreateInstance(telemetryType)!;

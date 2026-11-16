@@ -3,8 +3,10 @@ using System.Text.Json;
 using Mono.Cecil;
 using MautHostCompatibility;
 
-if(args.Length==3&&args[0]=="verify") {CompatibilityManifest.Verify(Path.GetFullPath(args[1]),Path.GetFullPath(args[2]));Replay.Run(Path.GetFullPath(args[1]),Path.GetFullPath(args[2]));return;}
-if(args.Length!=3||args[0]!="prepare")throw new ArgumentException("Usage: HostCompatibility prepare|verify <ETS2LA root> <output directory>");
+if(args.Length is not (3 or 5)||args.Length==5&&args[3]!="--originals")throw new ArgumentException("Usage: HostCompatibility prepare|verify <ETS2LA root> <output directory> [--originals <verified original backup>]");
+string originals=Path.GetFullPath(args.Length==5?args[4]:args[1]);
+if(args[0]=="verify") {CompatibilityManifest.Verify(originals,Path.GetFullPath(args[2]));Replay.Run(Path.GetFullPath(args[1]),Path.GetFullPath(args[2]));return;}
+if(args[0]!="prepare")throw new ArgumentException("Unknown operation");
 string source=Path.GetFullPath(args[1]),destination=Path.GetFullPath(args[2]);
 if(Directory.Exists(destination)||destination.Equals(source,StringComparison.OrdinalIgnoreCase)||
     destination.StartsWith(source+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase))throw new IOException("Only a new separate preparation directory is allowed.");
@@ -15,12 +17,12 @@ var expected=new Dictionary<string,string>{
     ["Plugins/tumppi066.laneassist/LaneAssist.dll"]="8984FD27F3DFF0C11C9CE45A0326E573FDDD328E58B9C45C3EB2E72960466D2C"
 };
 static string Hash(string file)=>Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(file)));
-foreach(var file in expected)if(Hash(Path.Combine(source,file.Key))!=file.Value)throw new NotSupportedException("Unverified original build: "+file.Key);
+foreach(var file in expected)if(Hash(Path.Combine(originals,file.Key))!=file.Value)throw new NotSupportedException("Unverified original build: "+file.Key);
 using var resolver=new DefaultAssemblyResolver();resolver.AddSearchDirectory(source);
 resolver.AddSearchDirectory(Path.GetDirectoryName(typeof(object).Assembly.Location)!);
 foreach(var dir in Directory.GetDirectories(Path.Combine(source,"Plugins")))resolver.AddSearchDirectory(dir);
 using var seed=ModuleDefinition.ReadModule(System.Reflection.Assembly.GetExecutingAssembly().Location,new ReaderParameters{AssemblyResolver=resolver});
-var modules=expected.ToDictionary(p=>p.Key,p=>ModuleDefinition.ReadModule(Path.Combine(source,p.Key),new ReaderParameters{AssemblyResolver=resolver}));
+var modules=expected.ToDictionary(p=>p.Key,p=>ModuleDefinition.ReadModule(Path.Combine(originals,p.Key),new ReaderParameters{AssemblyResolver=resolver}));
 try {
     var output=Rewrite.Output(modules["ETS2LA.Game.dll"],seed.GetType("MautHostCompatibility.OutputTemplate"));
     Rewrite.State(modules["ETS2LA.State.dll"],output);

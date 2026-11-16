@@ -124,12 +124,7 @@ public static class RouteMatcher
         // one-metre boundary tolerance. Sample each item directly instead.
         for(int itemIndex=0;itemIndex<path.PlannedPath.Count;itemIndex++) {
             var item=path.PlannedPath[itemIndex];
-            bool resolved=item.prefabPath==null||item.prefabPath.Prefab?.Prefab!=null&&item.prefabPath.Prefab.Descriptor!=null;
-            identityKnown&=resolved;
-            string key=$"{item.item.GetType().FullName}:{item.startNode.Uid}:{item.endNode.Uid}:{item.direction}:"+
-                $"{item.laneIndex}:{item.targetLaneIndex}:{item.allowedToLaneChange}:"+
-                (item.prefabPath==null?"":!resolved?Guid.NewGuid().ToString():
-                    $"{item.prefabPath.Prefab!.Prefab.Uid}:"+string.Join(',',item.prefabPath.Curves.Select(c=>item.prefabPath.Prefab!.Descriptor!.NavCurves.IndexOf(c))));
+            bool resolved=TryItemIdentity(item,out string key);
             int count=Math.Clamp((int)Math.Ceiling(item.GetLength()),2,6000);
             for(int i=0;i<=count;i++) {
                 float t=Math.Clamp((float)i/count,.00001f,.99999f);
@@ -142,6 +137,10 @@ public static class RouteMatcher
                     return Gap(FormattableString.Invariant(
                         $"Nicht verbundene Route: Übergang {itemIndex-1}->{itemIndex}, {gap:F2} m; {previous.item.GetType().Name}/{previous.direction}/Spur {previous.laneIndex} -> {item.item.GetType().Name}/{item.direction}/Spur {item.laneIndex}"));
                 }
+                // Only items actually admitted into this connected prefix can
+                // affect its identity. A rejected future item is not evidence
+                // about the already sampled route behind the gap.
+                identityKnown&=resolved;
                 if(i==0&&points.Count>0)connectorEnds.Add(points.Count);
                 if(points.Count>0)identities.Add(i==0?$"seam:{previousKey}->{key}":key);
                 points.Add(point.Value.Position);
@@ -149,5 +148,17 @@ public static class RouteMatcher
             previousKey=key;
         }
         return new(points,connectorEnds,identities) {IdentityKnown=identityKnown};
+    }
+    internal static string ItemIdentity(PlannedItem item) {TryItemIdentity(item,out string identity);return identity;}
+    internal static bool TryItemIdentity(PlannedItem item,out string identity)
+    {
+        string prefix=$"{item.item.GetType().FullName}:{item.startNode.Uid}:{item.endNode.Uid}:{item.direction}:"+
+            $"{item.laneIndex}:{item.targetLaneIndex}:{item.allowedToLaneChange}:";
+        if(item.prefabPath==null){identity=prefix;return true;}
+        var original=PrefabRefinement.OriginalFor(item.prefabPath);
+        var descriptor=original.Prefab?.Descriptor;
+        var ids=descriptor==null?[]:original.Curves.Select(c=>descriptor.NavCurves.IndexOf(c)).ToArray();
+        if(original.Prefab?.Prefab==null||ids.Length==0||ids.Any(i=>i<0)) {identity=prefix+"unknown:"+Guid.NewGuid();return false;}
+        identity=prefix+$"{original.Prefab.Prefab.Uid}:{original.CurveDirection}:"+string.Join(',',ids);return true;
     }
 }

@@ -47,3 +47,13 @@ jobs:
         run: |
           $env:MAUT_GEOMETRY_FIXTURE=(Resolve-Path './Native/TruckersMPGeometry/bin/native-fixture.bin').Path
           dotnet run --project CoreTests -c Release
+      - name: Check parked-scene collector and producer contracts without a game
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $archive=Join-Path $env:RUNNER_TEMP 'maut-scene-sdk.zip'
+          Invoke-WebRequest 'https://github.com/ETS2LA/plugin/archive/31f1cf1406d03f0d647a10c72887eaab5c2a748e.zip' -OutFile $archive
+          if((Get-FileHash -LiteralPath $archive).Hash -ne 'D3B13C1904BEF44BAFE8009DB500579A5B473E63F8D99B1143D4F829143E2716'){throw 'Scene SDK archive hash mismatch'}
+          $sourceRoot=Join-Path $env:RUNNER_TEMP 'maut-scene-sdk'
+          Expand-Archive -LiteralPath $archive -DestinationPath $sourceRoot
+          ./Native/ParkedScene/Test-SceneSdk.ps1 -SdkSource (Join-Path $sourceRoot 'plugin-31f1cf1406d03f0d647a10c72887eaab5c2a748e') -Zig "$env:RUNNER_TEMP/zig-x86_64-windows-0.15.2/zig.exe" -TestDirectory (Join-Path $env:RUNNER_TEMP 'maut-scene-tests')

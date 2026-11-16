@@ -32,17 +32,23 @@ public static class ManualTriggerIntegration
         using var entered=new ManualResetEventSlim();using var release=new ManualResetEventSlim();
         // A stable source identity is needed by the real cache, as in the host.
         var files=new ModelClearanceIntegration.StubFiles();
+        TollModelEvidence.ModelInspection? detachedResult=null;
         var evidence=new TollModelEvidence(()=>files,null,request=>{
             entered.Set();if(!release.Wait(TimeSpan.FromSeconds(4)))throw new TimeoutException();
-            return TollModelEvidence.InspectModel(request.Descriptor,model,"default",[],bytes,tollUnits:units);
+            var inspected=TollModelEvidence.InspectModel(request.Descriptor,model,"default",[],bytes,tollUnits:units);
+            Interlocked.CompareExchange(ref detachedResult,inspected,null);return inspected;
         });
         try {
             assert(evidence.ReadManualStop(prefab,1)==null&&entered.Wait(TimeSpan.FromSeconds(2)),"The actual model worker must be held before inspection");
             descriptor.Semaphores[0].Position=new(2,0,300);
             release.Set();
-            assert(SpinWait.SpinUntil(()=>evidence.ReadManualStop(prefab,1)!=null,TimeSpan.FromSeconds(2)),
-                "The asynchronous descriptor snapshot must retain its original signal geometry");
-            assert(evidence.ReadManualStop(prefab,1)==new ManualStopZone(11,19),"Later map mutation cannot move the cached payment interval");
+            assert(SpinWait.SpinUntil(()=>Volatile.Read(ref detachedResult)!=null,TimeSpan.FromSeconds(2))&&
+                detachedResult!.ManualStops.GetValueOrDefault(1)==new ManualStopZone(11,19),
+                "The detached worker retains the original signal geometry even after the live descriptor changes");
+            assert(evidence.ReadManualStop(prefab,1)==null,"A mutated live descriptor cannot reuse the old payment-zone certificate");
+            descriptor.Semaphores[0].Position=new(2,0,30);
+            assert(SpinWait.SpinUntil(()=>evidence.ReadManualStop(prefab,1)==new ManualStopZone(11,19),TimeSpan.FromSeconds(2)),
+                "Exactly restored geometry can reuse its original immutable snapshot certificate");
         } finally {release.Set();}
     }
     public static void Run(Action<bool,string> assert)

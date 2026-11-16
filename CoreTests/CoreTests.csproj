@@ -6,11 +6,25 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../Tools/Research/PmcEnvelope.cs" Link="Research/PmcEnvelope.cs" />
     <Compile Include="../Core/*.cs" Link="Core/%(Filename)%(Extension)" />
     <Compile Include="../Tests/Program.cs" Link="Program.cs" />
     <Compile Include="../Tests/GeometryBrakeTests.cs" Link="GeometryBrakeTests.cs" />
     <Compile Include="../Tests/CurveSpeedTests.cs" Link="CurveSpeedTests.cs" />
     <Compile Include="../Tests/ApproachStopTests.cs" Link="ApproachStopTests.cs" />
+    <Compile Include="../Tests/PlannedHoldTests.cs" Link="PlannedHoldTests.cs" />
+    <Compile Include="../Tests/PmcEnvelopeTests.cs" Link="PmcEnvelopeTests.cs" />
+    <Compile Include="../Tests/CubicSeparationTests.cs" Link="CubicSeparationTests.cs" />
+    <Compile Include="../Tests/SceneSnapshotAdversarialTests.cs" Link="SceneSnapshotAdversarialTests.cs" />
+    <Compile Include="../Tests/SceneEmergencyTests.cs" Link="SceneEmergencyTests.cs" />
+    <Compile Include="../Tests/MeasuredTruckCorridorTests.cs" Link="MeasuredTruckCorridorTests.cs" />
+    <Compile Include="../Tests/TollBarrierBindingTests.cs" Link="TollBarrierBindingTests.cs" />
+    <Compile Include="../Tests/StationaryGroundAdversarialTests.cs" Link="StationaryGroundAdversarialTests.cs" />
+    <Compile Include="../Tests/WheelAxleTests.cs" Link="WheelAxleTests.cs" />
+    <Compile Include="../Tests/ArticulatedRigPredictionTests.cs" Link="ArticulatedRigPredictionTests.cs" />
+    <Compile Include="../Tests/SceneMotionPredictionTests.cs" Link="SceneMotionPredictionTests.cs" />
+    <Compile Include="../Tests/RigModelMonitorTests.cs" Link="RigModelMonitorTests.cs" />
+    <Compile Include="../Tests/RuntimeMotionAdversarialTests.cs" Link="RuntimeMotionAdversarialTests.cs" />
     <Compile Include="../Tests/CruisePolicyTests.cs" Link="CruisePolicyTests.cs" />
   </ItemGroup>
 </Project>

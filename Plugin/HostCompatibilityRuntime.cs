@@ -46,7 +46,7 @@ public sealed partial class TollPlugin
             }
             return hostCheckIssue=null;
         } catch(Exception ex) {
-            return hostCheckIssue="Ausgabekorrektur 0.3.17 ist nicht vollständig geladen. ETS2LA geschlossen aktualisieren und neu starten. "+ex.Message;
+            return hostCheckIssue="Ausgabekorrektur 0.3.18 ist nicht vollständig geladen. ETS2LA geschlossen aktualisieren und neu starten. "+ex.Message;
         }
     }
 }

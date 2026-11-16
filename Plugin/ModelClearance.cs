@@ -14,24 +14,33 @@ public static class ModelClearance
     public const float Width = 3;
     readonly record struct Face(Vector3 A,Vector3 B,Vector3 C,Vector3 Min,Vector3 Max);
 
-    public static bool[] BlockedCurves(PrefabDescriptor descriptor,IEnumerable<Part> parts,
-        float height=Height,float width=Width)
+    public static RigStaticGeometry CaptureGeometry(IEnumerable<Part> parts,IEnumerable<(Part Part,Matrix4x4 Transform)>? children=null)
     {
-        if(!float.IsFinite(height)||!float.IsFinite(width)||height<=.3f||width<=0)
-            throw new InvalidDataException("Ungültiger Maut-Prüfkorridor.");
-        var faces=new List<Face>();
-        foreach(var piece in parts.SelectMany(p=>p.Pieces)) {
+        var triangles=new List<StaticTriangle>();
+        foreach(var instance in parts.Select(p=>(Part:p,Transform:Matrix4x4.Identity)).Concat(children??[]))
+        foreach(var piece in instance.Part.Pieces) {
             if(piece.UseBoneIndexes||piece.UseBoneWeights)
                 throw new InvalidDataException("Animierte Mautgeometrie ist nicht statisch freigebbar.");
             foreach(var triangle in piece.Triangles) {
                 if(triangle.A>=piece.Vertices.Count||triangle.B>=piece.Vertices.Count||triangle.C>=piece.Vertices.Count)
                     throw new InvalidDataException("Ungültige Maut-Modellindizes.");
-                var a=piece.Vertices[triangle.A].Position;var b=piece.Vertices[triangle.B].Position;var c=piece.Vertices[triangle.C].Position;
+                var a=Vector3.Transform(piece.Vertices[triangle.A].Position,instance.Transform);
+                var b=Vector3.Transform(piece.Vertices[triangle.B].Position,instance.Transform);
+                var c=Vector3.Transform(piece.Vertices[triangle.C].Position,instance.Transform);
                 if(!Finite(a)||!Finite(b)||!Finite(c))throw new InvalidDataException("Ungültige Maut-Modellkoordinaten.");
-                faces.Add(new(a,b,c,Vector3.Min(a,Vector3.Min(b,c)),Vector3.Max(a,Vector3.Max(b,c))));
+                triangles.Add(new(a,b,c));
+                if(triangles.Count>500000)throw new InvalidDataException("Maut-Geometrie überschreitet die Prüfgrenze.");
             }
         }
-        if(faces.Count==0)throw new InvalidDataException("Keine auswertbare Maut-Modellgeometrie.");
+        return new(triangles);
+    }
+    public static bool[] BlockedCurves(PrefabDescriptor descriptor,IEnumerable<Part> parts,
+        float height=Height,float width=Width,IEnumerable<(Part Part,Matrix4x4 Transform)>? children=null,RigStaticGeometry? prepared=null)
+    {
+        if(!float.IsFinite(height)||!float.IsFinite(width)||height<=.3f||width<=0)
+            throw new InvalidDataException("Ungültiger Maut-Prüfkorridor.");
+        var faces=(prepared??CaptureGeometry(parts,children)).Triangles.Select(t=>new Face(t.A,t.B,t.C,
+            Vector3.Min(t.A,Vector3.Min(t.B,t.C)),Vector3.Max(t.A,Vector3.Max(t.B,t.C)))).ToArray();
         var blocked=new bool[descriptor.NavCurves.Count];
         for(int index=0;index<blocked.Length;index++) {
             var curve=descriptor.NavCurves[index];

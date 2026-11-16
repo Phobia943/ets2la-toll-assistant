@@ -16,17 +16,19 @@ static const TruckersMP_Vehicle *vehicles;
 static const TruckersMP_Trailer *trailers;
 static HANDLE mapping,writer_mutex;
 static GeometryFrame *shared;
-static uint64_t session, last_sample;
+static uint64_t session, last_sample, sample_frequency;
 static bool listening;
+#define GEOMETRY_SAMPLE_PERIOD_MS 16ULL
 
 static uint64_t utc_ms(void) {
-    FILETIME ft; GetSystemTimeAsFileTime(&ft);
+    FILETIME ft; GetSystemTimePreciseAsFileTime(&ft);
     ULARGE_INTEGER value; value.LowPart=ft.dwLowDateTime;value.HighPart=ft.dwHighDateTime;
     return (value.QuadPart-116444736000000000ULL)/10000ULL;
 }
 static void publish(GeometryFrame *frame) {
     if(!shared)return;
-    frame->utc_ms=utc_ms();frame->process_id=GetCurrentProcessId();frame->session=session;
+    if(!frame->utc_ms)frame->utc_ms=utc_ms();
+    frame->process_id=GetCurrentProcessId();frame->session=session;
     InterlockedIncrement((volatile LONG*)&shared->sequence);
     MemoryBarrier();
     memcpy((char*)shared+16,(char*)frame+16,sizeof(*frame)-16);
@@ -50,6 +52,7 @@ static bool body(GeometryBody *out,TruckersMP_Placement placement,TruckersMP_Bou
 }
 static void sample(void) {
     GeometryFrame frame={0};
+    frame.utc_ms=utc_ms(); // Capture origin, never restamped after slow getters.
     TruckersMP_Player_Handle player={0};TruckersMP_Vehicle_Handle vehicle={0};
     TruckersMP_Placement placement={0};TruckersMP_Bounds bounds={0};
     if(!players->GetLocalPlayer(host->m_ctx,&player)){frame.diagnostic_code=GEOMETRY_NO_LOCAL_PLAYER;publish(&frame);return;}
@@ -76,7 +79,14 @@ static void sample(void) {
 }
 static void TMP_API on_frame(void *context,uint64_t event,void *payload,uint32_t payload_size) {
     (void)context;(void)event;(void)payload;(void)payload_size;
-    uint64_t now=GetTickCount64();if(last_sample&&now-last_sample<100)return;
+    LARGE_INTEGER counter;if(!QueryPerformanceCounter(&counter)||!sample_frequency)return;
+    uint64_t now=(uint64_t)counter.QuadPart,frequency=sample_frequency;
+#if defined(MAUT_GEOMETRY_TEST_ID) && defined(MAUT_GEOMETRY_TEST_CLOCK)
+    // Fake-host-only clock injection uses the existing callback, never a new
+    // production export or control API. Test payload ticks are microseconds.
+    if(payload&&payload_size==sizeof(now)){memcpy(&now,payload,sizeof(now));frequency=1000000;}
+#endif
+    if(last_sample&&now>=last_sample&&((double)(now-last_sample)*1000/frequency)<GEOMETRY_SAMPLE_PERIOD_MS)return;
     last_sample=now;sample();
 }
 static void cleanup(void) {
@@ -85,7 +95,7 @@ static void cleanup(void) {
     if(shared){GeometryFrame empty={0};empty.diagnostic_code=GEOMETRY_SHUTDOWN;publish(&empty);UnmapViewOfFile(shared);shared=NULL;}
     if(mapping){CloseHandle(mapping);mapping=NULL;}
     if(writer_mutex){ReleaseMutex(writer_mutex);CloseHandle(writer_mutex);writer_mutex=NULL;}
-    host=NULL;memset(&owned_host,0,sizeof(owned_host));core=NULL;players=NULL;player_api=NULL;vehicles=NULL;trailers=NULL;last_sample=0;
+    host=NULL;memset(&owned_host,0,sizeof(owned_host));core=NULL;players=NULL;player_api=NULL;vehicles=NULL;trailers=NULL;last_sample=0;sample_frequency=0;
 }
 TMP_EXPORT bool TMP_API truckersmp_init(const TruckersMP_Host *h,TruckersMP_PluginDesc *desc) {
     if(host||!h||h->m_size<sizeof(*h)||!h->DeclareVersion||!h->GetApi||!desc)return false;
@@ -98,6 +108,9 @@ TMP_EXPORT bool TMP_API truckersmp_init(const TruckersMP_Host *h,TruckersMP_Plug
     trailers=host->GetApi(host->m_ctx,TRUCKERSMP_API_TRAILER);
     if(!core||!core->AddListener||!core->RemoveListener||!players||!players->GetLocalPlayer||!player_api||!player_api->GetVehicle||
         !vehicles||!vehicles->GetPlacement||!vehicles->GetBoundingBox){cleanup();return false;}
+    LARGE_INTEGER frequency;
+    if(!QueryPerformanceFrequency(&frequency)||frequency.QuadPart<=0){cleanup();return false;}
+    sample_frequency=(uint64_t)frequency.QuadPart;
     SetLastError(ERROR_SUCCESS);
     writer_mutex=CreateMutexW(NULL,TRUE,GEOMETRY_WRITER_MUTEX);
     if(!writer_mutex){cleanup();return false;}
@@ -122,14 +135,14 @@ TMP_EXPORT bool TMP_API truckersmp_init(const TruckersMP_Host *h,TruckersMP_Plug
             UnmapViewOfFile(shared);shared=NULL;cleanup();return false;
         }
     }
-    LARGE_INTEGER counter;QueryPerformanceCounter(&counter);session=(uint64_t)counter.QuadPart;
+    LARGE_INTEGER counter;if(!QueryPerformanceCounter(&counter)){cleanup();return false;}session=(uint64_t)counter.QuadPart;
     if(!session)session=1;
     memset(shared,0,sizeof(*shared));shared->magic=GEOMETRY_MAGIC;shared->version=GEOMETRY_VERSION;shared->size=sizeof(*shared);
     if(core->AddListener(host->m_ctx,TRUCKERSMP_EVT_RENDER_PRE_RENDER,on_frame,NULL)!=TruckersMP_Result_Ok){cleanup();return false;}
     listening=true;
     memset(desc,0,sizeof(*desc));desc->m_size=sizeof(*desc);
     strcpy(desc->m_name,"Mautassistent Vehicle Geometry");strcpy(desc->m_author,"Mautassistent");
-    strcpy(desc->m_version,"0.3.16");strcpy(desc->m_description,"Read-only local truck and trailer model bounds. No input control.");
+    strcpy(desc->m_version,"0.3.18");strcpy(desc->m_description,"Read-only local truck and trailer model bounds. No input control.");
     sample();return true;
 }
 TMP_EXPORT void TMP_API truckersmp_shutdown(void){cleanup();}

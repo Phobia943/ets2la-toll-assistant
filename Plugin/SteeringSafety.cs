@@ -21,11 +21,32 @@ public sealed partial class TollPlugin
 
     void OnControlOutput(ControlEvent output)
     {
+        double observedAt=clock.Elapsed.TotalSeconds;
+        if(requireHostCompatibility&&output.ChannelDefinition?.Id is "LaneAssist.SteeringCorrection" or "AdaptiveCruiseControl.Acceleration") {
+            var definition=output.ChannelDefinition;
+            if(definition.GetType().GetField("MautIssuedAt")?.GetValue(definition) is not long issued||
+                NativeCommandTime.AgeSeconds(issued,System.Diagnostics.Stopwatch.GetTimestamp(),System.Diagnostics.Stopwatch.Frequency) is not double age||
+                definition.GetType().GetField("MautEpoch")?.GetValue(definition) is not long epoch||
+                captureOutputEpoch?.Invoke(null,null) is not long currentEpoch||epoch!=currentEpoch)return;
+            observedAt-=age;
+        }
         if(output.ChannelDefinition?.Id=="LaneAssist.SteeringCorrection" &&
             output.Variables?.steering is float command && float.IsFinite(command) && Math.Abs(command)<=1 && State.EnableAssists)
-            Interlocked.Exchange(ref lastSteeringCommand,new(clock.Elapsed.TotalSeconds,command));
+            StoreSteering(new(observedAt,command));
         if(output.ChannelDefinition?.Id=="AdaptiveCruiseControl.Acceleration")
-            Interlocked.Exchange(ref lastAccCommand,new(clock.Elapsed.TotalSeconds,output.Variables?.aforward,output.Variables?.abackward));
+            StorePedals(new(observedAt,output.Variables?.aforward,output.Variables?.abackward));
+    }
+    void StoreSteering(SteeringCommand value)
+    {
+        SteeringCommand? previous;
+        do {previous=Volatile.Read(ref lastSteeringCommand);if(previous!=null&&previous.At>value.At)return;}
+        while(!ReferenceEquals(Interlocked.CompareExchange(ref lastSteeringCommand,value,previous),previous));
+    }
+    void StorePedals(PedalCommand value)
+    {
+        PedalCommand? previous;
+        do {previous=Volatile.Read(ref lastAccCommand);if(previous!=null&&previous.At>value.At)return;}
+        while(!ReferenceEquals(Interlocked.CompareExchange(ref lastAccCommand,value,previous),previous));
     }
 
     // This lock never nests the route lock. The timer can disable and brake

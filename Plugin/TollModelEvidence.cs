@@ -1,7 +1,10 @@
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Text;
+using System.Security.Cryptography;
 using System.Threading;
+using System.Globalization;
+using System.Runtime.CompilerServices;
 using ETS2LA.Game.Data;
 using ETS2LA.Game.Utils;
 using TruckLib;
@@ -16,28 +19,37 @@ public sealed class TollModelEvidence
     readonly Func<IFileSystem?> readFiles;
     readonly Func<bool>? readSpecialJob;
     readonly Func<ModelRequest,ModelInspection>? inspect;
+    readonly Func<(float Height,float Width)>? readProfile;
     readonly object sync=new();
     IFileSystem? files;
     string[]? archives;
     readonly Dictionary<ModelKey,Entry> cache=[];
     readonly Queue<Job> pending=[];
     bool worker;
-    sealed record ModelKey(string Model,string Variant,string Parts,bool SpecialJob,PrefabDescriptor Descriptor);
+    sealed record ModelKey(string Model,string Variant,string Parts,bool SpecialJob,PrefabDescriptor Descriptor,float Height,float Width,string GeometryStamp);
     sealed class Entry {public ModelInspection? Result;}
     sealed record Job(IFileSystem Source,ModelRequest Request,Entry Entry);
-    internal sealed record ModelRequest(string Model,string Variant,string[] Parts,bool SpecialJob,PrefabDescriptor Descriptor,string[] Archives);
+    internal sealed record ModelRequest(string Model,string Variant,string[] Parts,bool SpecialJob,PrefabDescriptor Descriptor,string[] Archives,float Height=6,float Width=3);
     public sealed record ModelInspection(IReadOnlyDictionary<int,TollPayment> Payments,bool[] BlockedCurves)
     { public IReadOnlyDictionary<int,ManualStopZone> ManualStops {get;init;}=new Dictionary<int,ManualStopZone>();
-      public string? Issue {get;init;} }
-    public sealed record ModelDiagnostic(bool Completed,string? Issue,int PaymentCount,int BlockedCount);
+      public string? Issue {get;init;}
+      public bool HasDynamicParked {get;init;}
+      public RigStaticGeometry? StaticGeometry {get;init;}
+      public IReadOnlyList<ObstacleSphere> BoundedMovers {get;init;}=Array.Empty<ObstacleSphere>(); }
+    public sealed record ModelDiagnostic(bool Completed,string? Issue,int PaymentCount,int BlockedCount)
+    { public bool HasDynamicParked {get;init;} }
     static readonly IReadOnlyDictionary<int,TollPayment> Unknown = new Dictionary<int,TollPayment>();
     static readonly ModelInspection Rejected=new(Unknown,[]);
     static ModelInspection Reject(string issue)=>new(Unknown,[]){Issue=issue};
+    static readonly Lazy<bool> cubicVerified=new(()=> {
+        try {var assembly=typeof(HermiteSpline).Assembly;return assembly.ManifestModule.ModuleVersionId==new Guid("28ccd48e-1f6d-43d0-9e61-acba84ed7403")&&
+            Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(assembly.Location)))=="728BB116B6161498A1C4D1F6095BC5CA3B0CC680091BA83DE06CDB33769E3697";}catch{return false;}
+    });
 
-    public TollModelEvidence(Func<IFileSystem?> readFiles,Func<bool>? readSpecialJob=null)
-        :this(readFiles,readSpecialJob,null) { }
-    internal TollModelEvidence(Func<IFileSystem?> readFiles,Func<bool>? readSpecialJob,Func<ModelRequest,ModelInspection>? inspect)
-    {this.readFiles=readFiles;this.readSpecialJob=readSpecialJob;this.inspect=inspect;}
+    public TollModelEvidence(Func<IFileSystem?> readFiles,Func<bool>? readSpecialJob=null,Func<(float Height,float Width)>? readProfile=null)
+        :this(readFiles,readSpecialJob,null,readProfile) { }
+    internal TollModelEvidence(Func<IFileSystem?> readFiles,Func<bool>? readSpecialJob,Func<ModelRequest,ModelInspection>? inspect,Func<(float Height,float Width)>? readProfile=null)
+    {this.readFiles=readFiles;this.readSpecialJob=readSpecialJob;this.inspect=inspect;this.readProfile=readProfile;}
 
     public IReadOnlyDictionary<int,TollPayment> Read(ParsedPrefab prefab)
     {
@@ -48,10 +60,32 @@ public sealed class TollModelEvidence
     {
         if(prefab.Descriptor?.NavCurves.Any(c=>c.SemaphoreId>=0)==true)_=GetEntry(prefab);
     }
+    internal ModelInspection? ReadInspection(ParsedPrefab prefab)
+    {
+        var entry=GetEntry(prefab);return entry==null?null:Volatile.Read(ref entry.Result);
+    }
     public ModelDiagnostic Diagnose(ParsedPrefab prefab)
     {
         var entry=GetEntry(prefab);var result=entry==null?null:Volatile.Read(ref entry.Result);
-        return new(result!=null,result?.Issue,result?.Payments.Count??0,result?.BlockedCurves.Count(b=>b)??0);
+        return new(result!=null,result?.Issue,result?.Payments.Count??0,result?.BlockedCurves.Count(b=>b)??0)
+            {HasDynamicParked=result?.HasDynamicParked??false};
+    }
+    internal bool? ParkedRequirement(ParsedPrefab prefab)
+    {
+        // Attachment kind is structural, independent of the current clearance
+        // height/width. A temporarily unavailable rig profile must not hide a
+        // previously verified parked-vehicle requirement from the output guard.
+        var current=readFiles();if(current==null||prefab.Descriptor==null)return null;
+        lock(sync) {
+            if(!ReferenceEquals(current,files))return null;
+            string model=prefab.Prefab.Model.ToString(),variant=prefab.Prefab.Variant.ToString();
+            string parts=string.Join('\u001f',prefab.Prefab.AdditionalParts.Select(p=>p.ToString()).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
+            string stamp=DescriptorStamp(prefab.Descriptor!);
+            var known=cache.Where(p=>p.Key.Model==model&&p.Key.Variant==variant&&p.Key.Parts==parts&&p.Key.GeometryStamp==stamp&&
+                ReferenceEquals(p.Key.Descriptor,prefab.Descriptor)&&p.Key.SpecialJob==(readSpecialJob?.Invoke()??false))
+                .Select(p=>Volatile.Read(ref p.Value.Result)).Where(r=>r is {Issue:null}&&r.Payments.Count>0).ToArray();
+            return known.Length==0?null:known.Any(r=>r!.HasDynamicParked);
+        }
     }
     public ManualStopZone? ReadManualStop(ParsedPrefab prefab,int gate)
     {
@@ -59,6 +93,9 @@ public sealed class TollModelEvidence
         return entry==null?null:Volatile.Read(ref entry.Result)?.ManualStops.GetValueOrDefault(gate);
     }
 
+    // STATIC infrastructure only. This result does not authorize passage past
+    // dynamic parked bodies. The live output guard must separately prove the
+    // current short scene corridor, including any HasDynamicParked prefab.
     public bool IsClear(PrefabPath input)
     {
         var path=PrefabRefinement.OriginalFor(input);
@@ -76,13 +113,21 @@ public sealed class TollModelEvidence
             if(!ReferenceEquals(current,files)) {files=current;archives=inspect==null?IndependentAssets.SnapshotPaths(current):[];cache.Clear();}
             if(archives==null)return null;
             var parts=prefab.Prefab.AdditionalParts.Select(p=>p.ToString()).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
-            var key=new ModelKey(prefab.Prefab.Model.ToString(),prefab.Prefab.Variant.ToString(),string.Join('\u001f',parts),readSpecialJob?.Invoke()??false,descriptor);
-            if(cache.TryGetValue(key,out var existing))return existing;
+            var profile=readProfile?.Invoke()??(6f,3f);
+            if(!float.IsFinite(profile.Item1)||!float.IsFinite(profile.Item2)||profile.Item1 is <3 or >8||profile.Item2 is <2 or >5)return null;
+            var key=new ModelKey(prefab.Prefab.Model.ToString(),prefab.Prefab.Variant.ToString(),string.Join('\u001f',parts),readSpecialJob?.Invoke()??false,descriptor,profile.Item1,profile.Item2,DescriptorStamp(descriptor));
+            cache.TryGetValue(key,out var existing);
+            if(existing!=null&&Volatile.Read(ref existing.Result)!=null)return existing;
+            var dominating=cache.Where(p=>p.Key.Model==key.Model&&p.Key.Variant==key.Variant&&p.Key.Parts==key.Parts&&
+                p.Key.SpecialJob==key.SpecialJob&&ReferenceEquals(p.Key.Descriptor,key.Descriptor)&&p.Key.GeometryStamp==key.GeometryStamp&&
+                p.Key.Height>=key.Height&&p.Key.Width>=key.Width&&Volatile.Read(ref p.Value.Result) is {Issue:null})
+                .OrderBy(p=>p.Key.Height*p.Key.Width).Select(p=>p.Value).FirstOrDefault();
+            if(existing!=null)return dominating??existing;
             // Bound pending heavy work; callers retry from discovery without waiting.
-            if(pending.Count>=4)return null;
+            if(pending.Count>=4)return dominating;
             if(cache.Count>=64) {
                 var old=cache.FirstOrDefault(p=>Volatile.Read(ref p.Value.Result)!=null);
-                if(old.Key==null)return null;
+                if(old.Key==null)return dominating;
                 cache.Remove(old.Key);
             }
             var copy=new PrefabDescriptor {NavCurves=descriptor.NavCurves.Select(CloneCurve).ToList()};
@@ -92,10 +137,29 @@ public sealed class TollModelEvidence
             foreach(var signal in descriptor.Semaphores)
                 copy.Semaphores.Add(new(){SemaphoreId=signal.SemaphoreId,Position=signal.Position});
             var entry=new Entry();cache.Add(key,entry);
-            pending.Enqueue(new(current,new(key.Model,key.Variant,parts,key.SpecialJob,copy,archives),entry));
+            pending.Enqueue(new(current,new(key.Model,key.Variant,parts,key.SpecialJob,copy,archives,key.Height,key.Width),entry));
             if(!worker) {worker=true;ThreadPool.QueueUserWorkItem(_=>RunWorker());}
-            return entry;
+            // A larger completed corridor can safely prove a smaller one.
+            // Still schedule the exact smaller profile: a blocked larger box
+            // must not permanently hide a lane that the smaller rig can use.
+            return dominating??entry;
         }
+    }
+
+    static string DescriptorStamp(PrefabDescriptor descriptor)
+    {
+        using var bytes=new MemoryStream();using var writer=new BinaryWriter(bytes,Encoding.UTF8,true);
+        void V(Vector3 v){writer.Write(v.X);writer.Write(v.Y);writer.Write(v.Z);}
+        void Q(Quaternion q){writer.Write(q.X);writer.Write(q.Y);writer.Write(q.Z);writer.Write(q.W);}
+        writer.Write(descriptor.NavCurves.Count);
+        foreach(var c in descriptor.NavCurves) {
+            V(c.StartPosition);V(c.EndPosition);Q(c.StartRotation);Q(c.EndRotation);writer.Write(c.Length);writer.Write(c.SemaphoreId);
+            writer.Write((uint)c.AllowedVehicles);writer.Write(c.TrafficRule.ToString());
+            writer.Write(c.NextLines.Count);foreach(var n in c.NextLines)writer.Write(n);
+            writer.Write(c.PreviousLines.Count);foreach(var n in c.PreviousLines)writer.Write(n);
+        }
+        writer.Write(descriptor.Semaphores.Count);foreach(var s in descriptor.Semaphores){writer.Write(s.SemaphoreId);V(s.Position);}
+        writer.Flush();return Convert.ToHexString(SHA256.HashData(bytes.ToArray()));
     }
 
     static NavCurve CloneCurve(NavCurve c)
@@ -111,6 +175,7 @@ public sealed class TollModelEvidence
     {
         IndependentAssets? owned=null;IFileSystem? source=null;Dictionary<string,string>? models=null;HashSet<string>? nonSolid=null;
         Dictionary<string,Unit>? tollUnits=null;
+        StaticHookupGeometry? childGeometry=null;
         try {
             while(true) {
                 Job job;
@@ -122,26 +187,37 @@ public sealed class TollModelEvidence
                         if(!ReferenceEquals(source,job.Source)) {
                             owned?.Dispose();owned=new(job.Request.Archives);source=job.Source;models=ReadModels(owned.Files);
                             (nonSolid,tollUnits)=ReadHookupDefinitions(owned);
+                            childGeometry=new(owned.Files,tollUnits,nonSolid);
                         }
                         var request=job.Request;
                         if(!models!.TryGetValue(request.Model,out var pmd))result=Reject("Mautmodell fehlt im Definitionskatalog: "+request.Model);
                         else {
                             var model=Model.Open(pmd,owned!.Files);
+                            childGeometry!.BeginInspection();
                             result=InspectModel(request.Descriptor,model,request.Variant,request.Parts,
-                                owned.Files.ReadAllBytes(Path.ChangeExtension(pmd,".pmg")),request.SpecialJob,nonSolid,tollUnits);
+                                owned.Files.ReadAllBytes(Path.ChangeExtension(pmd,".pmg")),request.SpecialJob,nonSolid,tollUnits,childGeometry.Read,request.Height,request.Width,()=>childGeometry.Movers)
+                                with {HasDynamicParked=childGeometry.HasDynamicParked};
                         }
                     }
                 } catch(Exception ex) {
                     result=Reject("Modellprüfung: "+ex.GetType().Name+": "+ex.Message);
                     try {ETS2LA.Logging.Logger.Warn("Maut-Modellprüfung nicht möglich: "+ex.Message);} catch { }
                 }
-                Volatile.Write(ref job.Entry.Result,result);
+                lock(sync) {
+                    Volatile.Write(ref job.Entry.Result,result);
+                    while(cache.Values.Select(e=>Volatile.Read(ref e.Result)?.StaticGeometry).Where(g=>g!=null).Distinct().Sum(g=>g!.Count)>1000000) {
+                        var old=cache.FirstOrDefault(p=>!ReferenceEquals(p.Value,job.Entry)&&Volatile.Read(ref p.Value.Result)!=null);
+                        if(old.Key==null)break;cache.Remove(old.Key);
+                    }
+                }
             }
         } finally {try {owned?.Dispose();}catch { }}
     }
 
     public static ModelInspection InspectModel(PrefabDescriptor descriptor,Model model,string variant,string[] extraParts,byte[] pmg,bool specialJob=false,
-        IReadOnlySet<string>? nonSolidHookups=null,IReadOnlyDictionary<string,Unit>? tollUnits=null)
+        IReadOnlySet<string>? nonSolidHookups=null,IReadOnlyDictionary<string,Unit>? tollUnits=null,
+        Func<string,Locator,IReadOnlyList<(Part Part,Matrix4x4 Transform)>>? readChildren=null,float height=6,float width=3,
+        Func<IReadOnlyList<ObstacleSphere>>? readBoundedMovers=null)
     {
         var variants=model.Variants.Where(v=>v.Name.ToString()==variant).ToArray();
         if(variants.Length!=1||variants[0].Attributes.Count!=model.Parts.Count||
@@ -151,20 +227,33 @@ public sealed class TollModelEvidence
         // Additional parts enable named parts in addition to the variant mask.
         // Their names do not establish payment type or obstacle clearance.
         var visible=model.Parts.Where((p,i)=>variants[0].Attributes[i].Value==1||extraParts.Contains(p.Name.ToString(),StringComparer.Ordinal)).ToArray();
-        var blocked=ModelClearance.BlockedCurves(descriptor,visible);
+        var children=new List<(Part,Matrix4x4)>();
         foreach(var locator in visible.SelectMany(p=>p.Locators)) {
             if(locator.HookupOffset==-1)continue;
             // Unknown child hook-ups can instantiate geometry not in this PMG.
             // Do not silently treat an uninspected child model as empty space.
             var hookup=ReadHookup(pmg,locator.HookupOffset);
             if(tollUnits!=null) {
-                if(hookup==""||hookup!=null&&nonSolidHookups?.Contains(hookup)==true)continue;
+                if(hookup==""||hookup!=null&&IsNonSolidReference(hookup,nonSolidHookups,tollUnits))continue;
                 if(hookup!=null&&tollUnits.TryGetValue(hookup,out var unit)&&TollDefinition.Read(unit,specialJob).Known)continue;
+                if(hookup!=null&&readChildren!=null) {children.AddRange(readChildren(hookup,locator));continue;}
                 return Reject("Nicht geprüfter Modell-Hookup: "+(hookup??"ungültiger Verweis"));
             }
             if(hookup is not ("" or "tollgate.autopass.custom" or "tollgate.autopass.custom.wide" or
                 "tollgate.autopass.oversize" or "tollgate.autopass.ovs_disable" or "tollgate.autopass.ovs_disable.long" or
                 "tollgate.manual.ovs_disable" or "tollgate.custom") && (hookup==null||nonSolidHookups?.Contains(hookup)!=true))return Reject("Nicht geprüfter Modell-Hookup: "+(hookup??"ungültiger Verweis"));
+        }
+        var staticGeometry=ModelClearance.CaptureGeometry(visible,children);
+        var blocked=ModelClearance.BlockedCurves(descriptor,visible,height,width,children,staticGeometry);
+        var movers=readBoundedMovers?.Invoke()?.ToArray()??[];
+        if(movers.Length>0) {
+            if(!cubicVerified.Value)return Reject("Ungeprüfte Maut-Splineformel");
+            for(int i=0;i<blocked.Length;i++) {
+                var curve=descriptor.NavCurves[i];
+                Vector3 At(float t)=>PrefabUtils.InterpolateNavCurve(curve,t);
+                var hull=CubicSeparation.FromCubicSamples(At(0),At(1f/3),At(2f/3),At(1));
+                blocked[i]|=movers.Any(s=>!CubicSeparation.Outside(hull.A,hull.B,hull.C,hull.D,s,width/2));
+            }
         }
         var markers=visible.SelectMany(p=>p.Locators).Select(l=> {
             var hook=ReadHookup(pmg,l.HookupOffset);
@@ -174,18 +263,59 @@ public sealed class TollModelEvidence
         })
             .Where(l=>l.Payment!=TollPayment.Unknown);
         return new(Match(descriptor,markers),blocked) {
+            StaticGeometry=staticGeometry,BoundedMovers=Array.AsReadOnly(movers),
             ManualStops=tollUnits==null?new Dictionary<int,ManualStopZone>():
                 ManualTriggerEvidence.Read(descriptor,visible,pmg,tollUnits,specialJob)
         };
     }
     internal static bool IsNonSolidHookup(Unit unit)
     {
-        string[] keys=unit.Class switch {
-            "light_source"=>["setup","ambient_color","diffuse_color","type","range"],
-            "env_area"=>["size_x","size_y"],
-            _=>[]
-        };
-        return keys.Length>0 && unit.Attributes.Count>0 && unit.Attributes.Keys.All(k=>keys.Contains(k,StringComparer.Ordinal));
+        if(unit.Attributes.Count==0)return false;
+        if(unit.Class=="env_area")return unit.Attributes.All(p=>p.Key is "size_x" or "size_y"&&Number((object?)p.Value) is >0 and <100000);
+        if(unit.Class=="speed_camera")return unit.Attributes.Count==2&&
+            unit.Attributes.TryGetValue("trigger_distance",out var trigger)&&Number((object?)trigger) is >0 and <=10000&&
+            unit.Attributes.TryGetValue("measurement_distance",out var measurement)&&Number((object?)measurement) is >=0 and <=10000;
+        if(unit.Class=="sound_hookup")return unit.Attributes.Count==2&&
+            unit.Attributes.TryGetValue("trigger_distance",out var distance)&&Number((object?)distance) is >0 and <=10000&&
+            unit.Attributes.TryGetValue("sound_path",out var path)&&(object?)path is string sound&&sound.Length is >10 and <=256&&
+            sound.StartsWith("/sound/",StringComparison.Ordinal)&&sound.EndsWith(".soundref",StringComparison.Ordinal)&&
+            !sound.Contains("//")&&!sound.Split('/').Any(p=>p is "." or "..")&&sound.All(c=>char.IsAsciiLetterOrDigit(c)||c is '/' or '_' or '.' or '-');
+        if(unit.Class!="light_source")return false;
+        foreach(var pair in unit.Attributes) {
+            object? value=pair.Value;
+            bool valid=pair.Key switch {
+                "setup"=>value is LinkPointer p&&p.Value is "lumen_hue_saturation" or "lux_hue_saturation" or "candela_hue_saturation",
+                "ambient_color" or "diffuse_color" or "specular_color"=>Color(value),
+                "type"=>value is Token t&&t.ToString() is "point" or "spot",
+                "cut_direction"=>value is Token d&&d.ToString() is "vertical" or "horizontal",
+                "range" or "cut_range" or "fade_distance" or "fade_span"=>Number(value) is >=0 and <=100000,
+                "inner_angle" or "outer_angle"=>Number(value) is >=0 and <=360,
+                _=>false
+            };
+            if(!valid)return false;
+        }
+        return true;
+    }
+    static double Number(object? value)=>value switch {int n=>n,uint n=>n,long n=>n,ulong n=>n,float n=>n,double n=>n,_=>double.NaN};
+    static bool Color(object? value)
+    {
+        if(value is Vector3 v)return float.IsFinite(v.X)&&float.IsFinite(v.Y)&&float.IsFinite(v.Z)&&v.X>=0&&v.Y>=0&&v.Z>=0&&v.X<=1000000&&v.Y<=1000000&&v.Z<=1000000;
+        return value is ITuple {Length:3} tuple&&Enumerable.Range(0,3).All(i=>Number(tuple[i]) is >=0 and <=1000000);
+    }
+    internal static bool IsNonSolidReference(string hook,IReadOnlySet<string>? known,IReadOnlyDictionary<string,Unit> units)
+    {
+        if(known?.Contains(hook)==true)return true;
+        int separator=hook.IndexOf('#');
+        if(separator<=0||hook.LastIndexOf('#')!=separator||!units.TryGetValue(hook[..separator],out var unit)||unit.Class!="light_source"||!IsNonSolidHookup(unit))return false;
+        var seen=new HashSet<string>(StringComparer.Ordinal);var parameters=hook[(separator+1)..].Split(';');
+        if(parameters.Length!=2)return false;
+        foreach(string parameter in parameters) {
+            var pair=parameter.Split(':');
+            if(pair.Length!=2||pair[0] is not ("height" or "target")||!seen.Add(pair[0])||
+                !double.TryParse(pair[1],NumberStyles.AllowLeadingSign|NumberStyles.AllowDecimalPoint|NumberStyles.AllowExponent,CultureInfo.InvariantCulture,out double number)||
+                !double.IsFinite(number)||number is <0 or >1000)return false;
+        }
+        return true;
     }
     static (HashSet<string>,Dictionary<string,Unit>) ReadHookupDefinitions(IndependentAssets assets)
     {
@@ -204,7 +334,7 @@ public sealed class TollModelEvidence
             }
         }
         return (known.Where(p=>p.Value).Select(p=>p.Key).ToHashSet(StringComparer.Ordinal),
-            tolls.Where(p=>p.Value.Class=="tollgate").ToDictionary(p=>p.Key,p=>p.Value,StringComparer.Ordinal));
+            tolls);
     }
     internal static Dictionary<string,string> ReadModels(IFileSystem files)
     {
@@ -253,7 +383,8 @@ public sealed class TollModelEvidence
         if (offset != 0 && pmg[table + offset - 1] != 0) return null;
         var tail = pmg.Slice(table + offset, length - offset);
         int end = tail.IndexOf((byte)0);
-        return end is <0 or >64?null:Encoding.ASCII.GetString(tail[..end]);
+        if(end is <0 or >256||tail[..end].ContainsAnyExceptInRange((byte)32,(byte)126))return null;
+        return Encoding.ASCII.GetString(tail[..end]);
     }
 
     public static IReadOnlyDictionary<int,TollPayment> Match(PrefabDescriptor descriptor,

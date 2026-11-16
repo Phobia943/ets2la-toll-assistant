@@ -11,7 +11,7 @@ public sealed partial class TollPlugin
             if(!options.CoastOnOpenRoads||!options.CurvePreviewEnabled||!_IsRunning||!active||preview||
                 !State.EnableAssists||State.DrivingMode!=DrivingMode.FullSelfDriving||faultBrake.Latched||
                 brakeHeld||now<takeoverUntil||driveAction!=DriveAction.Drive||!SensorsFresh(now)||now-pathAt>.2||
-                controller.Tracking||router.StopBoundary.HasValue||router.HasShortChange||
+                controller.Tracking||router.StopBoundary.HasValue||router.HasShortChange||sceneStopping||router.ClearanceHoldRequested||
                 safetyTrace is not {IdentityKnown:true,EndsAtGap:false} trace||
                 candidate is { } gate&&gate.Distance<=controller.ApproachHorizon(speed))return false;
             double required=RequiredCurveCoverage;

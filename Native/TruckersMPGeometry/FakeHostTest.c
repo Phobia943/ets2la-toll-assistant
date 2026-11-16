@@ -7,15 +7,16 @@
 #include "Protocol.h"
 
 static TruckersMP_EventFn callback;
-static int failures,reads,registered,removed;
+static int failures,reads,registered,removed,unexpected_apis;
 static bool has_vehicle=true,has_trailer=true,invalid_bounds=false,deny_api=false,deny_trailer_pose=false;
-static bool deny_vehicle=false,deny_placement=false,deny_bounds=false;
+static bool deny_vehicle=false,deny_placement=false,deny_bounds=false,slow_placement=false;
+static uint64_t test_utc_ms(void){FILETIME ft;GetSystemTimePreciseAsFileTime(&ft);ULARGE_INTEGER t;t.LowPart=ft.dwLowDateTime;t.HighPart=ft.dwHighDateTime;return(t.QuadPart-116444736000000000ULL)/10000ULL;}
 static TruckersMP_EResult declare_version(TruckersMP_PluginContext *c,uint32_t v){(void)c;return v==TRUCKERSMP_SDK_VERSION?0:1;}
 static TruckersMP_EResult add_listener(TruckersMP_PluginContext *c,uint64_t e,TruckersMP_EventFn fn,void *u){(void)c;(void)u;if(e!=TRUCKERSMP_EVT_RENDER_PRE_RENDER)return 1;callback=fn;registered++;return 0;}
 static TruckersMP_EResult remove_listener(TruckersMP_PluginContext *c,uint64_t e,TruckersMP_EventFn fn,void *u){(void)e;(void)u;if(c!=(TruckersMP_PluginContext*)1||callback!=fn)return 1;callback=NULL;removed++;return 0;}
 static bool local_player(TruckersMP_PluginContext *c,TruckersMP_Player_Handle *p){if(c!=(TruckersMP_PluginContext*)1)return false;p->m_value=1;reads++;return has_vehicle;}
 static bool vehicle(TruckersMP_PluginContext *c,TruckersMP_Player_Handle p,TruckersMP_Vehicle_Handle *v){(void)c;(void)p;v->m_value=2;reads++;return !deny_vehicle;}
-static bool placement(TruckersMP_PluginContext *c,TruckersMP_Vehicle_Handle v,TruckersMP_Placement *p){(void)c;(void)v;memset(p,0,sizeof(*p));p->position.x=10;p->position.y=2;p->position.z=20;p->rotation.w=1;reads++;return !deny_placement;}
+static bool placement(TruckersMP_PluginContext *c,TruckersMP_Vehicle_Handle v,TruckersMP_Placement *p){(void)c;(void)v;memset(p,0,sizeof(*p));p->position.x=10;p->position.y=2;p->position.z=20;p->rotation.w=1;reads++;if(slow_placement)Sleep(40);return !deny_placement;}
 static bool bounds(TruckersMP_PluginContext *c,TruckersMP_Vehicle_Handle v,TruckersMP_Bounds *b){(void)c;(void)v;b->min=(TruckersMP_Float3){-1,0,-5};b->max=(TruckersMP_Float3){1,4,3};if(invalid_bounds)b->max.y=NAN;reads++;return !deny_bounds;}
 static bool trailer(TruckersMP_PluginContext *c,TruckersMP_Vehicle_Handle v,TruckersMP_Trailer_Handle *t){(void)c;(void)v;t->m_value=3;reads++;return true;}
 static bool exists(TruckersMP_PluginContext *c,TruckersMP_Trailer_Handle t,bool *value){(void)c;(void)t;*value=has_trailer;reads++;return true;}
@@ -30,7 +31,7 @@ static const void *get_api(TruckersMP_PluginContext *c,uint64_t id) {
     (void)c;if(deny_api)return NULL;
     if(id==TRUCKERSMP_API_CORE)return &core;if(id==TRUCKERSMP_API_PLAYERS)return &players;
     if(id==TRUCKERSMP_API_PLAYER_HANDLE)return &player_api;if(id==TRUCKERSMP_API_VEHICLE)return &vehicles;
-    if(id==TRUCKERSMP_API_TRAILER)return &trailers;return NULL;
+    if(id==TRUCKERSMP_API_TRAILER)return &trailers;unexpected_apis++;return NULL;
 }
 static void check(bool valid,const char *name){printf("%s %s\n",valid?"PASS":"FAIL",name);if(!valid)failures++;}
 int main(int argc,char **argv) {
@@ -55,6 +56,30 @@ int main(int argc,char **argv) {
         if(fixture)fclose(fixture);
     }
     check(registered==1&&callback&&reads>0,"only registered SDK frame path supplies samples");
+    check(strcmp(desc.m_version,"0.3.18")==0,"read-only observer descriptor is revision 0.3.18");
+    check(unexpected_apis==0,"initialization requests only the five public read-only API tables, never input APIs");
+#if defined(MAUT_GEOMETRY_TEST_ID) && defined(MAUT_GEOMETRY_TEST_CLOCK)
+    uint64_t tick=1000000;uint32_t previous=frame->sequence;
+    callback(NULL,TRUCKERSMP_EVT_RENDER_PRE_RENDER,&tick,sizeof(tick));
+    check(frame->sequence==previous+2,"first render callback publishes at most one frame");previous=frame->sequence;
+    tick=1015000;callback(NULL,TRUCKERSMP_EVT_RENDER_PRE_RENDER,&tick,sizeof(tick));
+    check(frame->sequence==previous,"render events below the 16ms period are throttled");
+    tick=1016000;callback(NULL,TRUCKERSMP_EVT_RENDER_PRE_RENDER,&tick,sizeof(tick));
+    check(frame->sequence==previous+2,"16ms render event supplies one fresh observation");previous=frame->sequence;
+    callback(NULL,TRUCKERSMP_EVT_RENDER_PRE_RENDER,&tick,sizeof(tick));
+    check(frame->sequence==previous,"duplicate callback timestamp cannot resample the getters");
+    tick=1032000;callback(NULL,TRUCKERSMP_EVT_RENDER_PRE_RENDER,&tick,sizeof(tick));
+    check(frame->sequence==previous+2,"next 16ms event supplies one observation without a catch-up loop");
+    bool every_frame=true;
+    for(int i=0;i<5;i++) {
+        previous=frame->sequence;tick+=16667;
+        callback(NULL,TRUCKERSMP_EVT_RENDER_PRE_RENDER,&tick,sizeof(tick));
+        if(frame->sequence!=previous+2)every_frame=false;
+    }
+    check(every_frame,"high-resolution 60Hz frames do not skip because coarse wall ticks would differ by 15ms");
+#endif
+    slow_placement=true;Sleep(20);callback(NULL,TRUCKERSMP_EVT_RENDER_PRE_RENDER,NULL,0);
+    check(test_utc_ms()>=frame->utc_ms+35,"slow getter preserves capture-start UTC instead of republishing an old pose as fresh");slow_placement=false;
     TruckersMP_Host original_host=host;memset(&host,0,sizeof(host));Sleep(110);callback(NULL,TRUCKERSMP_EVT_RENDER_PRE_RENDER,NULL,0);
     check((frame->flags&7)==7,"frame callbacks retain their own context after the entry host is reused");
     host=original_host;

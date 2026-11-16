@@ -13,10 +13,11 @@ public sealed partial class TollPlugin
         float CabinDamage,float ChassisDamage,float WheelDamage,float GameThrottle,float GameBrake)
     { public float SpeedLimitMps {get;init;} }
     sealed record TelemetryFrame(double Arrived,ulong Time,bool Active,bool Paused,double Speed,Vector3 Position,double Heading,
-        PhysicsObservation Physics);
+        PhysicsObservation Physics) {public EnvelopeContext? Envelope {get;init;}}
     sealed record GateFrame(double Arrived,Semaphore[] Gates);
     TelemetryFrame? incomingTelemetry;
     TelemetryFrame? latestDeliveredTelemetry;
+    TelemetryFrame? appliedTelemetry;
     GateFrame? incomingGates;
     double pathReceivedAt=-100;
     double routeWorkMilliseconds,maxRouteWorkMilliseconds;
@@ -29,9 +30,12 @@ public sealed partial class TollPlugin
             data.truckFloat.speed,data.truckPlacement.coordinate.ToVector3(),data.truckPlacement.rotation.X,
             new(data.simulatedTime,data.renderTime,data.truckFloat.wearEngine,data.truckFloat.wearTransmission,
                 data.truckFloat.wearCabin,data.truckFloat.wearChassis,data.truckFloat.wearWheels,
-                data.truckFloat.gameThrottle,data.truckFloat.gameBrake){SpeedLimitMps=data.truckFloat.speedLimit});
+                data.truckFloat.gameThrottle,data.truckFloat.gameBrake){SpeedLimitMps=data.truckFloat.speedLimit}) {Envelope=EnvelopeContext.Capture(data)};
         Interlocked.Exchange(ref incomingTelemetry,frame);
         Interlocked.Exchange(ref latestDeliveredTelemetry,frame);
+        var ground=Volatile.Read(ref stationaryGround);
+        if(ground?.InvalidatedBy(frame.Position,frame.Heading,frame.Speed,frame.Active)==true)
+            Interlocked.CompareExchange(ref stationaryGround,null,ground);
         ObserveImpact(frame);
         ObserveBrakeResponse(frame);
         if(!Monitor.TryEnter(sync))return;
@@ -61,10 +65,14 @@ public sealed partial class TollPlugin
     {
         if(Interlocked.Exchange(ref incomingTelemetry,null) is { } frame)
         {
+            appliedTelemetry=frame;
             telemetryAt=frame.Arrived;
             if(gameTime!=frame.Time) {gameTimeChangedAt=frame.Arrived;gameTime=frame.Time;}
             sdk=frame.Active;paused=frame.Paused;speed=frame.Speed;position=frame.Position;headingTurns=frame.Heading;
             physicsObservation=frame.Physics;
+            envelopeContext=frame.Envelope;
+            if(stationaryGround?.InvalidatedBy(position,headingTurns,speed,sdk)==true)
+                stationaryGround=null;
             if(previewRouter!=null && (Math.Abs(speed)>.1 || Vector3.DistanceSquared(position,previewPosition)>1))previewRouter=null;
             if(!sdk || paused || (State.EnableAssists && Math.Abs(speed)>.1))connectorHistory.Clear();
             else if(!State.EnableAssists)connectorHistory.Observe(telemetryAt,position,speed);

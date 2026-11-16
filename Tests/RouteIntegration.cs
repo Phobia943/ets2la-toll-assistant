@@ -102,9 +102,11 @@ public static class RouteIntegration
         assert(blockedConfirmation,"A saved/manual payment choice cannot bypass structural clearance");
         var clearedCopy=RouteSnapshot.Capture(data);
         assert(clearanceRouter.Apply(clearedCopy,truck,out _),"Known clear geometry must apply to the cloned native plan");
+        var appliedPrefab=clearedCopy.PlannedPath.Single(i=>i.prefabPath!=null).prefabPath;
         clearanceValid=false;
-        assert(clearanceRouter.Apply(clearedCopy,truck,out _)&&clearanceRouter.StopBoundary.HasValue&&clearanceRouter.SelectedGate==null,
-            "A cached route cannot retain clearance after its model evidence changes");
+        assert(clearanceRouter.Apply(clearedCopy,truck,out _)&&clearanceRouter.ClearanceHoldRequested&&!clearanceRouter.StopBoundary.HasValue&&
+            clearanceRouter.SelectedGate==12&&ReferenceEquals(appliedPrefab,clearedCopy.PlannedPath.Single(i=>i.prefabPath!=null).prefabPath),
+            "Lost current geometry evidence preserves the applied topology but mandates a normal proof hold instead of stale clearance");
         var filename=Path.Combine(AppContext.BaseDirectory,"route-integration-settings.json");
         if(File.Exists(filename))File.Delete(filename);
         var prefs=new PreferenceStore(filename);var router=new TollRouter(prefs);
@@ -153,7 +155,9 @@ public static class RouteIntegration
         var lateRouter = new TollRouter(new PreferenceStore(filename), _ => marks);
         item.prefabPath=source;
         lateRouter.Discover(data,truck,sdk);
-        var pastSplit = source.Interpolate(.82f,0)!.Value.Position;
+        // The former .82 point was already in the common exit merge, rather
+        // than committed inside the wrong booth. Exercise the actual booth.
+        var pastSplit = source.Interpolate(.5f,0)!.Value.Position;
         assert(!lateRouter.Apply(data,pastSplit,out _) && ReferenceEquals(item.prefabPath,source),
             "A truck already committed to a different booth must never get a late route rewrite");
         curves[5].AllowedVehicles=AllowedVehicles.SmallVehicles;

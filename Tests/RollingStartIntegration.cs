@@ -39,7 +39,8 @@ public static class RollingStartIntegration
         public int Installs;
         public Fixture(bool monitorSteering=false,Func<IPlugin?>? readLaneAssist=null,Action<string,string>? writeDiagnostic=null,
             Func<RouteTrace?,Vector3,ETS2LA.Game.SDK.Semaphore[],object>? buildStatusGeometry=null,
-            Func<RouteTrace,Vector3,CurveSpeedProfile>? buildCurveProfile=null,Func<CruiseLimits>? readCruiseLimits=null)
+            Func<RouteTrace,Vector3,CurveSpeedProfile>? buildCurveProfile=null,Func<CruiseLimits>? readCruiseLimits=null,
+            Func<RigRuntimeObservation>? readRigObservation=null,TollModelEvidence? runtimeModels=null)
         {
             var assembly=AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"../../../../References/AdaptiveCruiseControl.dll")));
             var type=assembly.GetType("AdaptiveCruiseControl.AdaptiveCruiseControlPlugin",true)!;
@@ -68,7 +69,8 @@ public static class RollingStartIntegration
                     if(!InstallSucceeds)return false;
                     published.PlannedPath=planned.PlannedPath;published.ErrorMessage=null;published.HasError=false;return true;
                 },monitorSteering:monitorSteering,readLaneAssist:readLaneAssist,writeDiagnostic:writeDiagnostic,
-                buildStatusGeometry:buildStatusGeometry,buildCurveProfile:buildCurveProfile,readCruiseLimits:readCruiseLimits);
+                buildStatusGeometry:buildStatusGeometry,buildCurveProfile:buildCurveProfile,readCruiseLimits:readCruiseLimits,
+                readRigObservation:readRigObservation,runtimeModels:runtimeModels);
             Plugin._IsRunning=true;
             Set("subscribed",true);Set("lastWrite",double.MaxValue);Set("position",Point);Set("headingTurns",.5d);
             Fresh();Set("path",Disabled());

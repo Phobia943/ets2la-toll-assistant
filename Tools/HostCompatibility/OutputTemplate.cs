@@ -28,7 +28,28 @@ internal sealed class OutputTemplate
     public static long MautEpoch;
     public static bool MautAssists;
     public static int MautMode;
-    public const string MautCompatibility="0.3.17-host-3";
+    public const string MautCompatibility="0.3.18-host-3";
+    static string? MautHoldKey;
+    static long MautHoldEpoch,MautHoldUntil;
+    static float MautHoldFloor;
+    static long MautHoldIssuedAt;
+    static Dictionary<string,long>? MautNativeOrigins;
+    static void MautResetOrigins(){MautHoldIssuedAt=0;MautNativeOrigins?.Clear();}
+    static void MautClearPlannedHold(){MautHoldKey=null;MautHoldUntil=0;MautHoldFloor=0;}
+    public static void MautSetPlannedHold(long epoch,string? key,float floor,long issuedAt)
+    {
+        lock(MautGate) {
+            if(epoch!=MautEpoch)return;
+            long now=Stopwatch.GetTimestamp();
+            if(issuedAt<=0||issuedAt>now||now-issuedAt>Stopwatch.Frequency/5)return;
+            if(issuedAt<=MautHoldIssuedAt)return;
+            MautHoldIssuedAt=issuedAt;
+            if(!MautAssists||MautMode is <0 or >1||string.IsNullOrWhiteSpace(key)||
+                !float.IsFinite(floor)||floor is <.35f or >1) {MautClearPlannedHold();return;}
+            MautHoldKey=key;MautHoldEpoch=epoch;MautHoldFloor=floor;
+            MautHoldUntil=issuedAt+Stopwatch.Frequency/4;
+        }
+    }
     public static long MautTrafficAt,MautParkedAt,MautSemaphoreAt;
     public static object? MautTrafficData,MautParkedData,MautSemaphoreData;
     public static Func<bool>? MautCoastPermission;
@@ -94,15 +115,20 @@ internal sealed class OutputTemplate
     long MautPauseUntil,MautPauseEpoch;
     public static long MautCaptureEpoch(){lock(MautGate)return MautEpoch;}
     public static void MautSetAssists(bool enabled,int actualMode)
-    {lock(MautGate){if(MautAssists!=enabled||MautMode!=actualMode){MautMode=actualMode;MautAssists=enabled;MautEpoch++;}}}
+    {lock(MautGate){if(MautAssists!=enabled||MautMode!=actualMode){MautClearPlannedHold();MautResetOrigins();MautMode=actualMode;MautAssists=enabled;MautEpoch++;}}}
     public static void MautSetMode(int mode)
-    {lock(MautGate){if(MautMode!=mode){MautMode=mode;MautEpoch++;}}}
+    {lock(MautGate){if(MautMode!=mode){MautClearPlannedHold();MautResetOrigins();MautMode=mode;MautEpoch++;}}}
     static long MautDefinitionEpoch(ControlChannelDefinition definition)=>throw new NotSupportedException(); // generated field accessor
+    static long MautDefinitionIssuedAt(ControlChannelDefinition definition)=>throw new NotSupportedException(); // generated field accessor
     static ControlChannelDefinition MautSnapshotDefinition(ControlChannelDefinition definition)=>throw new NotSupportedException(); // generated clone
     static bool MautNative(string id)=>id is "AdaptiveCruiseControl.Acceleration" or "LaneAssist.SteeringCorrection" or "LaneAssist.PauseWhenUnstable";
     static bool MautAccept(ControlChannelDefinition definition)
     {
         if(!MautNative(definition.Id))return true;
+        long issued=MautDefinitionIssuedAt(definition),now=Stopwatch.GetTimestamp();
+        // Age belongs to the native calculation's entry, never ingestion or
+        // publication. A same-session blocked tick cannot refresh stale gas.
+        if(issued<=0||issued>now||now-issued>Stopwatch.Frequency/5)return false;
         if(!MautAssists||MautMode is <0 or >2||MautDefinitionEpoch(definition)!=MautEpoch)return false;
         return definition.Id=="AdaptiveCruiseControl.Acceleration"?MautMode!=2:MautMode!=0;
     }
@@ -115,13 +141,19 @@ internal sealed class OutputTemplate
                 if(Channels.TryGetValue(definition.Id,out var old)&&!MautAccept(old.Definition))Channels.Remove(definition.Id);
                 return;
             }
+            if(MautNative(definition.Id)) {
+                MautNativeOrigins??=new(StringComparer.Ordinal);
+                long origin=MautDefinitionIssuedAt(definition);
+                if(MautNativeOrigins.TryGetValue(definition.Id,out long accepted)&&origin<=accepted)return;
+                MautNativeOrigins[definition.Id]=origin;
+            }
             if(input.Variables==null||input.Properties==null){Channels.Remove(definition.Id);return;}
             if(!Channels.TryGetValue(definition.Id,out var channel)) {
                 channel=new ControlChannel {Definition=definition,Properties=input.Properties,Variables=input.Variables};
                 Channels.Add(definition.Id,channel);
             }
-            // Snapshot the concrete result's epoch. A reused definition must
-            // never relabel a previously queued result as a newer session.
+            // Snapshot both concrete origin fields. Reusing the publisher's
+            // definition must not relabel the stored result's epoch or age.
             channel.Definition=MautSnapshotDefinition(definition);
             channel.Properties=input.Properties;channel.Variables=input.Variables;
             channel.LastUpdate.Restart();channel.BoolsProcessed=false;
@@ -134,6 +166,7 @@ internal sealed class OutputTemplate
         lock(MautGate) {
             curFrameFloats.Clear();
             long now=Stopwatch.GetTimestamp();
+            bool holdActive=MautAssists&&MautMode is 0 or 1&&MautHoldKey!=null&&MautHoldEpoch==MautEpoch&&now<MautHoldUntil;
             if(MautPauseUntil!=0&&(now>=MautPauseUntil||MautPauseEpoch!=MautEpoch||!MautAssists||MautMode==0)) {
                 WriteBool(legacyAccessor,legacyShmOffsets["pause"],false);MautPauseUntil=0;
             }
@@ -166,6 +199,11 @@ internal sealed class OutputTemplate
                 if(frame.Key=="steering") {
                     WriteFloat(modernAccessor,0,output);WriteBool(modernAccessor,4,output!=0);WriteDouble(modernAccessor,5,stamp);
                 } else if(frame.Key=="acceleration") {
+                    // Apply the authorized planned hold AFTER channel weighting,
+                    // not as a competing zero/floor owner. It cannot raise or
+                    // dilute an existing stronger safety brake.
+                    if(holdActive)
+                        output=Math.Min(output,-MautHoldFloor);
                     // Clear the path that is no longer selected as well.
                     WriteFloat(modernAccessor,13,modern?output:0);WriteBool(modernAccessor,17,modern&&output!=0);
                     WriteDouble(modernAccessor,18,stamp);
@@ -175,6 +213,7 @@ internal sealed class OutputTemplate
             }
             if(Channels.Count==0&&!IsReset) {
                 foreach(var field in typeof(ControlVariables).GetFields()) {
+                    if(holdActive&&field.Name is "aforward" or "abackward")continue;
                     if(field.FieldType==typeof(float?))WriteFloat(legacyAccessor,legacyShmOffsets[field.Name],0);
                     else if(field.FieldType==typeof(bool?))WriteBool(legacyAccessor,legacyShmOffsets[field.Name],false);
                 }

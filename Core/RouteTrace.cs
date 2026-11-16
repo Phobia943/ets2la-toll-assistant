@@ -2,6 +2,7 @@ using System.Numerics;
 
 namespace MautAssistent;
 public sealed record TraceProjection(double Along, double Offset, int SegmentEndIndex=0,double HeightOffset=0);
+public readonly record struct TraceSlicePoint(Vector3 Position,Vector3 Direction,double Along,string? SegmentIdentity,bool Connector);
 public sealed class RouteTrace
 {
     readonly Vector3[] points;
@@ -9,6 +10,7 @@ public sealed class RouteTrace
     readonly HashSet<int> connectorEnds;
     readonly string[]? segmentKeys;
     public double Length => distances[^1];
+    public Vector3 End=>points[^1];
     public bool EndsAtGap { get; init; }
     public bool IdentityKnown { get; init; }
     public string? EndReason { get; init; }
@@ -79,6 +81,69 @@ public sealed class RouteTrace
         double horizontal=Vector2.Distance(new(point.X,point.Z),new(nearest.X,nearest.Z));
         return projection with {Offset=horizontal,HeightOffset=point.Y-nearest.Y};
     }
+    public bool TryItemRange(string identity,out double start,out double end)
+    {
+        start=end=0;
+        if(!IdentityKnown||segmentKeys==null||string.IsNullOrEmpty(identity))return false;
+        bool found=false,left=false;
+        for(int i=1;i<points.Length;i++) {
+            bool matches=!connectorEnds.Contains(i)&&segmentKeys[i-1]==identity;
+            if(matches) {
+                if(left)return false; // Repeated identity has ambiguous topology.
+                if(!found){start=distances[i-1];found=true;}
+                end=distances[i];
+            } else if(found)left=true;
+        }
+        return found&&end>start;
+    }
+    // A body corner must stay on the directed road neighbourhood selected by
+    // its root. A later crossing/upper deck is not ground below this vehicle.
+    public TraceProjection ProjectNearForTracking(Vector3 point,double rootAlong,double radius)
+    {
+        if(!double.IsFinite(rootAlong)||!double.IsFinite(radius)||radius<=0)throw new ArgumentException("Ungültiges lokales Routenfenster");
+        double best=double.PositiveInfinity,along=0;int segment=0;Vector3 nearest=default;
+        double low=Math.Max(0,rootAlong-radius),high=Math.Min(Length,rootAlong+radius);
+        for(int i=1;i<points.Length;i++) {
+            double length=distances[i]-distances[i-1];
+            if(length<.000001||distances[i]<low||distances[i-1]>high||connectorEnds.Contains(i))continue;
+            var delta=points[i]-points[i-1];
+            float t=Math.Clamp(Vector3.Dot(point-points[i-1],delta)/delta.LengthSquared(),
+                (float)Math.Clamp((low-distances[i-1])/length,0,1),(float)Math.Clamp((high-distances[i-1])/length,0,1));
+            var candidate=points[i-1]+t*delta;double distance=Vector3.DistanceSquared(point,candidate);
+            if(distance<best){best=distance;nearest=candidate;along=distances[i-1]+t*length;segment=i;}
+        }
+        if(segment==0)throw new InvalidOperationException("Lokaler Straßenbezug fehlt");
+        return new(along,Vector2.Distance(new(point.X,point.Z),new(nearest.X,nearest.Z)),segment,point.Y-nearest.Y);
+    }
+    // Keep a bounded known road tail under the articulated rig when the native
+    // planner prunes completed items. Reuse GEOMETRY, never a cached profile or
+    // route freshness: all overlapping directed points/identities must agree.
+    public RouteTrace? WithVerifiedTail(RouteTrace previous,Vector3 origin,double behind=40,double ahead=20)
+    {
+        if(!IdentityKnown||!previous.IdentityKnown||segmentKeys==null||previous.segmentKeys==null||
+            !double.IsFinite(behind)||behind<=0||behind>60||!double.IsFinite(ahead)||ahead<0)return null;
+        var current=ProjectForTracking(origin);if(current.Offset>3||Math.Abs(current.HeightOffset)>.35||Length-current.Along<ahead)return null;
+        for(int join=1;join<previous.points.Length-1;join++) {
+            if(previous.points[join]!=points[0])continue;
+            bool matched=true;int end=0;
+            for(;end<points.Length&&join+end<previous.points.Length;end++) {
+                if(points[end]!=previous.points[join+end]||end>0&&
+                    (segmentKeys[end-1]!=previous.segmentKeys[join+end-1]||connectorEnds.Contains(end)!=previous.connectorEnds.Contains(join+end))) {matched=false;break;}
+                if(distances[end]>=current.Along+ahead)break;
+            }
+            if(!matched||end>=points.Length||join+end>=previous.points.Length||distances[end]<current.Along+ahead)continue;
+            double minimum=previous.distances[join]-behind;int start=join;
+            while(start>0&&previous.distances[start-1]>=minimum)start--;
+            if(start==join)return this;
+            int prefix=join-start;
+            var combined=previous.points[start..join].Concat(points);
+            var keys=previous.segmentKeys[start..join].Concat(segmentKeys);
+            var seams=previous.connectorEnds.Where(i=>i>start&&i<=join).Select(i=>i-start)
+                .Concat(connectorEnds.Select(i=>i+prefix));
+            return new RouteTrace(combined,seams,keys){IdentityKnown=true,EndsAtGap=EndsAtGap,EndReason=EndReason};
+        }
+        return null;
+    }
     public Vector3 DirectionAt(double along)
     {
         Vector3 previous=Vector3.Zero;
@@ -92,6 +157,62 @@ public sealed class RouteTrace
             if(distances[i]>=along)return previous;
         }
         return previous;
+    }
+    // Read-only interpolation of the final directed trace. No extrapolation.
+    public bool TryAtAlong(double along,out TraceSlicePoint sample)
+    {
+        sample=default;
+        if(!double.IsFinite(along)||along<0||along>Length)return false;
+        int end=1;while(end<points.Length-1&&distances[end]<along)end++;
+        while(end<points.Length-1&&distances[end]-distances[end-1]<1e-6)end++;
+        double length=distances[end]-distances[end-1];if(length<1e-6)return false;
+        float fraction=(float)Math.Clamp((along-distances[end-1])/length,0,1);
+        Vector3 Tangent(int vertex) {
+            Vector3 before=vertex>0?points[vertex]-points[vertex-1]:Vector3.Zero;
+            Vector3 after=vertex<points.Length-1?points[vertex+1]-points[vertex]:Vector3.Zero;
+            if(before.LengthSquared()>1e-8)before=Vector3.Normalize(before);
+            if(after.LengthSquared()>1e-8)after=Vector3.Normalize(after);
+            var sum=before+after;return sum.LengthSquared()>1e-8?Vector3.Normalize(sum):Vector3.Zero;
+        }
+        var direction=Vector3.Lerp(Tangent(end-1),Tangent(end),fraction);
+        if(direction.LengthSquared()<.1)return false;
+        sample=new(Vector3.Lerp(points[end-1],points[end],fraction),Vector3.Normalize(direction),along,
+            segmentKeys?[end-1],connectorEnds.Contains(end));return true;
+    }
+    public bool TrySlice(double from,double to,double maxStep,out IReadOnlyList<TraceSlicePoint> slice,out string? issue)
+    {
+        slice=[];issue=null;
+        static bool Reject(string why,out string? error){error=why;return false;}
+        if(!IdentityKnown||segmentKeys==null)return Reject("Directed trace identities are missing",out issue);
+        if(!double.IsFinite(from)||!double.IsFinite(to)||!double.IsFinite(maxStep)||from<0||to<=from||to>Length||
+            to-from>300||maxStep is <.05 or >.5)return Reject("Prediction horizon is absent, outside the trace or unbounded",out issue);
+        for(int i=1;i<points.Length;i++) {
+            if(distances[i]<=from||distances[i-1]>=to)continue;
+            var delta=points[i]-points[i-1];double horizontal=Math.Sqrt((double)delta.X*delta.X+(double)delta.Z*delta.Z);
+            if(horizontal<1e-6||Math.Abs(delta.Y)>horizontal*.03)return Reject("Trace is degenerate or outside near-flat scope",out issue);
+            if(!connectorEnds.Contains(i))continue;
+            if(i<2||i>=points.Length-1||connectorEnds.Contains(i-1)||connectorEnds.Contains(i+1))
+                return Reject("Item seam lacks directed neighbours",out issue);
+            var a=points[i-1]-points[i-2];var b=points[i+1]-points[i];
+            if(a.LengthSquared()<1e-8||b.LengthSquared()<1e-8||
+                Vector3.Dot(Vector3.Normalize(delta),Vector3.Normalize(a))<.995f||
+                Vector3.Dot(Vector3.Normalize(delta),Vector3.Normalize(b))<.995f)
+                return Reject("Item seam is not a continuous directed near-flat connection",out issue);
+        }
+        // A numerically projected start can lie micrometres before a stored
+        // vertex. Do not manufacture a near-zero progress/orientation cell.
+        var cuts=new[]{from}.Concat(distances.Where(d=>d>from+.0001&&d<to-.0001)).Append(to).Distinct().Order().ToArray();
+        var result=new List<TraceSlicePoint>();
+        for(int i=1;i<cuts.Length;i++) {
+            int count=(int)Math.Ceiling((cuts[i]-cuts[i-1])/maxStep);
+            if(count>4095-result.Count)return Reject("Trace sampling budget exhausted",out issue);
+            for(int n=i==1?0:1;n<=count;n++) {
+                double along=cuts[i-1]+(cuts[i]-cuts[i-1])*n/count;
+                if(!TryAtAlong(along,out var point))return Reject("Trace tangent is ambiguous",out issue);
+                result.Add(point);
+            }
+        }
+        slice=result.AsReadOnly();return true;
     }
     // Interpolation stays inside the verified trace. Item seams are geometric
     // continuity, not evidence of a bend, so curvature windows exclude them.

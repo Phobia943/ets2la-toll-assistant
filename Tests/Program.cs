@@ -47,7 +47,7 @@ return Environment.ExitCode;
 void Run()
 {
     var results=new List<string>();
-    void Check(string name, Action test) { try {test(); results.Add("PASS "+name);} catch(Exception ex) {results.Add("FAIL "+name+": "+ex); } }
+    void Check(string name, Action test) { if(args is ["--filter",var filter]&&!name.Contains(filter,StringComparison.OrdinalIgnoreCase))return;try {test(); results.Add("PASS "+name);} catch(Exception ex) {results.Add("FAIL "+name+": "+ex); } }
     void Assert(bool v,string message="Assertion failed") {if(!v)throw new Exception(message);}
     Check("Curve geometry excludes grades, item seams and isolated interpolation spikes",()=>CurveSpeedTests.Geometry(Assert));
     Check("Curve speed preview slows ahead without increasing native bounds or stopping a slow truck",()=>CurveSpeedTests.Limits(Assert));
@@ -57,6 +57,31 @@ void Run()
     Check("Curve preview reuse proves lane, level, future branches, seams and remaining coverage",()=>CurveSpeedTests.CorridorCoverage(Assert));
     Check("Planned toll holds separate observed soft-target incidents from genuine emergencies",()=>ApproachStopTests.RecordedCases(Assert));
     Check("Planned hold survives host response delay and low-speed output dead band",()=>ApproachStopTests.DelayedHold(Assert));
+    Check("Physical planned hold is keyed, bounded and revoked on missing authority",()=>PlannedHoldTests.Authority(Assert));
+    Check("PMC enclosures cover all variants and reject malformed or unknown collision data",()=>PmcEnvelopeTests.Bounds(Assert));
+    Check("Parking separation uses conservative cubic hulls including own-rig reserve",()=>CubicSeparationTests.Bounds(Assert));
+    Check("Scene wire authority rejects stale paused malformed and foreign producer frames",()=>SceneSnapshotAdversarialTests.WireAuthority(Assert));
+    Check("Scene body and count validation rejects incomplete invalid enclosures",()=>SceneSnapshotAdversarialTests.BodiesAndCounts(Assert));
+    Check("Scene coverage binds wanted loaded UID and actual omitted surface range",()=>SceneSnapshotAdversarialTests.LocalScopeAndOverflow(Assert));
+    Check("Scene progress cannot be renewed by copying a frozen frame",()=>SceneSnapshotAdversarialTests.Progression(Assert));
+    Check("Scene cubic OBB clearance covers continuous curves and rotated parked bodies",()=>SceneSnapshotAdversarialTests.Clearance(Assert));
+    Check("Scene replaced sessions and mutated copies cannot resurrect old evidence",()=>SceneSnapshotAdversarialTests.SourceResurrection(Assert));
+    Check("Scene rig sphere encloses true hook-coupled full 3D articulations",()=>SceneSnapshotAdversarialTests.CoupledRigBound(Assert));
+    Check("Scene physical hold ignores target changes and detects actual vehicle creep",()=>SceneSnapshotAdversarialTests.PhysicalSceneHold(Assert));
+    Check("Scene partial current evidence can protect without granting absence clearance",()=>SceneSnapshotAdversarialTests.PartialSafety(Assert));
+    Check("Scene real acute hazards and conservative adjacent parking use different braking policies",()=>SceneEmergencyTests.AcuteVersusPrecaution(Assert));
+    Check("Prepared unpadded truck corridors retain positive physical intrusion semantics without per-actor sampling",()=>MeasuredTruckCorridorTests.Bounds(Assert));
+    Check("Early toll lane planning preserves a normal stop until real barrier binding",()=>TollBarrierBindingTests.Policy(Assert));
+    Check("Stationary road geometry cannot renew sources or survive changed pose, navigation, assets or native session",()=>StationaryGroundAdversarialTests.Matching(Assert));
+    Check("Trailer axle evidence uses actual fixed contact-wheel pairs and rejects guessed or unsupported geometry",()=>WheelAxleTests.Evidence(Assert));
+    Check("Separate truck and trailer predictions enclose the explicit continuous fixed-axle model without an all-articulation disk",()=>ArticulatedRigPredictionTests.Bounds(Assert));
+    Check("Parked motion uses actual or observed local sources without global unknown-motion stops",()=>SceneMotionPredictionTests.Bounds(Assert));
+    Check("Rig monitor verifies old trajectories, directed phase and contact grace before replacement",()=>RigModelMonitorTests.Bounds(Assert));
+    Check("Runtime motion source freshness rejects mutated or discontinuous evidence",()=>RuntimeMotionAdversarialTests.MotionSources(Assert));
+    Check("Runtime motion identities cannot revive or mutate old history",()=>RuntimeMotionAdversarialTests.MotionIdentityMutation(Assert));
+    Check("Runtime model lifecycle retains cancellation and checked source epochs",()=>RuntimeMotionAdversarialTests.ModelLifecycle(Assert));
+    Check("Runtime static sweeps retain narrow walls, real obstacles and conservative work bounds",()=>RuntimeMotionAdversarialTests.StaticSweepBoundary(Assert));
+    Check("Observed native pedal equilibrium stops under delayed stronger physical braking",()=>PlannedHoldTests.ObservedCreep(Assert));
     Check("Preferred cruise target obeys configured maxima and known road rules",()=>CruisePolicyTests.Limits(Assert));
     Check("Vehicle bounds require coherent fresh frames and never grant clearance",()=>GeometryBrakeTests.Protocol(Assert));
     Check("Missing brake response requires one second of coherent effective commands",()=>GeometryBrakeTests.Brake(Assert));
@@ -231,6 +256,29 @@ void Run()
     Check("Duplicate signal objects preserve physical booth identity, payment and conservative clearance",()=>SignalIdentityIntegration.Run(Assert));
     Check("Wide passages require every distinct arm to open, including after route pruning",()=>SignalIdentityIntegration.WidePassage(Assert));
     Check("Static height and width checks distinguish real triangle intersections from bounding boxes",()=>ModelClearanceIntegration.Geometry(Assert));
+    Check("Child model LODs, variants and nested transforms retain real obstacles",()=>ChildGeometryIntegration.LodsAndTransforms(Assert));
+    Check("Mover sweeps cover full per-LOD skeletal chains, clip blends and malformed data",()=>MoverEnvelopeIntegration.Bounds(Assert));
+    Check("Wheel telemetry snapshots preserve reported source geometry independently of later provider mutations",()=>WheelTelemetryIntegration.Snapshot(Assert));
+    Check("Runtime rig factory binds the actual final route, moving source phase and measured geometry",()=>RigPredictionRuntimeTests.Factory(Assert));
+    Check("Runtime rig cache exposes only current cargo-expanded local planning evidence",()=>RigPredictionRuntimeTests.ExpandedCache(Assert));
+    Check("Actual toll control passes narrow moving lanes and recovers local planned holds",()=>RigControlIntegration.MovingAndRecovery(Assert));
+    Check("Actual toll control preserves cancellation and ordinary fast approach slowdown",()=>RigControlIntegration.CancellationAndSpeed(Assert));
+    Check("Current parked scene admission never reuses a prior empty scene as driving permission",()=>ParkedSceneAdmissionIntegration.CurrentEvidence(Assert));
+    Check("Early lane choices require model proof and bind real barriers only to the directed selected item",()=>EarlyTollPlanningIntegration.Run(Assert));
+    Check("Manual payment zones follow directed navigation geometry rather than backward host metadata",()=>ManualDirectionIntegration.Run(Assert));
+    Check("Passed and unbound selected booths preserve correct real controller ownership transitions",()=>BarrierLifecycleIntegration.Transitions(Assert));
+    Check("Unknown scene inputs cannot hide an independently measured acute obstacle",()=>ParkedSceneAdmissionIntegration.PositiveHazardsSurviveUnknown(Assert));
+    Check("Refined route identities preserve directed canonical curves and reject ambiguous current occurrences",()=>ParkedSceneAdmissionIntegration.CanonicalRouteIdentity(Assert));
+    Check("Only completed dominating model certificates can prove smaller unchanged corridors",()=>ModelCertificateAdversarialIntegration.DominanceAndRevocation(Assert));
+    Check("A far unknown toll beyond the accepted route gap cannot create an immediate branch stop",()=>EarlyPlanningGapIntegration.RemoteUnknownPlaza(Assert));
+    Check("Parking catalogue resolves all same-category extensions, accessories and exclusions",()=>ParkedCatalogIntegration.Selection(Assert));
+    Check("Parking passenger closure, transforms, selected masks and cycles retain geometry",()=>ParkedCatalogIntegration.Children(Assert));
+    Check("Generated parking visuals require exact classes, schemas and field types",()=>ParkedCatalogIntegration.GeneratedLeaves(Assert));
+    Check("Vehicle envelope uses separate world transforms and confirmed ground under both bodies",()=>VehicleEnvelopeIntegration.Frames(Assert));
+    Check("Envelope proof cache never bypasses current identity, pose, source or session",()=>VehicleEnvelopeIntegration.CacheAuthority(Assert));
+    Check("Auxiliary cargo uses actual transformed models and resolves every accessory",()=>VehicleEnvelopeIntegration.Auxiliary(Assert));
+    Check("Unknown, cyclic or malformed child geometry cannot grant clearance",()=>ChildGeometryIntegration.UnsupportedChildren(Assert));
+    Check("Renderer-only flares require verified full materials, no collision and no hidden geometry",()=>ChildGeometryIntegration.FlareValidation(Assert));
     Check("Visible additional parts affect geometry independently of payment markers",()=>ModelClearanceIntegration.VisibleParts(Assert));
     Check("Slow model inspection is bounded, detached, cached and nonblocking for route callers",()=>ModelClearanceIntegration.NonBlocking(Assert));
     Check("Connector starts distinguish passed signals from signals and restrictions ahead",()=>ConnectorSignalIntegration.Run(Assert));

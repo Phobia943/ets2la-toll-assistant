@@ -10,6 +10,8 @@
     <p>@TollPlugin.Current?.DataStatus</p>
     <p>@TollPlugin.Current?.RouteStatus</p>
     <p>@TollPlugin.Current?.VehicleGeometryStatus</p>
+    @if (!string.IsNullOrEmpty(TollPlugin.Current?.VehicleEnvelopeStatus)) {<p>@TollPlugin.Current?.VehicleEnvelopeStatus</p>}
+    <p>@TollPlugin.Current?.ParkedSceneStatus</p>
     @if (!string.IsNullOrEmpty(TollPlugin.Current?.CurveStatus)) {<p>@TollPlugin.Current?.CurveStatus</p>}
     @if (!string.IsNullOrEmpty(TollPlugin.Current?.RoadCruiseStatus)) {<p>@TollPlugin.Current?.RoadCruiseStatus</p>}
     @if (!string.IsNullOrEmpty(TollPlugin.Current?.BrakeResponseStatus)) {<p role="alert">@TollPlugin.Current?.BrakeResponseStatus</p>}
@@ -31,7 +33,7 @@
         <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="ConfirmLane">Lkw-Freigabe und Zahlart dieser Spur speichern</button>
     }
     <p>Die Spurwahl nutzt die Zahlart im Spielmodell und prüft den gesamten Lkw-Weg. Sie bevorzugt automatische Abrechnung. Bei einer manuellen Zahlspur hält die Assistenz vor der Schranke. Fehlt eine passende Spur, nähert sich der Lkw dem Haltepunkt vor der Aufteilung. F9 gibt die Steuerung zurück.</p>
-    <p>Die statische Modellprüfung verwendet einen Korridor von 3 m Breite und 6 m Höhe. Die tatsächlichen Fahrzeugmaße werden nicht gemessen. Breitere oder höhere Ladungen bitte manuell durch die Mautstelle fahren.</p>
+    <p>Die Durchfahrtsprüfung benötigt passende aktuelle Fahrzeug-, Auflieger- und Ladungsdaten. Unbekannte Maße werden nicht geschätzt. Vorhandene Parkfahrzeuge werden zusätzlich anhand aktueller Spieldaten geprüft. Eine nicht bestätigte Durchfahrt erfordert einen geplanten Halt und gegebenenfalls manuelle Übernahme.</p>
     <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="Preview">Route im Stand prüfen (ohne Gas und Lenkung)</button>
     <p>Prüft im Stand automatisch die Startroute. F8 kann auch während der Fahrt starten: Bis zum Abschluss der Routenprüfung selbst weitersteuern. Erst mit passender Spur, Fahrtrichtung und genügend Strecke voraus übernimmt die Assistenz. F9 gibt die Steuerung zurück und bricht eine laufende Startprüfung ab.</p>
     <p>Manuelle Bremsübernahme: Unter Einstellungen → Controls „Bremse – manuelle Übernahme“ derselben physischen Bremsachse wie im Spiel zuordnen. Ab 12 % Bremseingabe gehen Lenkung und Tempomat aus. Vor einem neuen F8-Start die Bremse ganz loslassen. Die Abschaltung muss nach der Zuordnung im Stand geprüft werden.</p>

@@ -2,6 +2,10 @@
  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><DefineConstants>$(DefineConstants);INTEGRATION</DefineConstants></PropertyGroup>
  <ItemGroup><ProjectReference Include="..\Plugin\MautAssistent.csproj" /></ItemGroup>
  <ItemGroup>
+  <Compile Include="../Tools/Research/PmcEnvelope.cs" Link="Research/PmcEnvelope.cs" />
+  <Compile Include="../Tools/Research/ParkedSpawnCatalog.cs" Link="Research/ParkedSpawnCatalog.cs" />
+ </ItemGroup>
+ <ItemGroup>
   <Reference Include="$(EtsRoot)\ETS2LA.State.dll" Private="false" />
   <Reference Include="$(EtsRoot)\ETS2LA.Backend.dll" Private="false" />
   <Reference Include="$(EtsRoot)\ETS2LA.Controls.dll" Private="false" />

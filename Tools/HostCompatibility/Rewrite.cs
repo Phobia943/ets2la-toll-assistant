@@ -41,6 +41,7 @@ internal static class Rewrite
         var target=module.GetType("ETS2LA.Game.Output.GameOutput")??throw new InvalidDataException("Output type missing");
         var definition=module.GetType("ETS2LA.Game.Output.ControlChannelDefinition");
         definition.Fields.Add(new("MautEpoch",FieldAttributes.Public,module.TypeSystem.Int64));
+        definition.Fields.Add(new("MautIssuedAt",FieldAttributes.Public,module.TypeSystem.Int64));
         var clone=new MethodDefinition("MautClone",MethodAttributes.Public|MethodAttributes.HideBySig,definition);
         var cloneIl=clone.Body.GetILProcessor();cloneIl.Emit(OpCodes.Ldarg_0);
         cloneIl.Emit(OpCodes.Call,module.ImportReference(typeof(object).GetMethod("MemberwiseClone",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic)!));
@@ -60,6 +61,8 @@ internal static class Rewrite
             CopyBody(method,Method(target,method.Name),template,target);
         var epochGetter=Method(target,"MautDefinitionEpoch");epochGetter.Body=new(epochGetter);
         var getterIl=epochGetter.Body.GetILProcessor();getterIl.Emit(OpCodes.Ldarg_0);getterIl.Emit(OpCodes.Ldfld,definition.Fields.Single(f=>f.Name=="MautEpoch"));getterIl.Emit(OpCodes.Ret);
+        var issuedGetter=Method(target,"MautDefinitionIssuedAt");issuedGetter.Body=new(issuedGetter);
+        var issuedIl=issuedGetter.Body.GetILProcessor();issuedIl.Emit(OpCodes.Ldarg_0);issuedIl.Emit(OpCodes.Ldfld,definition.Fields.Single(f=>f.Name=="MautIssuedAt"));issuedIl.Emit(OpCodes.Ret);
         var snapshot=Method(target,"MautSnapshotDefinition");snapshot.Body=new(snapshot);
         var snapshotIl=snapshot.Body.GetILProcessor();snapshotIl.Emit(OpCodes.Ldarg_0);snapshotIl.Emit(OpCodes.Callvirt,clone);snapshotIl.Emit(OpCodes.Ret);
         var cctor=Method(target,".cctor");var first=cctor.Body.Instructions[0];var il=cctor.Body.GetILProcessor();
@@ -102,13 +105,16 @@ internal static class Rewrite
         var type=module.GetType(typeName)??throw new InvalidDataException("Native plugin type missing");int sites=0;
         var tick=Method(type,"Tick");tick.Body.SimplifyMacros();
         var tickEpoch=new VariableDefinition(module.TypeSystem.Int64);tick.Body.Variables.Add(tickEpoch);tick.Body.InitLocals=true;
+        var tickIssuedAt=new VariableDefinition(module.TypeSystem.Int64);tick.Body.Variables.Add(tickIssuedAt);
         var tickIl=tick.Body.GetILProcessor();var tickFirst=tick.Body.Instructions[0];
+        tickIl.InsertBefore(tickFirst,Instruction.Create(OpCodes.Call,module.ImportReference(typeof(System.Diagnostics.Stopwatch).GetMethod("GetTimestamp")!)));
+        tickIl.InsertBefore(tickFirst,Instruction.Create(OpCodes.Stloc,tickIssuedAt));
         tickIl.InsertBefore(tickFirst,Instruction.Create(OpCodes.Call,module.ImportReference(Method(output,"MautCaptureEpoch"))));
         tickIl.InsertBefore(tickFirst,Instruction.Create(OpCodes.Stloc,tickEpoch));
         foreach(var method in type.Methods.Where(m=>m.HasBody)) {
             var creations=method.Body.Instructions.Where(i=>i.OpCode==OpCodes.Newobj&&i.Operand is MethodReference m&&m.DeclaringType.FullName=="ETS2LA.Game.Output.ControlChannelDefinition").ToArray();
             if(creations.Length==0)continue;
-            method.Body.SimplifyMacros();var il=method.Body.GetILProcessor();ParameterDefinition? origin=null;
+            method.Body.SimplifyMacros();var il=method.Body.GetILProcessor();ParameterDefinition? origin=null,originIssuedAt=null;
             if(!ReferenceEquals(method,tick)) {
                 if(typeName!="LaneAssist.LaneAssistPlugin"||method.Name!="CheckPlaySound"||method.Parameters.Count!=2)
                     throw new InvalidDataException("Publisher origin scope is not verified: "+method.Name);
@@ -117,13 +123,22 @@ internal static class Rewrite
                     .Select(i=>(caller,i))).ToArray();
                 if(calls.Length==0||calls.Any(c=>!ReferenceEquals(c.caller,tick)))throw new InvalidDataException("Unverified pause helper caller");
                 origin=new("MautOriginEpoch",ParameterAttributes.None,module.TypeSystem.Int64);method.Parameters.Add(origin);
-                foreach(var call in calls){tickIl.InsertBefore(call.i,Instruction.Create(OpCodes.Ldloc,tickEpoch));call.i.Operand=method;}
+                originIssuedAt=new("MautOriginIssuedAt",ParameterAttributes.None,module.TypeSystem.Int64);method.Parameters.Add(originIssuedAt);
+                foreach(var call in calls){
+                    tickIl.InsertBefore(call.i,Instruction.Create(OpCodes.Ldloc,tickEpoch));
+                    tickIl.InsertBefore(call.i,Instruction.Create(OpCodes.Ldloc,tickIssuedAt));call.i.Operand=method;
+                }
             }
             var field=module.ImportReference(output.Module.GetType("ETS2LA.Game.Output.ControlChannelDefinition").Fields.Single(f=>f.Name=="MautEpoch"));
+            var issuedField=module.ImportReference(output.Module.GetType("ETS2LA.Game.Output.ControlChannelDefinition").Fields.Single(f=>f.Name=="MautIssuedAt"));
             foreach(var creation in creations) {
                 var dup=Instruction.Create(OpCodes.Dup);il.InsertAfter(creation,dup);
                 var load=origin==null?Instruction.Create(OpCodes.Ldloc,tickEpoch):Instruction.Create(OpCodes.Ldarg,origin);
-                il.InsertAfter(dup,load);il.InsertAfter(load,Instruction.Create(OpCodes.Stfld,field));sites++;
+                var save=Instruction.Create(OpCodes.Stfld,field);
+                il.InsertAfter(dup,load);il.InsertAfter(load,save);
+                var issuedDup=Instruction.Create(OpCodes.Dup);
+                var issuedLoad=originIssuedAt==null?Instruction.Create(OpCodes.Ldloc,tickIssuedAt):Instruction.Create(OpCodes.Ldarg,originIssuedAt);
+                il.InsertAfter(save,issuedDup);il.InsertAfter(issuedDup,issuedLoad);il.InsertAfter(issuedLoad,Instruction.Create(OpCodes.Stfld,issuedField));sites++;
             }
             method.Body.OptimizeMacros();
         }
@@ -218,7 +233,9 @@ internal static class Rewrite
         foreach(var p in Method(seed,"MautApplyCoast").Parameters)helper.Parameters.Add(new(p.Name,p.Attributes,acc.ImportReference(p.ParameterType)));
         target.Methods.Add(helper);CopyBody(Method(seed,"MautApplyCoast"),helper,seed,target,output);
         var tick=Method(target,"Tick");tick.Body.SimplifyMacros();var ti=tick.Body.GetILProcessor();
-        var epoch=tick.Body.Variables.Single(v=>v.VariableType.MetadataType==MetadataType.Int64);
+        var capture=tick.Body.Instructions.Single(i=>i.Operand is MethodReference m&&m.Name=="MautCaptureEpoch");
+        var epoch=capture.Next.OpCode==OpCodes.Stloc&&capture.Next.Operand is VariableDefinition captured?captured:
+            throw new InvalidDataException("Unverified native tick epoch capture");
         var stores=tick.Body.Instructions.Where(i=>i.OpCode==OpCodes.Stfld&&i.Operand is FieldReference f&&f.DeclaringType.FullName=="ETS2LA.Game.Output.ControlEvent"&&f.Name=="Variables").ToArray();
         if(stores.Length!=1)throw new InvalidDataException("Unverified ACC variables publisher");
         var variables=new VariableDefinition(stores[0].Operand is FieldReference variableField?acc.ImportReference(variableField.FieldType):throw new InvalidDataException());tick.Body.Variables.Add(variables);

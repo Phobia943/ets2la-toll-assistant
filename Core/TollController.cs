@@ -44,6 +44,7 @@ public sealed class TollController(TollOptions options)
     bool crossed;
     double? manualOffset;
     public bool Tracking => tracked != null;
+    public bool Released => released;
     public double ApproachHorizon(double speed)
         => Math.Max(200, speed * speed / (2 * options.ComfortableDeceleration) + Math.Max(0,speed) * 1.5 + 40);
     public void Reset() { tracked = null; openSince = null; released = false; crossed=false; manualOffset=null; lastTime = double.NaN; }

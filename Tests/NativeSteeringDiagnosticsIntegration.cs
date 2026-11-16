@@ -31,7 +31,7 @@ public static class NativeSteeringDiagnosticsIntegration
     }
     public static void Run(Action<bool,string> assert)
     {
-        var root=Environment.GetEnvironmentVariable("EtsRoot")!;
+        var root=Environment.GetEnvironmentVariable("MAUT_HOST_CANDIDATE")??Environment.GetEnvironmentVariable("EtsRoot")!;
         var assembly=AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(root,"Plugins","tumppi066.laneassist","LaneAssist.dll"));
         var type=assembly.GetType("LaneAssist.LaneAssistPlugin",true)!;
         // No constructor, native Tick, providers or shared output memory.
