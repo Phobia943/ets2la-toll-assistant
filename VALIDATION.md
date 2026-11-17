@@ -1,8 +1,8 @@
 # Fahrnachweis
 
-## 0.4.3 – Offlineprüfung, Fahrtest offen
+## 0.4.3 – Installiert, Start- und Fahrtest offen
 
-Die konkreten Kartenflag-, Ampel- und Telemetrieprüfungen sind in [REVIEW-0.4.3.md](REVIEW-0.4.3.md) dokumentiert. Ein Archivvergleich mit synthetischen Runtime-Zuständen ist keine wiederholte reale Durchfahrt. Die zuvor mit 0.4.2 bestätigte manuelle Übernahme und Parkbehandlung gelten nicht automatisch als neuer Fahrnachweis für diese Fassung.
+Am 17. November um 19:33 Uhr MEZ wurde ausschließlich die Plugin-Datei ersetzt und die vorherige 0.4.2 gesichert. Das Spiel war beendet; ein nach dem Schließen verbliebener ETS2LA-Hintergrundprozess wurde vor dem Austausch beendet. Die neue Datei und die Sicherung stimmen mit den geprüften Prüfsummen überein. Keine Anwendung wurde automatisch gestartet. Die konkreten Kartenflag-, Ampel- und Telemetrieprüfungen sind in [REVIEW-0.4.3.md](REVIEW-0.4.3.md) dokumentiert. Ein Archivvergleich mit synthetischen Runtime-Zuständen ist keine wiederholte reale Durchfahrt. Die zuvor mit 0.4.2 bestätigte manuelle Übernahme und Parkbehandlung gelten nicht automatisch als neuer Fahrnachweis für diese Fassung.
 
 ## Installierte Fassung 0.3.16 – Fahrprüfung offen
 

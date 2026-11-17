@@ -1,6 +1,6 @@
 # 0.4.3 – Kartenampeln und wiederholte Physikframes
 
-Stand: 17. November 2026. In Vorbereitung; noch nicht installiert oder im Spiel geprüft.
+Stand: 17. November 2026. Um 19:33 Uhr MEZ mit Sicherung und Dateiprüfung installiert; noch nicht neu gestartet oder im Spiel geprüft.
 
 ## Getrennte Vorfälle
 
@@ -43,4 +43,4 @@ Die zusätzliche Archivgegenprobe verwendet das tatsächliche Straßenmodell und
 
 Die Hostprüfung führt echte Telemetrie-Callbacks durch den Plugin-Regler zu isolierten Legacy- und modernen Ausgabesenken. Identische Physikframes behalten innerhalb der ursprünglichen Frist Gas ohne neue Bremsgrenze. Nach deren Ablauf entzieht der Host Gas auch dann, wenn Verkehrsframes inzwischen erneuert wurden. Die bestehenden Park-, Übernahme-, Fehler- und kanonischen Mauttests bleiben grün.
 
-Geprüfter Plugin-SHA256: `3ED2DC65898B28F2168379697AC9932A6287B6FFBF936B1E74E650878605102F`, MVID `a871042f-575a-446a-aa21-ae25bd7d2cee`. Das Hostpaket bleibt unverändert. Paket und reversibler Ein-Datei-Installer sind gegengeprüft. Der abschließende Prozesscheck fand noch laufendes ETS2LA und stoppte **vor jeder Installation**; der Austausch wartet auf dessen Ende. Keine Fahrprüfung oder automatische Zahlung behauptet.
+Geprüfter und installierter Plugin-SHA256: `3ED2DC65898B28F2168379697AC9932A6287B6FFBF936B1E74E650878605102F`, MVID `a871042f-575a-446a-aa21-ae25bd7d2cee`. Das Hostpaket bleibt unverändert. Paket und reversibler Ein-Datei-Installer sind gegengeprüft. Der erste Prozesscheck fand noch laufendes ETS2LA und stoppte vor jeder Änderung. Nach ausdrücklicher Installationsfreigabe und beendetem Spiel wurde der verbliebene ETS2LA-Hintergrundprozess beendet. Erst danach erfolgten Sicherung, Austausch und unabhängige Dateiprüfung. Die gesicherte 0.4.2 besitzt weiterhin SHA256 `D08B4951358089CAF0E584029B5E5437E6662CC1A796ACCACD8175D723081504`. Keine Anwendung wurde automatisch gestartet. Start-/Fahrprüfung und automatische Zahlung bleiben offen.

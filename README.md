@@ -1,6 +1,6 @@
 # ETS2LA Mautassistent
 
-**0.4.3 berücksichtigt ausgeschaltete Kartenampeln und wiederholte Physikframes.** Ein Ampelprofil allein erzeugt keinen Halt mehr, wenn die konkrete Karteninstanz keine Ampelmodelle erzeugt und dort kein passender Live-Actor beobachtet wird. Reales Rot und unbekannte aktive Ampeln bleiben berücksichtigt. Identische Telemetriewiederholungen dürfen einen noch aktuellen Beschleunigungswert innerhalb seiner ursprünglichen Frist weiterverwenden; sie verlängern diese Frist nicht. [Korrektur, Prüfungen und offene Grenzen](REVIEW-0.4.3.md). Die Fassung ist vorbereitet; Installation und Fahrprüfung sind noch offen.
+**0.4.3 berücksichtigt ausgeschaltete Kartenampeln und wiederholte Physikframes.** Ein Ampelprofil allein erzeugt keinen Halt mehr, wenn die konkrete Karteninstanz keine Ampelmodelle erzeugt und dort kein passender Live-Actor beobachtet wird. Reales Rot und unbekannte aktive Ampeln bleiben berücksichtigt. Identische Telemetriewiederholungen dürfen einen noch aktuellen Beschleunigungswert innerhalb seiner ursprünglichen Frist weiterverwenden; sie verlängern diese Frist nicht. [Korrektur, Prüfungen und offene Grenzen](REVIEW-0.4.3.md). Die Fassung ist mit Sicherung und Dateiprüfung installiert; Start- und Fahrprüfung sind noch offen.
 
 Die [Stillstandsbehandlung aus 0.4.2](REVIEW-0.4.2.md), die [Gasüberwachung aus 0.4.1](REVIEW-0.4.1.md), die eigene Geschwindigkeitsregelung und das bestehende Hostpaket aus [0.4.0](REVIEW-0.4.0.md) bleiben die Grundlage. Automatisches Bezahlen an manuellen Mautspuren ist noch nicht enthalten.
 

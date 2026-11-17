@@ -1,6 +1,6 @@
 # Änderungen
 
-## 0.4.3 – Ampelinstanzen und aktuelle Fahrzeugdynamik, vorbereitet
+## 0.4.3 – Ampelinstanzen und aktuelle Fahrzeugdynamik, installiert
 
 - Berücksichtigt das belegte Spawnflag der konkreten Karteninstanz. Ein ausgeschalteter Ampelkopf ohne passenden Runtime-Actor erzeugt keinen erfundenen Halt. Echte Signale, unbekannte Instanzen und widersprüchliche Actors bleiben konservativ behandelt.
 - Ordnet die Ausnahme für Mautschranken derselben gerichteten kanonischen Torgruppe zu, einschließlich mehrerer Schrankenarme. Eine gleiche ID an einem anderen Pfosten, Ort oder Routenabschnitt genügt nicht.
