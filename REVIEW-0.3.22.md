@@ -51,3 +51,11 @@ Nach dem späteren Nutzerstart bestätigt der aktuelle Status die geladene .22 u
 - Der gespeicherte Lenksignalfehler von 14:15 Uhr ist ein separates Ereignis. Eine alte Kartenkopie von 11:22 Uhr und ein Routenfehler vom 15. November wurden nicht zur Erklärung der aktuellen Stopps verwendet.
 
 Die Untersuchung verändert weder die laufende Assistenz noch den Fensterfokus. Produktstand bleibt .22; keine Schutzgrenze wurde gelockert. Rohaufnahmen und Kartendaten bleiben lokal.
+
+## Folgeaufnahme 14:35–14:45 Uhr MEZ
+
+Die zehnminütige Aufnahme enthält 4.494 lesbare Messzeilen. Bei der Passage gegen 14:40 Uhr gab der Nutzer ausdrücklich selbst Gas und meldete danach verlorene Spurverfolgung. Sie ist **kein autonomer Durchfahrterfolg**. Während des Gaseingriffs sind gleichzeitige Spielgas- und Bremswerte gespeichert; das Durchfahren ohne Stillstand beweist deshalb keine korrekte automatische Regelung.
+
+In einem späteren sieben Sekunden langen Fenster nach der Schranke sinkt das Tempo von etwa 12 auf 4,4 km/h. Die wiederholten nativen Beobachtungen melden ein positives Beschleunigungsziel und positive Pedalausgabe; 51 von 53 Spielproben enthalten dennoch weniger als 0,1 % Gas und Bremse. Fensterfokus, Schaltvorgang oder tatsächlicher Stellweg sind damit nicht geklärt. Der Status meldet gleichzeitig eine 4,50-m-Routenlücke **357 m voraus**, bei frischen Lenksignalen. Das bestätigt eine vorausliegende Anschlussstörung, aber keinen an dieser Stelle nachgewiesenen Ausfall der Lenkausgabe. Der vom Nutzer berichtete Trackingverlust bleibt separat zu untersuchen. Der Auslöser „Keine stabile Fahrentscheidung verfügbar“ um 14:39 Uhr wurde als weiteres getrenntes Ereignis gesichert.
+
+Eine zusätzliche Offline-Geometrieprobe auf dem echten Auto10-Pfad des betroffenen Mautmodells zeigt einen konkreten Gegenfall für die native Schrankenwahl: Das gegenläufige Tor 15 projiziert etwa 7,95 m vor das eigene Tor 10 und liegt nur 3,80 m von der Route entfernt. Die dokumentierte native 4-m-/Nähe-Regel kann dieses fremde Tor vorziehen. Dies ist bisher eine Geometrieprobe mit konstruiertem Lkw-Punkt, kein ausgeführter nativer Getter und kein Beweis für die historischen Stopps. Native Diagnosewerte sind nicht atomar; fehlende Einträge in einer gerade neu aufgebauten Begrenzungsliste gelten nicht als freie Fahrt.
