@@ -1,8 +1,8 @@
 # ETS2LA Mautassistent
 
-**0.3.18 ist installiert und wird beobachtet. 0.3.19 ist fertig vorbereitet und noch nicht installiert.** 155 Integrations-, 82 Kernlogik-, 120 Host-/Plugin- und 63 Aufnahmetests sowie sechs frühe FR-Kartenfälle sind bestanden und kritisch geprüft. Installation, Standtest und echte Mautdurchfahrt bleiben offen. [Installierter Stand 0.3.18](REVIEW-0.3.18.md), [vorbereitete Korrektur 0.3.19](REVIEW-0.3.19.md).
+**0.3.19 ist installiert, hashverifiziert und in ETS2LA geladen. Eine Startfreigabe ist noch nicht bestätigt.** Der Nutzer bestätigt den Halt abseits der geplanten Fahrspur; die Routen-Startblockierung passt dazu. Die Unterstützung des aufgenommenen Tieflader-/Yachtgespanns ist außerdem noch zu prüfen. 155 Integrations-, 82 Kernlogik-, 120 Host-/Plugin- und 63 Aufnahmetests sowie sechs frühe FR-Kartenfälle sind bestanden und kritisch geprüft. Stand-Aktivierung und echte Mautdurchfahrt bleiben offen. [Baseline 0.3.18](REVIEW-0.3.18.md), [installierte Korrektur 0.3.19](REVIEW-0.3.19.md).
 
-Der vorherige Sieben-Datei-Austausch auf 0.3.18 wurde mit geprüfter Sicherung und bestätigten Zielhashes abgeschlossen. Dabei blieben Einstellungen und Eingabebelegungen unverändert; der Installer startete keine Apps oder Assistenz. Beobachtungen der später gestarteten .18 sind keine Bestätigung der noch nicht installierten .19.
+Das .19-Update ersetzte nur das Plugin und sicherte die originale .18-Datei. Alle sechs unveränderten Host-/SDK-/Geometriedateien wurden erneut bestätigt. Der Nutzer startete ETS2LA anschließend selbst: Die frische Statusdatei meldet .19 und vier eingeschaltete Module; bei Stillstand und Feststellbremse bleiben Fahrassistenz und Fehlerbremsung aus. Geladen ist damit nicht gleich fahrbereit.
 
 Die Erweiterung ergänzt ETS2LA Pathfinding, Lane Assist und Adaptive Cruise Control in Euro Truck Simulator 2. Sie plant eine erreichbare Lkw-Mautspur, begrenzt die Anfahrt und wartet auf die tatsächlich geöffnete Schranke. Oberfläche und Meldungen sind auf Deutsch.
 
@@ -14,9 +14,9 @@ Die Erweiterung ergänzt ETS2LA Pathfinding, Lane Assist und Adaptive Cruise Con
 
 Die konkrete Kartenanalyse fand eine physisch freie Verbindung zu Auto-Tor 15, die am bisherigen harten `SmallVehicles`-Filter scheiterte. Sechs Produktions-API-Gegenfälle bei 50/85/100 km/h und jeweils 200/300 m Zufahrtsrest wählen diese Spur erfolgreich. Sie verwenden rekonstruierte Positionen auf echten Kartendaten und ein ausdrücklich festgelegtes Profil; sie sind keine gefahrenen Passagen. Auto-Tor 16 bleibt physisch gesperrt. Keine Durchfahrt in allen Ländern ist belegt.
 
-Für das geplante .19-Update wird nur die Plugin-Datei ersetzt. Die sechs unveränderten Host-/SDK-/Geometriedateien der geprüften .18-Baseline müssen weiterhin exakt passen; sie müssen deshalb nicht pauschal erneut ausgetauscht werden. Dafür muss ETS2LA geschlossen sein, das Spiel kann geöffnet bleiben. Noch wurde nichts auf .19 aktualisiert.
+Für das abgeschlossene .19-Update wurde nur die Plugin-Datei ersetzt. Die sechs unveränderten Host-/SDK-/Geometriedateien der geprüften .18-Baseline müssen weiterhin exakt passen; sie müssen deshalb nicht pauschal erneut ausgetauscht werden. Dafür muss nur ETS2LA geschlossen sein, das Spiel kann geöffnet bleiben.
 
-## Verhalten des installierten Stands 0.3.18
+## Übernommene Laufzeitfunktionen der .18-Basis
 
 - Eine modellseitig belegte und geometrisch passende Spur kann bereits geplant werden, bevor das kurze SDK-Sichtfeld ihre Schranke meldet. Fehlende Modellbelege führen zunächst nur zum Vorladen.
 - **Geplante Spur und live zugeordnete Schranke sind getrennte Zustände.** Ohne passende frische Torprobe bleibt innerhalb des geschwindigkeitsabhängigen Bremshorizonts ein normaler Halt vor dem Kartenanker erforderlich. SDK-Typ, Nummer, Weltposition und gerichteter Routenabschnitt müssen zusammenpassen; die Nummer allein genügt nicht.
@@ -60,9 +60,9 @@ Beim damaligen vollständigen Sieben-Datei-Austausch mussten ETS2LA **und ETS2/T
 
 **Niemals den gesamten Host-Vorbereitungsordner oder `isolated-replay-*` installieren oder verteilen.** Die Replay-Unterordner enthalten absichtlich umgeschriebene Test-DLLs mit anderen Prüfsummen. Nur die ausdrücklich im versiegelten Sieben-Datei-Paket aufgeführten Produktionspfade dürfen ausgetauscht werden.
 
-Der installierte Plugin-Build besteht 152 Integrations-, 82 Kernlogik- und 120 Host-/Pluginprüfungen ohne Fehler. Der Hostlauf einschließlich 37 echter Plugin-Commit-Prüfungen benennt exakt denselben SHA256 `35542A74D0786DD459C686E0CE1D1B6EEAED8BAE59C8C1698A9235EAEB087CE5`; MVID, FR-Laufzeitgegenprobe und Quelleninventur stehen im [Review](REVIEW-0.3.18.md). Die neuen Geometriequellen haben 31 isolierte Beobachterprüfungen und 33 + 18 SDK-Szenenprüfungen. Die Liveprüfung steht noch aus. ETS2LA-Updates können die Kombination ersetzen; danach sind Fassungen und Prüfsummen erneut zu prüfen.
+Der installierte .19-Plugin-Build besteht 155 Integrations-, 82 Kernlogik-, 120 Host-/Plugin- und 63 Aufnahmetests ohne Fehler. SHA256 `766EC8EEBF337E493A8E8EAF218B42A1BB3A74182FC85DB8D3E5F9D806547A3F`, MVID und Kartenbelege stehen im [Review](REVIEW-0.3.19.md). Die unveränderten Geometriequellen haben 31 isolierte Beobachterprüfungen und 33 + 18 SDK-Szenenprüfungen. Die Liveprüfung steht noch aus. ETS2LA-Updates können die Kombination ersetzen; danach sind Fassungen und Prüfsummen erneut zu prüfen.
 
-Die Initialisierung stößt reine Modellarbeit im Hintergrund an, und der F8-Wartezustand hält bis zur Bereitschaft. Ein vorbereiteter Korridor wird einmal pro Auswertung erzeugt und zwischen den lokalen Prüfungen geteilt. Die abschließende Offline-FR-Gegenprobe desselben Builds misst 111 ms für das erste reale Modellprüfpaar und höchstens 120 ms in fünf warmen Paaren; sie garantiert keine entsprechende Laufzeit für alle Modelle oder den gesamten Ausgabepfad. `Supported` des Bewegungsmodells allein erteilt keine Fahrberechtigung.
+Die Initialisierung stößt reine Modellarbeit im Hintergrund an, und der F8-Wartezustand hält bis zur Bereitschaft. Ein vorbereiteter Korridor wird einmal pro Auswertung erzeugt und zwischen den lokalen Prüfungen geteilt. Die Laufzeitbelege der .18-Basis und die separaten .19-Kartenproben sind in den Reviews abgegrenzt; sie garantieren keine entsprechende Laufzeit für alle Modelle oder den gesamten Ausgabepfad. `Supported` des Bewegungsmodells allein erteilt keine Fahrberechtigung.
 
 ## Bedienung nach kontrollierter Einrichtung
 
@@ -96,7 +96,7 @@ Die Logik- und Integrationstests verwenden synthetische Daten und echte Biblioth
 
 ## Noch offen
 
-- Die gemeinsame Stand-/Fahrprüfung nach dem abgeschlossenen Sieben-Datei-Austausch steht noch aus. Die FR-Laufzeitgegenprobe bleibt ein abgegrenzter Offlinefall. Die frühere 15-m-Kugel-/globale Unknown-Motion-Ablehnung ist historisch und wurde durch die lokale Laufzeitprüfung ersetzt.
+- .19 ist installiert und geladen; Startfreigabe, vollständiger Standtest und echte Durchfahrt sind noch offen. Aktuelle Spurlage und Auflieger-/Ladungsdefinition müssen zuerst geklärt werden. Die FR-Gegenproben bleiben abgegrenzte Offlinefälle.
 - Der französische Vorfall ist statisch untersucht. Die damalige Position hatte nur etwa 14,44 m auf der Zufahrt übrig und war für den erforderlichen Spurwechsel zu spät. Eine frühere virtuelle Position mit ungefähr 67 m Rest ist eine Offline-Hypothese, kein beobachteter Fahrnachweis. Eine weitere gespeicherte Niedrigtempo-Gegenprobe im v16-Zwischenstand ohne SDK-Tore plante rund 198 m vor dem Tor die passende automatische Spur. Eine Live-Schrankenzuordnung oder reale Passage belegt sie nicht; die reale Wiederholung steht noch aus.
 - Die französische v20-Breitenprobe erlaubt statisch 3,4 m auf Spur 10; 3,5 m und breiter bleiben an fester Modellgeometrie abgelehnt. Die Mover-Mittelpunktkorrektur behebt diese getrennte Breitenfrage nicht.
 - Die neue Hüllen- und Szenenerfassung wurde noch nicht gemeinsam im laufenden Spiel als Grundlage einer Mautdurchfahrt bestätigt. Unbekannte Hüllen oder Bewegungen können weiterhin zu Halten führen.

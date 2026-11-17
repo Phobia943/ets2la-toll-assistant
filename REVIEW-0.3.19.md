@@ -1,12 +1,14 @@
-# Review 0.3.19 – geprüft und vorbereitet, noch nicht installiert
+# Review 0.3.19 – installiert und geladen, Startfreigabe offen
 
-Aktuell ist 0.3.18 installiert und wird beobachtet. 0.3.19 ist als begrenzte Korrektur fertig vorbereitet und kritisch geprüft: **155 Integrations-, 82 Kernlogik-, 120 isolierte Host-/Pluginprüfungen und 63 Aufnahmetests** sind bestanden. Auch die sechs schnellen frühen Kartenfälle unten sind grün. Plugin-SHA256: `766EC8EEBF337E493A8E8EAF218B42A1BB3A74182FC85DB8D3E5F9D806547A3F`, MVID: `e270c69c-2524-4731-9e72-a6980fe14f8d`. Das eingebettete Hostmanifest ist unverändert. Paketmanifest-SHA256: `B06D04EAD4830F8FB2991DF86865F0F7BC3DA9059853600210E586E84C0D6327`. Die lokale Versiegelung liegt privat in `maut-0319-prepared-validation.json`. Installation, Standtest und tatsächliche Durchfahrt sind noch nicht erfolgt. Die Installation und Siegel der .18 sind im [vorherigen Review](REVIEW-0.3.18.md) festgehalten.
+0.3.19 ist installiert, unabhängig hashverifiziert und nach dem Start durch den Nutzer geladen. Als begrenzte Korrektur ist sie kritisch geprüft: **155 Integrations-, 82 Kernlogik-, 120 isolierte Host-/Pluginprüfungen und 63 Aufnahmetests** sind bestanden. Auch die sechs schnellen frühen Kartenfälle unten und die Code-CI für `b2df1f6` sind grün. Plugin-SHA256: `766EC8EEBF337E493A8E8EAF218B42A1BB3A74182FC85DB8D3E5F9D806547A3F`, MVID: `e270c69c-2524-4731-9e72-a6980fe14f8d`. Das eingebettete Hostmanifest ist unverändert. Paketmanifest-SHA256: `B06D04EAD4830F8FB2991DF86865F0F7BC3DA9059853600210E586E84C0D6327`. Die lokale Versiegelung und Installation sind privat in `maut-0319-prepared-validation.json`, `maut-0319-install-result.json` und `maut-0319-installed-verified.json` belegt. Die vorherige Plugin-Datei `35542…87CE5` wurde gesichert; alle sechs Baseline-Dateien blieben unverändert. Vollständiger Standtest und tatsächliche Durchfahrt sind noch offen. Die .18-Baseline ist im [vorherigen Review](REVIEW-0.3.18.md) festgehalten.
 
-## Geplantes Plugin-Update auf bestehender Baseline
+Eine frische `status.json` bestätigt Version .19 und alle vier geladenen/eingeschalteten Module. Der Lkw steht mit Feststellbremse, `assists=false` und `faultBraking=false`. **Das ist noch keine Startfreigabe:** Der Nutzer bestätigt einen Haltepunkt abseits der geplanten Fahrspur; die Routen-Startblockierung passt zu dieser Position und belegt keine neue .19-Regression. Eine separate Aufnahme zeigt ein Tieflader-/Yachtgespann, dessen konkrete Auflieger-/Ladungsauflösung noch nicht als unterstützt belegt ist. Die exakten Definitionen und Achsdaten werden getrennt geprüft. Eine Stand-F8-Probe ist noch nicht erfolgt; aus Installation und erfolgreichem Laden werden weder Fahrbereitschaft noch eine vollständig bestandene Standprüfung abgeleitet.
+
+## Abgeschlossenes Plugin-Update auf bestehender Baseline
 
 Die .19 ersetzt ausschließlich `Plugins/MautAssistent.dll` auf der bereits verifizierten .18-Kombination. Die vier Host3-Bibliotheken mit Manifest-SHA256 `7E812E68BC769C2A546E6360E6927DC1EB474F95D835E65E402365381DA046A9`, das Szenen-SDK `BC87…FDBA9` und der Geometriebeobachter `A91E…E5262` müssen unverändert mit ihren vollständigen gepinnten Hashes passen. Die sieben Dateien bilden die Kompatibilitätsbasis; daraus folgt keine Pflicht, sechs unveränderte Dateien erneut zu ersetzen. Eine unbekannte oder abweichende Baseline wird nicht still weiterbenutzt.
 
-Für diesen Plugin-Austausch muss ETS2LA geschlossen sein; das Spiel kann geöffnet bleiben, da keine Spiel-DLL geändert wird. Ein neuer, genau gebundener Update-Nachweis ist nötig: Das alte .18-Runtimegate autorisiert keinen .19-Build. Eine Installation ist noch nicht erfolgt.
+Für diesen Plugin-Austausch musste nur ETS2LA geschlossen sein; das Spiel konnte geöffnet bleiben, da keine Spiel-DLL geändert wurde. Der neue genau gebundene Update-Nachweis wurde verwendet; das alte .18-Runtimegate wurde nicht als .19-Freigabe übernommen.
 
 ## Problem und geänderte Suche
 
@@ -53,8 +55,8 @@ Der generische Marker `InvalidGateData` bleibt erhalten. Zusätzlich bewahrt der
 
 ## Noch ausstehende Schritte
 
-- Installation des genau versiegelten Plugin-Updates auf der überprüften Baseline.
-- Standtest mit Aktivierung sowie Rückgabe der Steuerung durch Controller-Bremse/F9.
+- Aktuelle Position auf der geplanten Spur und die ungeklärte Auflieger-/Ladungsdefinition prüfen; bislang ist keine Startfreigabe bestätigt.
+- Nach geklärten Eingangsdaten vollständiger Standtest mit Aktivierung sowie Rückgabe der Steuerung durch Controller-Bremse/F9.
 - Eine spätere reale Anfahrt und vollständige Durchfahrt; reine Such- oder Aufnahmeprüfungen belegen diese nicht.
 - Ursachenklärung der nicht vorab aufgezeichneten Kurvenkollision. Ein weiterer Plugin-Build benötigt eigene Prüfungen.
 
