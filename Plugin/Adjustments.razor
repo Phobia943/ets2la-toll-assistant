@@ -8,6 +8,7 @@
     <p>@(TollPlugin.Current?.Status ?? "Plugin noch nicht geladen")</p>
     <p>@TollPlugin.Current?.Details</p>
     <p>@TollPlugin.Current?.DataStatus</p>
+    <p>@TollPlugin.Current?.SpeedControlStatus</p>
     <p>@TollPlugin.Current?.RouteStatus</p>
     <p>@TollPlugin.Current?.LaneProtectionStatus</p>
     <p>@TollPlugin.Current?.VehicleGeometryStatus</p>
@@ -39,7 +40,7 @@
     <p>Diese zusätzliche Prüfung benötigt unterstützte Fahrzeug-, Ladungs- und Achsdaten. Wenn sie fehlen, kann die Durchfahrt anhalten. Standardmäßig ist sie ausgeschaltet.</p>
     <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="Preview">Route im Stand prüfen (ohne Gas und Lenkung)</button>
     <p>Prüft im Stand automatisch die Startroute. F8 kann auch während der Fahrt starten: Bis zum Abschluss der Routenprüfung selbst weitersteuern. Erst mit passender Spur, Fahrtrichtung und genügend Strecke voraus übernimmt die Assistenz. F9 gibt die Steuerung zurück und bricht eine laufende Startprüfung ab.</p>
-    <p>Manuelle Bremsübernahme: Unter Einstellungen → Controls „Bremse – manuelle Übernahme“ derselben physischen Bremsachse wie im Spiel zuordnen. Ab 12 % Bremseingabe gehen Lenkung und Tempomat aus. Vor einem neuen F8-Start die Bremse ganz loslassen. Die Abschaltung muss nach der Zuordnung im Stand geprüft werden.</p>
+    <p>Manuelle Bremsübernahme: Unter Einstellungen → Controls „Bremse – manuelle Übernahme“ derselben physischen Bremsachse wie im Spiel zuordnen. Ab 12 % Bremseingabe gehen Lenkung und Geschwindigkeitsregelung aus. Vor einem neuen F8-Start die Bremse ganz loslassen. Die Abschaltung muss nach der Zuordnung im Stand geprüft werden.</p>
     <label>Anfahrt (km/h) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="5" max="30" @bind="approach" /></label>
     <label>Durchfahrt (km/h) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="3" max="15" @bind="passage" /></label>
     <label>Halteabstand zum Lkw-Messpunkt (m) <input style="border:1px solid #777;border-radius:5px;padding:4px;width:80px" type="number" min="4" max="15" @bind="offset" /></label>

@@ -1,70 +1,67 @@
-# Lokale Hostanpassung 0.3.18-host-3
+# Lokale Hostanpassung 0.4.0-host-1
 
-Das Werkzeug bereitet vier zusammengehörige Kopien exakt geprüfter ETS2LA-Komponenten vor. Es installiert nichts. Dieser Stand ist ein lokaler Kandidat; gemeinsame Stand- und Fahrprüfung fehlen. Herstellerbibliotheken, vorbereitete DLLs und private Berichte gehören außerhalb des öffentlichen Repositorys. [Kandidatenumfang und kritischer Review](../../REVIEW-0.3.18.md).
+Das Werkzeug bereitet geprüfte Kopien von ETS2LA-Komponenten vor. Es installiert und startet nichts. Herstellerbibliotheken, vorbereitete DLLs und private Aufzeichnungen bleiben außerhalb des öffentlichen Repositorys. Die hier beschriebene Prüfung ist isoliert; sie ersetzt keine Fahrt im Spiel.
 
-Der neue Laufzeitstand ruft die getrennte Gespannvorhersage inzwischen aus der echten Pluginregelung auf. Der frühere v22-Befund einer großen Gespannkugel und globaler Unknown-Motion-Ablehnung ist historisch. Lokale Modell-/Bewegungsprüfung, aktuelle gemessene Boxen für die akute Notbremsung und Modellüberwachung bleiben vom Host-Commit-Vertrag getrennt. Finaler Plugin-Seal, erneute Gesamtprüfungen und die abgegrenzte Offline-FR-Laufzeitgegenprobe liegen vor; die Sieben-Datei-Kombination ist lokal installiert und hashverifiziert. Apps wurden nicht gestartet, die neue Stand-/Fahrprüfung steht aus.
+## Exklusive normale Pedalquelle
 
-## Ausgabeautorität
+Nur `local.mautassistent.longitudinal` darf normale Gas-/Bremsbefehle liefern. Die eigene Pluginregelung arbeitet ohne nativen ACC-/PID-Regler. `AdaptiveCruiseControl.Acceleration` wird dauerhaft abgewiesen, auch mit aktueller Sitzung und Ursprungszeit. Fremde Pedalwerte werden nicht gewichtet oder eingemischt.
 
-Die Anpassung erhält die Korrektur für ausgelassene native ACC-Pedalausgaben bei sehr langsamer Fahrt und neutralisiert abgelaufene native Achsen, ohne andere gültige Bremsbesitzer zu verdünnen.
+Der Kanal erwartet `aforward` zwischen 0 und 1 und `abackward` zwischen −1 und 0. Beide dürfen nicht gleichzeitig aktiv sein. Ungültige oder nicht endliche Werte verwerfen den gesamten Pedalbefehl. Gewichte ändern die exklusive Achse nicht. Der Kanal kann keine Lenkung einschleusen; die geschützte Lane-/Pauseausgabe bleibt getrennt.
 
-`ControlChannelDefinition` trägt `MautEpoch` und `MautIssuedAt`. Der Ursprung wird beim Eintritt in den echten ACC-/Lane-Tick erfasst, vor der Berechnung, und unverändert durch die drei Publisher einschließlich Pause-Helfer gereicht. Einlieferung **und** physischer Frame verlangen eine passende Sitzung und höchstens 200 ms Alter. Ein später Publish darf den Ursprung nicht erneuern. Die gespeicherte Definition wird kopiert, damit eine wiederverwendete Publisher-Instanz ihr Alter nicht nachträglich umlabelt.
+`local.mautassistent.fault-brake` ist eine unabhängige Ausnahme ausschließlich für Bremsung. Ein gültiger negativer Wert dominiert die normale Ausgabe und setzt die Lenkachse neutral. Positive oder nicht endliche Faultwerte erzeugen kein Gas und ersetzen keinen gültigen Bremsbefehl. Die Fehlerbremsung bleibt bei ausgeschalteter Assistenz verfügbar; die echte manuelle Übernahme gibt sie frei.
 
-Je nativer Kanal-ID bleibt die höchste akzeptierte Ursprungszeit als Watermark bestehen, auch wenn der Kanal inzwischen entfernt oder abgelaufen ist. Ein älteres oder wiederholtes Ergebnis darf einen neueren Wert nicht ersetzen oder einen gelöschten Besitzer erneut aktivieren. Sitzungs-/Moduswechsel widerrufen die vorherige Autorität.
+## Ursprung, Quellen und Widerruf
 
-Die zusätzliche Halteschnittstelle hat **vier Argumente**:
+`ControlChannelDefinition` trägt `MautEpoch` und `MautIssuedAt`. Der eigene Tick erfasst beide vor seiner Berechnung. Einlieferung und physischer Frame verlangen aktuelle Sitzung, passenden Fahrmodus und höchstens 200 ms ursprüngliches Alter. Ein später Publish erneuert den Ursprung nicht. Definitionen und primitive Pedalwerte werden kopiert. Je geschützter Kanal-ID verhindert eine Watermark, dass ältere oder wiederholte Ergebnisse neuere Befehle ersetzen.
+
+Der eigene Kanal trägt zusätzlich `MautSourceEpoch` und `MautSourceAt`: Quellenrevision und Minimum der tatsächlich ausgewerteten Verkehrs-, Park-, Signal- und Torursprünge. Ingress und physischer Frame prüfen die Quellenrevision. Positives Gas benötigt auch dort einen positiven, nicht zukünftigen, höchstens 200 ms alten Quellenursprung. Neue Providerdaten verlängern keinen gespeicherten Befehl. Ein normaler Bremsplan ohne Gas darf bei unbekannter Quelle `MautSourceAt = 0` tragen.
+
+Provider erfassen Uhr und Quellenrevision vor der Decodierung. Danach speichern sie eine tiefe eigene DTO-Kopie mit unverändertem Ursprung vor dem synchronen Event-Publish. Decodierung, Kopieren und Callbacks laufen außerhalb des Ausgabelocks. Nur abschließender Store und Close/Catch-Widerruf verwenden dessen kurze gemeinsame kritische Sektion. Ein vor Close begonnener Decode kann anschließend weder seine alte Quelle neu attestieren noch einen neuen gültigen Frame überschreiben. Erfolgreicher planmäßiger Reconnect erneuert keinen Ursprung.
+
+Auch die Pluginbeobachtung übernimmt ursprüngliche rohe Befehls- und Quellenstempel. `PedalAge` beschreibt aktuelle Quellenautorität; `PedalProducerAge` beschreibt den unveränderten ursprünglichen Tick samt Assistenzepoch für den 150-ms-Produzententimer. Ein Quellenwechsel entzieht Gas sofort, ist aber kein vorzeitiger Produzentenausfall. Ungültige neue Events verjüngen die Beobachtung nicht. Bleibt ein neuer angenommener Plan länger als 150 ms aus, fordert der unabhängige Watchdog Fehlerbremsung an. Verfügbare Schnittstellen und angeforderte Bremse beweisen keine tatsächliche Bremswirkung.
+
+Die Halteschnittstelle lautet:
 
 ```text
 MautSetPlannedHold(epoch, key, floor, issuedAt)
 ```
 
-Sie akzeptiert nur eine aktuelle passende Sitzung, ein höchstens 200 ms altes Ergebnis und eine neuere Ursprungszeit als die bereits angenommene. Auch ein gültiges Clear behält diese Zeit als Watermark; eine vorher begonnene Berechnung kann den Halt anschließend nicht erneut setzen. Die Leihe endet bei `issuedAt + 250 ms`, nicht 250 ms nach verspäteter Einlieferung. F9 und ein unpassender Modus entziehen die Halteautorität. Der Floor wird nach der normalen Kanalgewichtung angewandt und darf eine stärkere Bremsung nicht schwächen.
+Sie verlangt aktuelle Sitzung, höchstens 200 ms ursprüngliches Alter und neuere Ursprungszeit. Die Leihe endet bei `issuedAt + 250 ms`; auch ein gültiges Clear erhält die Watermark. Das Plugin führt Branch-/Scene-/Signal-/Proof-Haltegründe vorher zusammen. Der Floor wird nach Auswahl der exklusiven Pedalquelle angewandt und schwächt stärkere normale oder Faultbremsung nicht ab.
 
-Das Plugin muss seine Branch-/Scene-/Bindungs-/Proof-Haltegründe vor diesem einen Commit zusammenführen. Ein neuer Hostmarker allein beweist weder die aktuellen Eingangsdaten noch die richtige Szenenwahrnehmung.
+## Bauen und isoliert prüfen
 
-## Bauen und prüfen
-
-Voraussetzung sind .NET 10, die bekannten lokalen Herstellerbibliotheken und Referenzen. Mono.Cecil ist auf 0.11.6 festgelegt; alternativ kann `CecilRoot` die Bibliotheken des lokalen .NET-ILLink-Werkzeugs angeben.
-
-Aus dem Repositoryordner, mit eigenen Pfaden:
+Voraussetzung sind .NET 10 und die festgelegten lokalen Herstellerreferenzen. Mono.Cecil ist auf 0.11.6 festgelegt; alternativ kann `CecilRoot` die Bibliotheken des lokalen ILLink-Werkzeugs angeben.
 
 ```powershell
 $env:EtsRoot = 'D:/ETS2LA/current'
 $originals = 'C:/privat/unveraenderte-gepruefte-originale'
-$prepared = 'C:/privat/neue-host3-vorbereitung'
+$prepared = 'C:/privat/neue-host-040-vorbereitung'
 dotnet build Tools/HostCompatibility -c Release -p:EtsRoot=$env:EtsRoot
 dotnet ./Tools/HostCompatibility/bin/Release/net10.0/HostCompatibility.dll prepare $env:EtsRoot $prepared --originals $originals
 dotnet ./Tools/HostCompatibility/bin/Release/net10.0/HostCompatibility.dll verify $env:EtsRoot $prepared --originals $originals
 ```
 
-`--originals` bezeichnet die unveränderten vier Ausgangsdateien mit den im Werkzeug festgelegten Originalprüfsummen. Der laufende Referenzordner kann bereits eine ältere Anpassung enthalten und ersetzt diesen Nachweis nicht. Ohne den optionalen Schalter wird derselbe Ordner für Referenzen und Originale benutzt.
+`--originals` bezeichnet die vier unveränderten Ausgangsdateien mit festgelegten Prüfsummen. `prepare` verweigert vorhandene Ausgabeverzeichnisse, Installationsunterordner und unbekannte Originalbuilds. Jede Vorbereitung erzeugt neue MVIDs; das Plugin muss genau deren `compatibility.json` einbetten.
 
-`prepare` verweigert vorhandene Ausgabeverzeichnisse, Ziele innerhalb der Installation und unbekannte Originalbuilds. Es erstellt genau die Produktionspfade und `compatibility.json`. Jede Vorbereitung erzeugt neue MVIDs. Das Plugin muss mit dem Manifest **genau dieser** Vorbereitung neu gebaut werden; eine erneute Vorbereitung macht ältere Siegel nicht passend.
+`verify` prüft SHA256, MVID und gemeinsamen Revisionsmarker. Instrumentierte Kopien entstehen getrennt unter `isolated-replay-*`: Speicheröffnungen, Produktionskonstruktoren und Ausgabeschleifen sind gesperrt; physische Schreibstellen schreiben in Testwörterbücher. Der geprüfte v6-Lauf enthält **118 Hostassertions** für beide Senken, exklusiven Kanal, tatsächlich veröffentlichende abgewiesene native ACC-Ticks, fremde Besitzer, Faultdominanz, ungültige Mischpedale, ursprüngliche Quellen-/Befehlsfristen, Close-Widerruf, Watermarks, F9 und den geschützten Lane-Pausepfad.
 
-`verify` prüft erst SHA256, MVID und gemeinsamen Revisionsmarker aller vier Produktionsdateien. Danach erzeugt es separate `isolated-replay-*`-Testkopien. Dort sind Konstruktoren/Singletons mit Spiel- oder Ausgabepfaden gesperrt bzw. injiziert, Schreibsenken auf Testwörterbücher umgeleitet und Speicheröffnungs-/Ausgabe-Threads verboten. Teile der Constraint-Eingänge werden kontrolliert eingespeist. Der echte Tick, Publisher und Hostframe bleiben Gegenstand der Prüfung; dies ist kein Fahr- oder Wahrnehmungsnachweis.
-
-## Optionale echte Plugin-Commit-Probe
-
-Erst das passende `compatibility.json` als `Plugin/HostCompatibility.json` übernehmen und das Plugin gegen die geprüfte Referenzkombination bauen. Dann kann dieselbe isolierte Prüfung zusätzlich die echte Commit-Brücke ausführen:
+Für die echte Pluginbrücke und synthetischen Torkarten zusätzlich vor `verify` setzen:
 
 ```powershell
 $env:MAUT_PLUGIN_CANDIDATE = (Resolve-Path './Plugin/bin/Release/net10.0/MautAssistent.dll').Path
-dotnet ./Tools/HostCompatibility/bin/Release/net10.0/HostCompatibility.dll verify $env:EtsRoot $prepared --originals $originals
-$env:MAUT_PLUGIN_CANDIDATE = $null
+$env:MAUT_CANONICAL_FIXTURE = (Resolve-Path './Tests/bin/Release/net10.0/Tests.dll').Path
 ```
 
-`PluginHoldReplay` kopiert die Eingabedatei in den neuen Sandboxordner, versiegelt sie durch einen Leselock und prüft genau diese Kopie vor dem Laden. Manifest, Modulkennungen, isolierter Assemblykontext und erlaubte Initialisierung werden geprüft; unbekannte Modulinitialisierung verweigert den Test. Der echte Plugin-/Fault-Instanzkonstruktor und Treiber-/SDK-Schleifen werden nicht ausgeführt. Kontrollierte Floor-Felder speisen die unveränderten echten `CommitPlannedHolds`-/`ClearSceneHold`-Methoden und die reale isolierte Hostausgabe. Die geprüfte harmlose SDK-DTO-Initialisierung ist gesondert begrenzt.
+Beide Dateien werden vor dem Laden kopiert, versiegelt und auditiert; der Programmeinstieg der Tests.dll läuft nicht. Die Commit-Probe baut ihre Felder ohne Produktkonstruktoren auf. Die echte Tick-Probe verwendet ausschließlich den vorher auditierten DI-Konstruktor mit privaten Eingaben und Senken. Produktionskonstruktor, Init, SDK-Schleifen, Speicheröffnungen und Produktionstimer laufen nicht.
 
-`plugin-hold-replay.json` nennt den tatsächlich ausgeführten Plugin-SHA256/MVID und den Host-MVID. Die erneute finale Probe umfasst 37 zusätzliche Assertions, insgesamt 120 mit den 83 Hostprüfungen, gegen SHA256 `35542A74D0786DD459C686E0CE1D1B6EEAED8BAE59C8C1698A9235EAEB087CE5` und MVID `4c065272-6d4e-4c65-afff-cb931b24a0bb`. Ein späterer Plugin-Build benötigt eine neue Prüfung; ältere v22-/v20-Berichte werden nicht übertragen. Der Test prüft Owner-Clear, Maximum statt Verdünnung, beide Ausgabewege, F9, veralteten Ursprung und einzeln ungültige Produktzustände. Er erzeugt keine reale Branch-/Scene-Erkennung aus einem Spielbild. Die separate Produkt-Laufzeitprobe im [Review](../../REVIEW-0.3.18.md) ist ebenso kein vollständiger Erfassungs-/Ausgabefahrtest.
+Der finale Lauf kombiniert **118 Host-, 63 Commit-/Lenk- und 42 Tick-/Quellen-/Tor-/Übergangsassertions zu 223 Prüfungen**. Er enthält reale Tick-/Hostlock-Barrieren, Quellenalterung trotz neuer Frames, Close während Decode, unveränderte rohe StorePedals-Stempel, F9 sowie den unabhängigen Pedalwatchdog. Die RawStore-Schicht wird separat mit dem unveränderten tatsächlich erzeugten Tickevent bei produktivem Schutz geprüft; der gesamte Fixture-Tick wird nicht als produktiv gestartete Instanz ausgegeben.
 
-## Produktionsdateien und Replaykopien strikt trennen
+Die kanonische Torkarte prüft tatsächlichen Router, Tick und Öffnungswartezeit: eigenes offenes Tor 10 mit näherem geschlossenem Gegentor 15 gibt Gas, vertauschte Zustände bremsen an beiden Senken. Eine zusätzliche echte OnPath-Probe wechselt von manueller zu spät erreichbarer automatischer Spur. Der alte Vergleichsbuild verlor dabei seine Fahrentscheidung und löste Fehlerbremsung aus; der korrigierte Build leitet die neue Entscheidung unter derselben Route ab und bleibt im Fahrmodus. PathLib erhält ausschließlich eine private Telemetrie-DTO mit passenden Fixturekoordinaten, keinen echten Telemetriesingleton.
 
-**Niemals den gesamten Vorbereitungsbaum, `isolated-replay-*` oder instrumentierte DLLs installieren oder verteilen.** Diese Test-DLLs besitzen andere Prüfsummen und absichtlich gesperrte/umgeleitete Laufzeitwege. Nur die vier in `compatibility.json` aufgeführten Produktionspfade gehören zusammen mit dem final versiegelten Plugin, der passenden spielseitigen SDK-Datei und `MautGeometry.dll` in das **exakt geprüfte Sieben-Datei-Paket**.
+21 isolierte periodische Mautticks mit gültigem Nachbarfahrzeug benötigten lokal 0,798–28,795 ms; das größte vorherige Befehlsalter bei Folgeausgabe war 86,255 ms. Diese Messung betrifft eine synthetische Karte und private Quellen, keine Live- oder allgemeine Laufzeitgarantie.
 
-Die passende Geometriequelle `MautGeometry.dll` gehört jetzt zum gemeinsamen Austausch: 16-ms-QPC-Abstand, präzise UTC am Capturebeginn, unveränderte 256-Byte-ABI. Nur `MautAssistent.dll` auszutauschen ergibt keine passende Kombination. Der getrennte neue Austausch verlangt ein separat gehashtes Runtimegate, geschlossene Anwendungen, vollständige geprüfte Sicherungen und Staging aller sieben Dateien vor dem ersten Commit. Gate und Hash werden im Journal gesichert und vor Staging/Commit erneut geprüft; der Prozessguard steht direkt vor Commit-/Rollback-Moves. Die alte Sechs-Datei-Sperre bleibt erhalten. Jeder einzelne Dateiaustausch ist atomisch; ein gemeinsamer sieben Dateien umfassender atomischer Wechsel wird nicht behauptet. Die lokale Transaktion ist abgeschlossen und alle sieben Hashes stimmen; der Installer startete keine Apps oder Fahrassistenz und änderte keine Eingaben.
+## Produktionsdateien und Testkopien trennen
 
-## Rollen und Grenzen
+**Niemals den gesamten Vorbereitungsbaum oder instrumentierte Replay-DLLs installieren oder verteilen.** Das Werkzeug erzeugt vier Hostdateien, darunter eine native ACC-Kopie für die Abweisungs-Gegenproben. Die eigentliche Umstellung benötigt nur **drei Hostdateien (`ETS2LA.Game.dll`, `ETS2LA.State.dll`, `LaneAssist.dll`) plus Mautplugin**, insgesamt vier Austauschdateien. Die vorhandene native ACC-Datei bleibt bei dieser Installation unverändert; natives ACC ist keine Laufzeitabhängigkeit der eigenen Regelung. Sein Pedalkanal bleibt auch bei versehentlicher Aktivierung gesperrt.
 
-Der Komfortmodus kann bei einer kleinen Wunschtempo-Korrektur tatsächliches Gas 0 und Bremse 0 veröffentlichen. Ein Beschleunigungsziel von null allein würde wegen Vorsteuerung/Reglerintegral nicht genügen. Er benötigt frische und passende native Route-/Constraint-Eingänge, vollständige Kurvenabdeckung sowie gesonderte eigene Freigabe. Unbekannte Container, Haltegründe, Recovery und negative Sicherheitsbegrenzungen erteilen diese Freigabe nicht. Eine Gefälleverriegelung überlebt einen Workerwechsel.
-
-Die älteren nativen Verkehrs-/Semaphorencontainer haben keinen vollständigen eigenen Produzentenzeitvertrag. Deren erfolgreiche Lektüre ersetzt keine komplette Verkehrswahrnehmung. Die zusätzliche neue Park-Szene ist ebenfalls auf tatsächlich gelesene geladene Körper/Bereiche begrenzt und hat keinen SpawnFinished-Beweis. Diese Hostanpassung löst weder allgemeine Hindernisvermeidung noch das Fokus-/Hintergrundpedalproblem unter TruckersMP. Die neue Kombination muss noch im realen Spiel geprüft werden.
+Spielseitige SDK-/Geometriekomponenten müssen zur geprüften Baseline passen; dieses Werkzeug tauscht sie nicht aus. Ein späteres Installationspaket benötigt genaue Ziel-/Hashlisten, Sicherung, Prozessschutz und Rücksetzung. Die eigene Regelung kann auf freier Strecke Gas 0/Bremse 0 zum Rollen verlangen. Harte negative Sicherheitsgrenzen, Stopgründe und unbekannte Routen erteilen keine Coastfreigabe. Hintergrund-/Fokusfahrt unter TruckersMP, vollständige Verkehrswahrnehmung, Baustellen und beliebige Fahrzeug-/Ladungsmodelle sind durch diesen Hostvertrag nicht gelöst. Die Offlineprüfungen sind keine allgemeine Fahrfreigabe.

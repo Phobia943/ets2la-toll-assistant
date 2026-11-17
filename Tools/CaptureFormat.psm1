@@ -199,4 +199,13 @@ function Measure-TollDeparture {
         method='SDK pose beyond a frozen gate plane after observed approach and passage; current status reports healthy route/steering with bounded source ages; at most 60 s.';
         isRouteDistance=$false;fullPassValidated=$false}
 }
-Export-ModuleMember -Function Read-TollGateBuffer,Resolve-TollGateObservation,Read-ModernPedalBuffer,Read-TruckDamageBuffer,Read-TruckAirBuffer,Measure-TollDeparture
+function Select-TollCaptureStatus($Status) {
+    $Status|Select-Object utc,version,assists,active,mode,phase,targetSpeedKph,gate,candidate,
+        selectedLane,selectedPayment,plaza,faultBraking,pathError,driveAction,connectedMetresAhead,
+        requiredLookahead,telemetryAge,gatesAge,pathAge,options,routing,routeFault,plannedStop,stopDistance,
+        preparingAutomaticEntry,planningStopDistance,planningStopKey,
+        steeringFeed,steeringAge,steeringFault,brakeHeld,brakeInputValue,
+        laneAttempts,laneAttemptContext,laneDecisionContext,laneProtection,detailedRigProtection,planningProfile,rigPrediction,
+        sceneStopping,sceneStatus,scenePedalFloor,sceneHoldOwner,sceneHolding,holdPedalFloor,tollAccelerationLimit,nativeAcc,longitudinal,pedalFault,pedalSourceCurrent
+}
+Export-ModuleMember -Function Read-TollGateBuffer,Resolve-TollGateObservation,Read-ModernPedalBuffer,Read-TruckDamageBuffer,Read-TruckAirBuffer,Measure-TollDeparture,Select-TollCaptureStatus

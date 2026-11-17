@@ -28,6 +28,21 @@ function InvokeRecordingAnalysis($records,[switch]$Automatic) {
     $json|ConvertFrom-Json
 }
 try {
+    $status=[pscustomobject]@{version='0.4.0';longitudinal=[pscustomobject]@{
+        Published=$true;IssuedAt=123456;Epoch=9;Input=[pscustomobject]@{Speed=20;StopIdentity='gate:10'};
+        Output=[pscustomobject]@{Throttle=0;Brake=.2;Reason='Bounded deceleration'};
+        Bounds=@([pscustomobject]@{Source='Traffic';Acceleration=-.9});
+        TrafficEvidence=[pscustomobject]@{bodyCount=1;limitingBody=[pscustomobject]@{x=5;y=0;z=80};signalReason='clear'}};
+        pedalFault=[pscustomobject]@{Reason='Expired own pedal lease';Age=.19};nativeAcc=$null;pedalSourceCurrent=$false;
+        preparingAutomaticEntry=$true;planningStopDistance=70;planningStopKey='auto-prepare:plaza:12'}
+    $record=[pscustomobject]@{schema=1;status=(Select-TollCaptureStatus $status)}
+    $roundtrip=$record|ConvertTo-Json -Depth 9 -Compress|ConvertFrom-Json
+    Assert ($roundtrip.status.longitudinal.Published -and $roundtrip.status.longitudinal.IssuedAt -eq 123456 -and
+        $roundtrip.status.longitudinal.Input.StopIdentity -eq 'gate:10' -and $roundtrip.status.longitudinal.Output.Brake -eq .2 -and
+        $roundtrip.status.longitudinal.Bounds[0].Source -eq 'Traffic' -and
+        $roundtrip.status.longitudinal.TrafficEvidence.limitingBody.z -eq 80 -and
+        $roundtrip.status.pedalFault.Age -eq .19 -and $roundtrip.status.pedalSourceCurrent -eq $false -and $roundtrip.status.preparingAutomaticEntry -and
+        $roundtrip.status.planningStopDistance -eq 70 -and $roundtrip.status.planningStopKey -eq 'auto-prepare:plaza:12') 'The actual recorder status selector must retain own pedal decisions, observation evidence, automatic-entry preparation and deadman faults through JSON capture.';$checks++
     $airBytes=[byte[]]::new(2300);[BitConverter]::GetBytes([uint32]12).CopyTo($airBytes,40)
     [BitConverter]::GetBytes([single]4.5).CopyTo($airBytes,992)
     [BitConverter]::GetBytes([single]5).CopyTo($airBytes,720)

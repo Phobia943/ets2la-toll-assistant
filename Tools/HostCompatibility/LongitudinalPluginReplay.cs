@@ -1,0 +1,366 @@
+using System.Diagnostics;
+using System.Numerics;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Runtime.Loader;
+using Mono.Cecil;
+using B=System.Reflection.BindingFlags;
+namespace MautHostCompatibility;
+
+// Real plugin Tick -> own controller -> protected host -> two dictionary sinks.
+// Only the audited DI constructor runs; never Init/OnEnable, native ACC, SDK,
+// model workers or output loops. TrafficClear is an explicitly injected input,
+// so this integration does not prove perception or source acquisition.
+internal static class LongitudinalPluginReplay
+{
+    const B All=B.Instance|B.Static|B.Public|B.NonPublic;
+    static FieldInfo Field(Type type,string name) {
+        for(Type? t=type;t!=null;t=t.BaseType)if(t.GetField(name,All|B.DeclaredOnly) is {} f)return f;
+        throw new MissingFieldException(type.FullName,name);
+    }
+    static void Set(object owner,string name,object? value)=>Field(owner.GetType(),name).SetValue(owner,value);
+    static object? Get(object owner,string name)=>Field(owner.GetType(),name).GetValue(owner);
+    static void Member(object owner,string name,object? value) {
+        if(owner.GetType().GetProperty(name,All) is {} p)p.SetValue(owner,value);else Set(owner,name,value);
+    }
+    static Func<T> Read<T>(Func<object?> read)=>()=>(T)read()!;
+    static Action<T> Sink<T>(Action<object> write)=>value=>write(value!);
+    static Func<A,C,D,object> Geometry<A,C,D>()=>(_,_,_)=>new object();
+    static Delegate Reader(Type type,Func<object?> read)=>(Delegate)typeof(LongitudinalPluginReplay).GetMethod(nameof(Read),All)!.MakeGenericMethod(type).Invoke(null,[read])!;
+
+    static void AuditConstruction(string candidate,string root)
+    {
+        using var module=ModuleDefinition.ReadModule(candidate);
+        using var shared=ModuleDefinition.ReadModule(Path.Combine(root,"ETS2LA.Shared.dll"));
+        if(module.GetType("<Module>").Methods.Any(m=>m.IsConstructor)||shared.GetType("<Module>").Methods.Any(m=>m.IsConstructor))
+            throw new InvalidDataException("Module initialization is not permitted in the Tick fixture");
+        var plugin=module.GetType("MautAssistent.TollPlugin");
+        var ctor=plugin.Methods.Single(m=>m.IsConstructor&&!m.IsStatic&&m.Parameters.Any(p=>p.Name=="readState"));
+        var seen=new HashSet<string>();
+        void Visit(MethodDefinition method) {
+            if(!seen.Add(method.FullName)||!method.HasBody)return;
+            if(method.DeclaringType!=plugin&&method.IsConstructor&&method.DeclaringType.Methods.FirstOrDefault(m=>m.IsConstructor&&m.IsStatic) is {} init)Visit(init);
+            foreach(var instruction in method.Body.Instructions) {
+                if(instruction.OpCode.Code is Mono.Cecil.Cil.Code.Calli or Mono.Cecil.Cil.Code.Jmp)
+                    throw new InvalidDataException("Indirect construction in Tick fixture");
+                if(instruction.Operand is FieldReference field&&instruction.OpCode.Code is Mono.Cecil.Cil.Code.Ldsfld or Mono.Cecil.Cil.Code.Stsfld&&
+                    field.DeclaringType.FullName.StartsWith("MautAssistent.",StringComparison.Ordinal)&&field.DeclaringType.FullName!=plugin.FullName&&
+                    field.Resolve().DeclaringType.Methods.FirstOrDefault(m=>m.IsConstructor&&m.IsStatic) is {} fieldInit)Visit(fieldInit);
+                // ldftn constructs dormant injected/default callbacks. Calling
+                // one during construction would separately hit Invoke below
+                // and be rejected; the callbacks are not executed here.
+                if(instruction.Operand is not MethodReference call||instruction.OpCode.Code is not
+                    (Mono.Cecil.Cil.Code.Call or Mono.Cecil.Cil.Code.Callvirt or Mono.Cecil.Cil.Code.Newobj))continue;
+                string owner=call.DeclaringType.GetElementType().FullName;
+                if(call.DeclaringType.Scope==module||owner.StartsWith("MautAssistent.",StringComparison.Ordinal)) {Visit(call.Resolve());continue;}
+                if(owner=="ETS2LA.Shared.Plugin"&&call.Name==".ctor") {Visit(shared.GetType(owner).Methods.Single(m=>m.IsConstructor&&!m.IsStatic));continue;}
+                bool allowed=call.Name==".ctor"&&(owner=="System.Object"||owner.StartsWith("System.Collections.Generic.",StringComparison.Ordinal)||
+                    owner.StartsWith("System.Func`",StringComparison.Ordinal)||owner.StartsWith("System.Action",StringComparison.Ordinal)||owner.StartsWith("System.Threading.AsyncLocal`",StringComparison.Ordinal))||
+                    owner=="System.Diagnostics.Stopwatch"&&call.Name=="StartNew"||owner=="System.Environment"&&call.Name=="GetFolderPath"||
+                    owner=="System.IO.Path"&&call.Name=="Combine"||owner=="System.Array"&&call.Name=="Empty"||
+                    owner=="System.Type"&&call.Name is "GetTypeFromHandle" or "GetField" or "GetMethod" or "GetProperty";
+                if(!allowed)throw new InvalidDataException("Unaudited Tick fixture constructor call: "+call.FullName);
+            }
+        }
+        Visit(ctor); // Includes field initializers, readers, preference/router/fault and diagnostics construction.
+    }
+
+    internal static int Run(string sealedCandidate,string root,Assembly pluginAssembly,Assembly gameAssembly,Assembly stateAssembly,
+        AssemblyLoadContext context,object host,object state,Action<bool> frame,Func<float> gas,Func<float> brake,
+        Func<float> modernPedal,Action<bool> enable,Func<long> epoch,Action<bool,string> assert)
+    {
+        int count=0;void Check(bool okay,string reason){assert(okay,reason);count++;}
+        AuditConstruction(sealedCandidate,root);
+        if(AssemblyLoadContext.GetLoadContext(pluginAssembly)!=context||AssemblyLoadContext.GetLoadContext(gameAssembly)!=context||
+            AssemblyLoadContext.GetLoadContext(stateAssembly)!=context||context==AssemblyLoadContext.Default)
+            throw new InvalidDataException("Tick fixture must use the already sealed isolated host/plugin context");
+        using(var audited=ModuleDefinition.ReadModule(sealedCandidate))if(audited.Mvid!=pluginAssembly.ManifestModule.ModuleVersionId)
+            throw new InvalidDataException("Tick fixture candidate differs from the audited copied module");
+        // Explicit counterfactual runner: reuse all outer sealing/ALC guards,
+        // but isolate the OnPath regression from unrelated new-observer tests.
+        if(Environment.GetEnvironmentVariable("MAUT_TRANSITION_ONLY")=="1")
+            return CanonicalGateHostReplay.Run(Environment.GetEnvironmentVariable("MAUT_CANONICAL_FIXTURE")??throw new InvalidDataException("Fixture required"),
+                Path.GetDirectoryName(sealedCandidate)!,context,pluginAssembly,gameAssembly,host,frame,gas,brake,modernPedal,assert);
+        var type=pluginAssembly.GetType("MautAssistent.TollPlugin",true)!;
+        var output=gameAssembly.GetType("ETS2LA.Game.Output.GameOutput",true)!;
+        var eventType=gameAssembly.GetType("ETS2LA.Game.Output.ControlEvent",true)!;
+        var definitionType=gameAssembly.GetType("ETS2LA.Game.Output.ControlChannelDefinition",true)!;
+        var variablesType=gameAssembly.GetType("ETS2LA.Game.Output.ControlVariables",true)!;
+        var propertiesType=gameAssembly.GetType("ETS2LA.Game.Output.ControlProperties",true)!;
+        var ctor=type.GetConstructors(All).Single(c=>c.GetParameters().Any(p=>p.Name=="readState"));
+        object Pure(string name,params object?[] values)=>Activator.CreateInstance(pluginAssembly.GetType("MautAssistent."+name,true)!,values)!;
+        var traffic=Pure("TrafficSpeedDecision",float.NaN,true,"Injected fresh empty traffic",null,null);
+        var cruise=Pure("CruiseLimits",0d,false);
+        var emitted=new List<object>();Action? duringTraffic=null;int nativeReads=0;
+        Action<object> accept=message=>output.GetMethod("OnControlEvent")!.Invoke(host,[message]);
+        var args=ctor.GetParameters().Select(p=>p.HasDefaultValue?p.DefaultValue:null).ToArray();
+        foreach(var p in ctor.GetParameters()) {
+            if(p.Name=="readState")args[p.Position]=Reader(p.ParameterType.GenericTypeArguments[0],()=>state);
+            if(p.Name=="notify")args[p.Position]=(Action<string,string>)((_,_)=>{});
+            if(p.Name=="output")args[p.Position]=typeof(LongitudinalPluginReplay).GetMethod(nameof(Sink),All)!.MakeGenericMethod(eventType).Invoke(null,[(Action<object>)(m=>{emitted.Add(m);accept(m);})]);
+            if(p.Name=="readAcc")args[p.Position]=Reader(p.ParameterType.GenericTypeArguments[0],()=>{nativeReads++;throw new InvalidOperationException("Own Tick queried native ACC");});
+            if(p.Name is "readPlanner" or "readLaneAssist")args[p.Position]=Reader(p.ParameterType.GenericTypeArguments[0],()=>null);
+            if(p.Name=="readCruiseLimits")args[p.Position]=Reader(p.ParameterType.GenericTypeArguments[0],()=>cruise);
+            if(p.Name=="readLongitudinalTraffic")args[p.Position]=Reader(p.ParameterType.GenericTypeArguments[0],()=>{duringTraffic?.Invoke();return traffic;});
+            if(p.Name=="writeDiagnostic")args[p.Position]=(Action<string,string>)((_,_)=>throw new InvalidOperationException("Tick replay attempted diagnostic I/O"));
+            if(p.Name=="buildStatusGeometry")args[p.Position]=typeof(LongitudinalPluginReplay).GetMethod(nameof(Geometry),All)!.MakeGenericMethod(p.ParameterType.GenericTypeArguments[..3]).Invoke(null,null);
+        }
+        var plugin=ctor.Invoke(args);
+        type.GetMethod("StopDiagnostics",All)!.Invoke(plugin,null); // No Enqueue can start a worker, even on fixture failure.
+        Set(plugin,"vehicleGeometry",null); // Unexpected fault diagnostics must not open a live geometry map.
+        var injectedTraffic=Get(plugin,"readLongitudinalTraffic");Set(plugin,"readLongitudinalTraffic",null);
+        Set(plugin,"BeforeLongitudinalCommit",(Action)(()=>duringTraffic?.Invoke()));
+        bool autoSources=true;
+        var clock=(Stopwatch)Get(plugin,"clock")!;
+        var options=Pure("TollOptions");Member(options,"CurvePreviewEnabled",false);Member(options,"BriskOpenRoads",false);
+        Set(plugin,"options",options);Set(plugin,"controller",Pure("TollController",options));
+        Set(plugin,"lastWrite",double.MaxValue);Set(plugin,"lastMotionAt",double.MaxValue);Set(plugin,"lastMapWrite",0d);
+
+        // A genuine bounded straight path, using only local parsed DTOs. No
+        // installation, asset files, provider or native map is consulted.
+        var parsedType=gameAssembly.GetType("ETS2LA.Game.Data.ParsedPrefab",true)!;
+        var parsed=RuntimeHelpers.GetUninitializedObject(parsedType);
+        var descriptorType=parsedType.GetProperty("Descriptor")?.PropertyType??Field(parsedType,"Descriptor").FieldType;
+        var descriptor=RuntimeHelpers.GetUninitializedObject(descriptorType);
+        var curvesMember=descriptorType.GetProperty("NavCurves");var curvesType=curvesMember?.PropertyType??Field(descriptorType,"NavCurves").FieldType;
+        var curveType=curvesType.GenericTypeArguments[0];var curve=RuntimeHelpers.GetUninitializedObject(curveType);
+        foreach(var (name,value) in new (string,object)[]{("StartPosition",Vector3.Zero),("EndPosition",new Vector3(0,0,-500)),
+            ("StartRotation",Quaternion.Identity),("EndRotation",Quaternion.Identity),("Length",500f),("SemaphoreId",-1)})Member(curve,name,value);
+        var curves=(System.Collections.IList)Activator.CreateInstance(curvesType)!;curves.Add(curve);Member(descriptor,"NavCurves",curves);Member(parsed,"Descriptor",descriptor);
+        var prefabType=parsedType.GetProperty("Prefab")?.PropertyType??Field(parsedType,"Prefab").FieldType;
+        var prefab=Activator.CreateInstance(prefabType)!;Member(prefab,"Uid",123UL);Member(parsed,"Prefab",prefab);
+        var pathType=gameAssembly.GetType("ETS2LA.Game.Data.PrefabPath",true)!;var pathCtor=pathType.GetConstructors().Single(c=>c.GetParameters().Length==7);
+        var nodeType=pathCtor.GetParameters()[1].ParameterType;
+        var start=Activator.CreateInstance(nodeType)!;var end=Activator.CreateInstance(nodeType)!;
+        Member(start,"Uid",1UL);Member(end,"Uid",2UL);
+        var direction=Enum.Parse(pathCtor.GetParameters()[4].ParameterType,"Forward");
+        var prefabPath=pathCtor.Invoke([parsed,start,end,curves,direction,Matrix4x4.Identity,Vector3.Zero]);
+        var pathLib=context.LoadFromAssemblyName(new AssemblyName("PathLib"));
+        var itemType=pathLib.GetType("PathLib.PlannedItem",true)!;var item=Activator.CreateInstance(itemType)!;
+        foreach(var (name,value) in new (string,object)[]{("item",parsed),("startNode",start),("endNode",end),("prefabPath",prefabPath),("direction",direction)})Set(item,name,value);
+        var dataType=pathLib.GetType("PathLib.PlannedPathData",true)!;var data=Activator.CreateInstance(dataType)!;
+        var items=(System.Collections.IList)Activator.CreateInstance(Field(dataType,"PlannedPath").FieldType)!;items.Add(item);
+        Set(data,"PlannedPath",items);Set(data,"HasError",false);
+        var matcher=pluginAssembly.GetType("MautAssistent.RouteMatcher",true)!;
+        var trace=matcher.GetMethod("Sample",[dataType])!.Invoke(null,[data])!;
+        var point=new Vector3(0,0,-50);
+        var supervisor=Pure("DriveSupervisor",Pure("DriveCheckpoint",(double?)0,null,null,true));
+        Set(plugin,"supervisor",supervisor);Set(plugin,"subscribed",true);Set(plugin,"active",true);
+        Set(plugin,"<_IsRunning>k__BackingField",true);Set(plugin,"path",data);Set(plugin,"safetyTrace",trace);
+        Set(plugin,"position",point);Set(plugin,"headingTurns",0d);Set(plugin,"speed",5d);Set(plugin,"takeoverUntil",-100d);
+        Set(plugin,"decision",pluginAssembly.GetType("MautAssistent.TollDecision",true)!.GetMethod("Idle")!.Invoke(null,["Injected clear route"]));
+        void Fresh() {
+            double now=clock.Elapsed.TotalSeconds;
+            foreach(string name in new[]{"telemetryAt","gatesAt","pathAt","gameTimeChangedAt","evaluatedAt","lastAcceptedPlanAt"})Set(plugin,name,now);
+            Set(plugin,"sdk",true);Set(plugin,"paused",false);Set(plugin,"decisionArmed",true);
+        }
+        void Tick(){if(autoSources)Sources(SourceFrameReplay.EmptyTraffic(gameAssembly));Fresh();type.GetMethod("Tick")!.Invoke(plugin,null);}
+        void Clear()=>((System.Collections.IDictionary)Get(host,"Channels")!).Clear();
+        void Send(string id,float signed,float? steering=null) {
+            var definition=Activator.CreateInstance(definitionType)!;Set(definition,"Id",id);Set(definition,"Timeout",.2f);
+            Set(definition,"MautEpoch",epoch());Set(definition,"MautIssuedAt",Stopwatch.GetTimestamp());
+            var variables=Activator.CreateInstance(variablesType)!;if(steering.HasValue)Set(variables,"steering",steering.Value);else Set(variables,signed<0?"abackward":"aforward",signed);
+            var properties=Activator.CreateInstance(propertiesType)!;Set(properties,"Weight",1f);
+            var message=Activator.CreateInstance(eventType)!;Set(message,"ChannelDefinition",definition);Set(message,"Properties",properties);Set(message,"Variables",variables);accept(message);
+            if(id=="LaneAssist.SteeringCorrection")type.GetMethod("OnControlOutput",All)!.Invoke(plugin,[message]);
+        }
+        state.GetType().GetProperty("DesiredSpeed")!.SetValue(state,25f);enable(false);enable(true);Clear();
+        Tick();frame(false);
+        var snapshot=Get(plugin,"longitudinalSnapshot")??throw new InvalidDataException("Real Tick did not reach longitudinal regulation");
+        var result=snapshot.GetType().GetProperty("Output")!.GetValue(snapshot)!;
+        var actualInput=snapshot.GetType().GetProperty("Input")!.GetValue(snapshot)!;
+        Check((bool)snapshot.GetType().GetProperty("Published")!.GetValue(snapshot)!&&gas()>0&&brake()==0&&
+            (bool)actualInput.GetType().GetProperty("RouteKnown")!.GetValue(actualInput)!&&
+            (double)actualInput.GetType().GetProperty("TargetSpeed")!.GetValue(actualInput)! ==25&&
+            Math.Abs(gas()-(float)result.GetType().GetProperty("Throttle")!.GetValue(result)!)<1e-6,
+            "Real plugin Tick without ACC publishes its own exact throttle through the protected legacy sink");
+        frame(true);Check(modernPedal()>0&&gas()==0&&brake()==0,"The same real plugin Tick reaches modern output and clears both legacy pedals");
+        object OwnMessage()=>emitted.Last(m=>(string)Get(Get(m,"ChannelDefinition")!,"Id")! =="local.mautassistent.longitudinal");
+        void RawStore(object message) {
+            Set(plugin,"requireHostCompatibility",true);
+            try {type.GetMethod("OnControlOutput",All)!.Invoke(plugin,[message]);}finally{Set(plugin,"requireHostCompatibility",false);}
+        }
+        var originalOwn=OwnMessage();RawStore(originalOwn);var rawCommand=Get(plugin,"lastAccCommand")!;
+        var originalDefinition=Get(originalOwn,"ChannelDefinition")!;
+        Check((long?)rawCommand.GetType().GetProperty("IssuedTicks")!.GetValue(rawCommand)==(long)Get(originalDefinition,"MautIssuedAt")!&&
+            (long?)rawCommand.GetType().GetProperty("Epoch")!.GetValue(rawCommand)==(long)Get(originalDefinition,"MautEpoch")!,
+            "The genuine produced Tick event passes protected OnControlOutput/StorePedals with exact original raw issued ticks and epoch");
+
+        Send("AdaptiveCruiseControl.Acceleration",-1);Send("hostile.concurrent-pedal",1);frame(false);
+        Check(gas()>0&&brake()==0,"Concurrent old ACC brake and foreign throttle cannot change the real plugin Tick command");
+        Check(nativeReads==0,"Real own Tick never looked up a native ACC instance");
+        Thread.Sleep(230);Send("LaneAssist.SteeringCorrection",0,.2f);frame(true);
+        Check(modernPedal()==0&&gas()==0&&brake()==0,"Expired real Tick is neutral even with fresh lane and foreign channel activity");
+        RawStore(originalOwn);
+        Check(ReferenceEquals(rawCommand,Get(plugin,"lastAccCommand")),"Protected RawStore rejects the original expired Tick event without renewing watchdog observation time");
+
+        Clear();Set(plugin,"longitudinal",Pure("LongitudinalController"));duringTraffic=()=>enable(false);Tick();frame(false);duringTraffic=null;
+        Check(gas()==0&&brake()==0&&!(bool)Get(plugin,"faultBrake")!.GetType().GetProperty("Latched")!.GetValue(Get(plugin,"faultBrake"))!&&!(bool)snapshot.GetType().GetProperty("Published")!.GetValue(Get(plugin,"longitudinalSnapshot")!)!,
+            "F9 epoch revocation during the actual Tick prevents late physical throttle");
+        enable(true);Set(plugin,"active",true);Set(plugin,"supervisor",Pure("DriveSupervisor",Pure("DriveCheckpoint",(double?)0,null,null,true)));
+        Set(plugin,"safetyTrace",trace);Set(plugin,"path",data);Set(plugin,"longitudinal",Pure("LongitudinalController"));
+        Clear();duringTraffic=()=>Thread.Sleep(230);Tick();frame(false);duringTraffic=null;
+        Check(gas()==0&&brake()==0&&!(bool)snapshot.GetType().GetProperty("Published")!.GetValue(Get(plugin,"longitudinalSnapshot")!)!,
+            "Slow real plugin Tick cannot renew its original timestamp at host publication");
+
+        void Restore() {
+            enable(false);enable(true);Clear();Set(plugin,"active",true);Set(plugin,"preview",false);Set(plugin,"paused",false);
+            Set(plugin,"supervisor",Pure("DriveSupervisor",Pure("DriveCheckpoint",(double?)0,null,null,true)));
+            Set(plugin,"safetyTrace",trace);Set(plugin,"path",data);Set(plugin,"lastAcceptedPlan",data);Set(plugin,"longitudinal",Pure("LongitudinalController"));
+            Set(plugin,"accelerationKnown",true);Set(plugin,"holdPedalFloor",0f);Set(plugin,"scenePedalFloor",0f);
+            Set(plugin,"decisionArmed",true);Set(plugin,"takeoverUntil",-100d);Fresh();
+        }
+        autoSources=false;Set(plugin,"readLongitudinalTraffic",null);
+        void Sources(object trafficData) {
+            SourceFrameReplay.Capture(output,"Traffic",trafficData);SourceFrameReplay.Capture(output,"Parked",SourceFrameReplay.EmptyParked(gameAssembly));
+            var signals=SourceFrameReplay.EmptySignals(gameAssembly);SourceFrameReplay.Capture(output,"Semaphore",signals);
+            // File/ALC pins were audited before all calls. Here the real gate
+            // callback consumes the actual isolated owned tuple+origin; the DI
+            // Tick still bypasses production warmup/file checks afterward.
+            Set(plugin,"requireHostCompatibility",true);
+            try{type.GetMethod("OnGates",All)!.Invoke(plugin,[signals]);}finally{Set(plugin,"requireHostCompatibility",false);}
+        }
+        Restore();Sources(SourceFrameReplay.EmptyTraffic(gameAssembly));Tick();frame(false);
+        Check(gas()>0&&brake()==0,"Real plugin Tick decodes39 traffic and40 parked empty slots through owned host frames without a TrafficClear delegate");
+        frame(true);Check(modernPedal()>0&&gas()==0&&brake()==0,"Actual empty SDK-frame path also reaches the modern physical sink");
+        Restore();var malformed=SourceFrameReplay.EmptyTraffic(gameAssembly);var malformedActor=((Array)Get(malformed,"vehicles")!).GetValue(0)!;
+        Set(malformedActor,"id",(short)1);Sources(malformed);Tick();frame(false);
+        Check(gas()==0&&brake()>0,"An identified zero-geometry traffic actor is unknown evidence, never treated as an unused SDK slot");
+        Restore();var occupied=SourceFrameReplay.EmptyTraffic(gameAssembly);var standing=((Array)Get(occupied,"vehicles")!).GetValue(0)!;
+        Set(standing,"id",(short)1);Member(standing,"Position",new Vector3(0,0,-70));Member(standing,"Rotation",new Quaternion(1,0,0,0));Member(standing,"Size",new Vector3(2,4,6));
+        Sources(occupied);Tick();frame(false);
+        Check(gas()==0&&brake()>0,"A valid stationary same-lane traffic body produces actual brake through plugin Tick and host sink");
+        Restore();Sources(SourceFrameReplay.EmptyTraffic(gameAssembly));Thread.Sleep(230);Tick();frame(false);
+        Check(gas()==0&&brake()>0,"Original owned traffic-frame age expires during observation and cannot become fresh SDK clearance");
+
+        // Real consumer decision -> real host epoch-lock wait. New source
+        // publication must not renew the three original observation clocks.
+        void LeaseWait(int sourceAgeMs,bool revoke,string label,bool expectedPublish,int waitMs=40) {
+            Restore();Sources(SourceFrameReplay.EmptyTraffic(gameAssembly));Thread.Sleep(sourceAgeMs);
+            using var gateEntered=new ManualResetEventSlim();Task? lockOwner=null;
+            var gate=output.GetField("MautGate")!.GetValue(null)!;
+            Set(plugin,"BeforeLongitudinalCommit",(Action)(()=>{
+                lockOwner=Task.Run(()=>{lock(gate) {
+                    gateEntered.Set();Thread.Sleep(waitMs);
+                    if(revoke)output.GetMethod("MautInvalidateOwnSources")!.Invoke(null,null);
+                    Sources(SourceFrameReplay.EmptyTraffic(gameAssembly));
+                }});
+                if(!gateEntered.Wait(TimeSpan.FromSeconds(2)))throw new TimeoutException("Private host gate did not block final authority read");
+            }));
+            try {Tick();if(lockOwner!=null&&!lockOwner.Wait(TimeSpan.FromSeconds(2)))throw new TimeoutException("Private source publisher did not finish");}
+            finally {Set(plugin,"BeforeLongitudinalCommit",(Action)(()=>duringTraffic?.Invoke()));}
+            frame(false);var observed=Get(plugin,"longitudinalSnapshot")!;
+            bool published=(bool)observed.GetType().GetProperty("Published")!.GetValue(observed)!;
+            Check(Get(plugin,"longitudinalSourceLease")!=null&&published==expectedPublish&&(expectedPublish?gas()>0&&brake()==0:gas()==0&&brake()==0),label+" [published="+published+", gas="+gas()+", brake="+brake()+", sourceLease="+Get(plugin,"longitudinalSourceLease")+", output="+observed.GetType().GetProperty("Output")!.GetValue(observed)+"]");
+            frame(true);Check(expectedPublish?modernPedal()>0:modernPedal()==0,label+" also holds at the modern sink");
+        }
+        LeaseWait(20,false,"Original20ms source plus40ms host wait permits normal next-frame progress",true);
+        LeaseWait(150,false,"Original150ms source plus75ms host wait cannot be rejuvenated by fresh replacement frames",false,75);
+        LeaseWait(20,true,"Provider Close plus fresh replacement during the host wait revokes the original clear decision",false);
+
+        // Young commands cannot attest source authority that their actual
+        // original observations have since lost. No relabeling of the event.
+        Set(plugin,"readLongitudinalTraffic",null);Set(plugin,"monitorSteering",false);Set(plugin,"steeringMonitoringLive",false);Restore();autoSources=true;Tick();
+        var sourceRevokedEvent=OwnMessage();RawStore(sourceRevokedEvent);var sourceRevokedRecord=Get(plugin,"lastAccCommand")!;
+        long timelineOrigin=(long)Get(Get(sourceRevokedEvent,"ChannelDefinition")!,"MautIssuedAt")!;
+        void WaitAge(long origin,double seconds){while((Stopwatch.GetTimestamp()-origin)/(double)Stopwatch.Frequency<seconds)Thread.Sleep(1);}
+        WaitAge(timelineOrigin,.010);output.GetMethod("MautInvalidateOwnSources")!.Invoke(null,null);
+        WaitAge(timelineOrigin,.016);Sources(SourceFrameReplay.EmptyTraffic(gameAssembly));
+        RawStore(sourceRevokedEvent);frame(false);
+        Set(plugin,"requireHostCompatibility",true);
+        object? revokedAge;
+        try {revokedAge=type.GetMethod("PedalAge",All)!.Invoke(plugin,[sourceRevokedRecord]);}finally{Set(plugin,"requireHostCompatibility",false);}
+        Check(ReferenceEquals(sourceRevokedRecord,Get(plugin,"lastAccCommand"))&&revokedAge==null&&gas()==0&&brake()==0,
+            "Young actual Tick output cannot renew RawStore or watchdog health after source Close, even with fresh replacement frames");
+        Set(plugin,"monitorSteering",true);Set(plugin,"steeringMonitoringLive",true);WaitAge(timelineOrigin,.025);
+        Set(plugin,"requireHostCompatibility",true);
+        try{type.GetMethod("CheckLongitudinalOutput",All)!.Invoke(plugin,null);}finally{Set(plugin,"requireHostCompatibility",false);}
+        Check(!(bool)Get(plugin,"faultBrake")!.GetType().GetProperty("Latched")!.GetValue(Get(plugin,"faultBrake"))!&&gas()==0&&brake()==0,
+            "Accepted Tick0 then Close10ms and new source16ms: timer25ms withdraws gas without misclassifying the still-running producer as failed");
+        WaitAge(timelineOrigin,.050);autoSources=false;
+        var noGasTraffic=SourceFrameReplay.EmptyTraffic(gameAssembly);Set(((Array)Get(noGasTraffic,"vehicles")!).GetValue(0)!,"id",(short)1);
+        Sources(noGasTraffic);Tick();var timelineNoGas=OwnMessage();RawStore(timelineNoGas);frame(false);
+        Check(Get(Get(timelineNoGas,"Variables")!,"aforward") is float timelineGas&&timelineGas==0&&brake()>0&&
+            !(bool)Get(plugin,"faultBrake")!.GetType().GetProperty("Latched")!.GetValue(Get(plugin,"faultBrake"))!,
+            "A genuine new ordinary no-gas Tick at50ms is accepted after source turnover without a reset or false emergency");
+        long noGasOrigin=(long)Get(Get(timelineNoGas,"ChannelDefinition")!,"MautIssuedAt")!;
+        WaitAge(noGasOrigin,.155);Set(plugin,"requireHostCompatibility",true);
+        try{type.GetMethod("CheckLongitudinalOutput",All)!.Invoke(plugin,null);}finally{Set(plugin,"requireHostCompatibility",false);}
+        frame(false);Check((bool)Get(plugin,"faultBrake")!.GetType().GetProperty("Latched")!.GetValue(Get(plugin,"faultBrake"))!&&brake()==1&&gas()==0,
+            "Without any later accepted plan the unchanged150ms producer deadline still trips physical fault braking");
+        Get(plugin,"faultBrake")!.GetType().GetMethod("Release")!.Invoke(Get(plugin,"faultBrake"),null);
+        type.GetMethod("ResetLongitudinalWatchdog",All)!.Invoke(plugin,null);Set(plugin,"monitorSteering",false);Set(plugin,"steeringMonitoringLive",false);
+
+        Restore();autoSources=false;Sources(SourceFrameReplay.EmptyTraffic(gameAssembly));Thread.Sleep(150);Tick();
+        var sourceAgedEvent=OwnMessage();
+        Check(Get(Get(sourceAgedEvent,"Variables")!,"aforward") is float sourceAgedGas&&sourceAgedGas>0,"Source-age observer regression begins with genuine positive own Tick throttle");
+        RawStore(sourceAgedEvent);var sourceAgedRecord=Get(plugin,"lastAccCommand")!;
+        Thread.Sleep(65);Sources(SourceFrameReplay.EmptyTraffic(gameAssembly));RawStore(sourceAgedEvent);frame(true);
+        Set(plugin,"requireHostCompatibility",true);
+        object? sourceAgedAge;
+        try {sourceAgedAge=type.GetMethod("PedalAge",All)!.Invoke(plugin,[sourceAgedRecord]);}finally{Set(plugin,"requireHostCompatibility",false);}
+        Check(ReferenceEquals(sourceAgedRecord,Get(plugin,"lastAccCommand"))&&sourceAgedAge==null&&modernPedal()==0,
+            "A still-young command loses RawStore/watchdog authority when its original150ms source ages beyond200ms; new sources cannot rejuvenate it [same="+ReferenceEquals(sourceAgedRecord,Get(plugin,"lastAccCommand"))+", age="+sourceAgedAge+", modern="+modernPedal()+", record="+sourceAgedRecord+", definitionSourceAt="+Get(Get(sourceAgedEvent,"ChannelDefinition")!,"MautSourceAt")+"]");
+        Restore();output.GetMethod("MautInvalidateOwnSources")!.Invoke(null,null);Tick();
+        var unknownBrake=OwnMessage();RawStore(unknownBrake);var unknownRecord=Get(plugin,"lastAccCommand")!;
+        Set(plugin,"requireHostCompatibility",true);
+        object? unknownAge;
+        try {unknownAge=type.GetMethod("PedalAge",All)!.Invoke(plugin,[unknownRecord]);}finally{Set(plugin,"requireHostCompatibility",false);}
+        frame(false);
+        Check(Get(Get(unknownBrake,"Variables")!,"aforward") is float noGas&&noGas==0&&unknownAge is double&&brake()>0,
+            "A real unknown-source no-gas ordinary brake remains an observed current command with sourceAt0");
+        // Independent watchdog probe while the REAL tick owns sync and waits
+        // inside its traffic delegate. No production timer or provider runs.
+        Restore();autoSources=true;Set(plugin,"readLongitudinalTraffic",null);Set(plugin,"monitorSteering",true);Set(plugin,"steeringMonitoringLive",true);
+        Send("LaneAssist.SteeringCorrection",0,.2f);type.GetMethod("CheckSteeringOutput",All)!.Invoke(plugin,null);
+        Tick();RawStore(OwnMessage());frame(false);Set(plugin,"requireHostCompatibility",true);
+        try {type.GetMethod("CheckLongitudinalOutput",All)!.Invoke(plugin,null);}finally{Set(plugin,"requireHostCompatibility",false);}
+        var baseline=Get(plugin,"longitudinalSnapshot")!;long baselineOrigin=(long)baseline.GetType().GetProperty("IssuedAt")!.GetValue(baseline)!;
+        using var entered=new ManualResetEventSlim();using var release=new ManualResetEventSlim();
+        duringTraffic=()=>{entered.Set();if(!release.Wait(TimeSpan.FromSeconds(3)))throw new TimeoutException("Private tick was not released");};
+        Set(plugin,"readLongitudinalTraffic",injectedTraffic);
+        Task blocked=Task.Run(Tick);if(!entered.Wait(TimeSpan.FromSeconds(2)))throw new TimeoutException("Actual tick did not block at traffic observation");
+        bool beforeDeadlineHealthy=false,trippedWhileBlocked=false;double tripAge=0;
+        try {
+            var timeout=Stopwatch.StartNew();
+            while(timeout.Elapsed.TotalMilliseconds<500) {
+                Send("LaneAssist.SteeringCorrection",0,.2f);type.GetMethod("CheckSteeringOutput",All)!.Invoke(plugin,null);
+                Set(plugin,"requireHostCompatibility",true);
+                try{type.GetMethod("CheckLongitudinalOutput",All)!.Invoke(plugin,null);}finally{Set(plugin,"requireHostCompatibility",false);}
+                frame(false);
+                double age=(Stopwatch.GetTimestamp()-baselineOrigin)/(double)Stopwatch.Frequency;
+                bool latched=(bool)Get(plugin,"faultBrake")!.GetType().GetProperty("Latched")!.GetValue(Get(plugin,"faultBrake"))!;
+                if(age<.14)beforeDeadlineHealthy|=!latched&&gas()>0;
+                if(latched){tripAge=age;trippedWhileBlocked=!blocked.IsCompleted&&brake()==1&&gas()==0;break;}
+                Thread.Sleep(5);
+            }
+            Check(beforeDeadlineHealthy,"Fresh own command remains admitted before the150ms deadman deadline");
+            Check(trippedWhileBlocked&&tripAge is >=.15 and <.2,
+                "Independent pedal watchdog reaches real full-brake sink before200ms while actual Tick remains blocked and lane stays fresh; age="+tripAge);
+        } finally {release.Set();if(!blocked.Wait(TimeSpan.FromSeconds(3)))throw new TimeoutException("Actual blocked tick failed to finish");duringTraffic=null;}
+        frame(true);Check(modernPedal()==-1&&gas()==0&&brake()==0,"The blocked-tick fault brake also dominates the modern sink");
+        var controls=context.LoadFromAssemblyName(new AssemblyName("ETS2LA.Controls"));
+        using(var controlsSource=ModuleDefinition.ReadModule(Path.Combine(root,"ETS2LA.Controls.dll"))) {
+            var change=controlsSource.GetType("ETS2LA.Controls.ControlChangeEventArgs");
+            var seen=new HashSet<string>();
+            void AuditDto(MethodDefinition method) {
+                if(!seen.Add(method.FullName))return;
+                if(method.IsStatic)throw new InvalidDataException("Unaudited F9 DTO static initializer");
+                foreach(var r in method.Body.Instructions.Select(i=>i.Operand).OfType<MethodReference>()) {
+                    if(r.DeclaringType.FullName==change.FullName){AuditDto(r.Resolve());continue;}
+                    if(r.FullName is not ("System.Void System.Object::.ctor()" or "System.Void System.EventArgs::.ctor()"))
+                        throw new InvalidDataException("Unaudited F9 event DTO call: "+r.FullName);
+                }
+            }
+            foreach(var constructor in change.Methods.Where(m=>m.IsConstructor))AuditDto(constructor);
+        }
+        var cancellation=Activator.CreateInstance(controls.GetType("ETS2LA.Controls.ControlChangeEventArgs",true)!,[false,null]);
+        type.GetMethod("OnCancel",All)!.Invoke(plugin,[null,cancellation]);frame(false);
+        Check(gas()==0&&brake()==0&&!(bool)Get(plugin,"faultBrake")!.GetType().GetProperty("Latched")!.GetValue(Get(plugin,"faultBrake"))!,
+            "Actual F9 handler releases the blocked-tick fault and both physical pedals without rearming");
+        enable(false);type.GetMethod("StopDiagnostics",All)!.Invoke(plugin,null);
+        if(Environment.GetEnvironmentVariable("MAUT_CANONICAL_FIXTURE") is {Length:>0} canonical)
+            count+=CanonicalGateHostReplay.Run(canonical,Path.GetDirectoryName(sealedCandidate)!,context,pluginAssembly,gameAssembly,host,frame,gas,brake,modernPedal,assert);
+        return count;
+    }
+}

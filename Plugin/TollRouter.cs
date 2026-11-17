@@ -26,9 +26,16 @@ public sealed class TollRouter
     public Vector3? StopBoundary {get;private set;}
     public string? StopKey {get;private set;}
     public double? StopDistance {get;private set;}
+    // Separate NORMAL planning target. StopBoundary/StopDistance still name
+    // the original physical split protection and retain its emergency logic.
+    public Vector3? PlanningBoundary {get;private set;}
+    public double? PlanningStopDistance {get;private set;}
+    public string? PlanningStopKey {get;private set;}
+    public bool PreparingAutomaticEntry {get;private set;}
     public string? PrefetchIssue {get;private set;}
     public string? ManualStopIssue {get;private set;}
-    public void CancelPlannedStop() {StopBoundary=null;StopKey=null;StopDistance=null;}
+    public void CancelPlannedStop() {StopBoundary=null;StopKey=null;StopDistance=null;ClearPlanningStop();}
+    void ClearPlanningStop(){PlanningBoundary=null;PlanningStopDistance=null;PlanningStopKey=null;PreparingAutomaticEntry=false;}
     public TollPayment PaymentFor(int gate)=>modelPayments.GetValueOrDefault(gate) is TollPayment.Automatic or TollPayment.Manual
         ?modelPayments[gate]:CurrentKey!=null&&preferences.Payments.TryGetValue(PaymentPolicy.Key(CurrentKey,gate),out var mode)?mode:TollPayment.Unknown;
     IReadOnlyDictionary<int,TollPayment> modelPayments = new Dictionary<int,TollPayment>();
@@ -37,6 +44,42 @@ public sealed class TollRouter
     readonly Action<ParsedPrefab>? prefetch;
     readonly Func<ParsedPrefab,int,ManualStopZone?>? readManualStop;
     readonly Dictionary<int,PrefabPath> plans = new();
+    // Search topology only. Every retry must obtain NEW model/payment/entry
+    // evidence; these retained sources never constitute movement permission.
+    readonly List<UpgradeSource> upgradeSources=[];
+    sealed record UpgradeSource(PrefabPath Path,ParsedPrefab Prefab,PrefabDescriptor Descriptor,object PrefabItem,Matrix4x4 Placement,object Start,object End,Vector3 StartPosition,Vector3 EndPosition,
+        Quaternion StartRotation,Quaternion EndRotation,string Model,string Variant,string Parts,NavCurve[] Canonical,string Curves);
+    static string Parts(PrefabPath path)=>string.Join('\u001f',path.Prefab.Prefab.AdditionalParts.Select(p=>p.ToString()).Order(StringComparer.Ordinal));
+    static string Curves(PrefabPath path)=>path.CurveDirection+":"+BitConverter.SingleToInt32Bits(path.Length)+":"+string.Join('|',path.Curves.Select(c=>string.Join(',',new[]{
+        c.StartPosition.X,c.StartPosition.Y,c.StartPosition.Z,c.EndPosition.X,c.EndPosition.Y,c.EndPosition.Z,
+        c.StartRotation.X,c.StartRotation.Y,c.StartRotation.Z,c.StartRotation.W,c.EndRotation.X,c.EndRotation.Y,c.EndRotation.Z,c.EndRotation.W,c.Length}
+        .Select(BitConverter.SingleToInt32Bits))+":"+c.SemaphoreId+":"+c.AllowedVehicles+":"+c.TrafficRule+":"+string.Join(',',c.NextLines)));
+    void RememberUpgradeSource(PrefabPath path)
+    {
+        if(findClearRoute==null||readClearance==null||upgradeSources.Count>=64)return;
+        path=PrefabRefinement.OriginalFor(path);
+        if(path.Prefab.Descriptor==null||!PrefabModelTransform.TryRead(path,out var placement)||
+            upgradeSources.Any(s=>SameAppliedRoute(s.Path,path)))return;
+        upgradeSources.Add(new(path,path.Prefab,path.Prefab.Descriptor,path.Prefab.Prefab,placement,path.StartNode,path.EndNode,path.StartNode.Position,path.EndNode.Position,
+            path.StartNode.Rotation,path.EndNode.Rotation,path.Prefab.Prefab.Model.ToString(),path.Prefab.Prefab.Variant.ToString(),Parts(path),
+            path.Prefab.Descriptor.NavCurves.ToArray(),Curves(path)));
+    }
+    static bool CurrentUpgradeSource(UpgradeSource source,PrefabPath current)
+    {
+        var path=source.Path;current=PrefabRefinement.OriginalFor(current);
+        return path.Curves.Count>0&&Key(path)==Key(current)&&path.CurveDirection==current.CurveDirection&&
+            ReferenceEquals(path.Prefab,source.Prefab)&&ReferenceEquals(current.Prefab,source.Prefab)&&
+            ReferenceEquals(path.Prefab.Descriptor,source.Descriptor)&&ReferenceEquals(current.Prefab.Descriptor,source.Descriptor)&&
+            ReferenceEquals(path.Prefab.Prefab,source.PrefabItem)&&ReferenceEquals(current.Prefab.Prefab,source.PrefabItem)&&
+            ReferenceEquals(path.StartNode,source.Start)&&ReferenceEquals(path.EndNode,source.End)&&
+            ReferenceEquals(source.Start,current.StartNode)&&ReferenceEquals(source.End,current.EndNode)&&
+            current.StartNode.Position==source.StartPosition&&current.EndNode.Position==source.EndPosition&&
+            current.StartNode.Rotation==source.StartRotation&&current.EndNode.Rotation==source.EndRotation&&
+            path.Prefab.Prefab.Model.ToString()==source.Model&&path.Prefab.Prefab.Variant.ToString()==source.Variant&&Parts(path)==source.Parts&&
+            path.Prefab.Descriptor!.NavCurves.SequenceEqual(source.Canonical)&&path.Curves.All(source.Canonical.Contains)&&
+            Curves(path)==source.Curves&&PrefabModelTransform.TryRead(path,out var placement)&&placement==source.Placement&&
+            PrefabModelTransform.TryRead(current,out var currentPlacement)&&currentPlacement==source.Placement;
+    }
     readonly Dictionary<int,(bool ShortChange,int Changes)> entryCosts = new();
     double lastSearch = double.NegativeInfinity;
     PlannedItem? shortChangeRoad;
@@ -98,7 +141,7 @@ public sealed class TollRouter
         LaneAttempts=[];LaneDecisionContext=null;LaneAttemptContext=null;
         ClearanceHoldRequested=false;
         ClearanceHoldKey=null;PlanningDeferred=false;PlanningDeferredKey=null;
-        plans.Clear();entryCosts.Clear();replacements.Clear();
+        plans.Clear();entryCosts.Clear();replacements.Clear();upgradeSources.Clear();
         shortChangeRoad=null;CancelPlannedStop();
     }
 
@@ -141,15 +184,19 @@ public sealed class TollRouter
             modelPayments=knownPayments;
             double now=System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
             if(CurrentKey==key && SelectedGate.HasValue) {
-                if(PaymentFor(SelectedGate.Value)==TollPayment.Manual&&now-lastSearch>=.5) {
-                    lastSearch=now;
-                    TryUpgradeAutomatic(data,index,p,truck,sdkGates,speed);
+                if(PaymentFor(SelectedGate.Value)==TollPayment.Manual) {
+                    if(now-lastSearch>=.5||PreparingAutomaticEntry) {
+                        lastSearch=now;
+                        TryUpgradeAutomatic(data,index,p,truck,sdkGates,speed);
+                    }
+                    UpdateAutomaticPreparation(data,index,p,truck,speed);
                 }
                 return;
             }
             if(CurrentKey==key && now-lastSearch < .5)return;
             lastSearch=now;
             plans.Clear();
+            upgradeSources.Clear();
             entryCosts.Clear();
             replacements.Clear();
             var right=Vector3.Cross(forward,Vector3.UnitY);
@@ -182,6 +229,8 @@ public sealed class TollRouter
                     var search=findClearRoute?.Invoke(alternative,c.SemaphoreId);
                     var route = findClearRoute!=null?search?.Path:ViaGate(alternative, c.SemaphoreId);
                     string? rejected=route==null?search?.Reason??"NoDirectedTruckPath":readClearance?.Invoke(route)==false?"ClearanceUnavailable":null;
+                    if(rejected==null&&route!=null&&knownPayments.GetValueOrDefault(c.SemaphoreId)==TollPayment.Automatic)
+                        RememberUpgradeSource(route);
                     var entry=rejected==null?TollEntry.Plan(data,index,p,route!,truck,speed):null;
                     rejected??=entry==null?"EntryNotReachable":null;
                     attempts.Add(new(c.SemaphoreId,PaymentFor(c.SemaphoreId).ToString(),firstCurve,lastCurve,rejected??"Reachable",search?.BlockedCurves??[],search?.Evidence));
@@ -203,6 +252,7 @@ public sealed class TollRouter
                 .Select(x=>new LaneChoice(x.l.gate,$"{x.i+1}. Durchfahrt von rechts")).ToArray();
             SelectedGate=preferences.Gates.TryGetValue(key,out var chosen)?chosen:null;
             SelectAutomatic();
+            UpdateAutomaticPreparation(data,index,p,truck,speed);
             LaneAttempts=attempts.ToArray();
             LaneDecisionContext=new{utc=DateTimeOffset.UtcNow,plaza=CurrentKey,truck=new{truck.X,truck.Y,truck.Z},speed,
                 selected=SelectedGate,routePlan=RouteSnapshot.Describe(RouteSnapshot.Capture(data))};
@@ -232,18 +282,22 @@ public sealed class TollRouter
     {
         if(shortChangeRoad!=null||data.PlannedPath.Any(i=>i.targetLaneIndex!=0))return;
         try {
+            upgradeSources.RemoveAll(s=>!CurrentUpgradeSource(s,current));
             var trace=RouteMatcher.SampleForTracking(data,truck,speed);
             if(BoundaryCoverage(trace,data.PlannedPath[index],CommonApproachEnd(current),truck,out double remaining)!=PrefixCoverage.Connected||
                 remaining<Math.Max(15,Math.Max(0,speed)*1.5+10))return;
             var trial=new TollRouter(preferences,readPayments,readClearance,prefetch,readManualStop,findClearRoute);
             var snapshot=RouteSnapshot.Capture(data);
+            snapshot.PlannedPath[index].otherPrefabPaths=(snapshot.PlannedPath[index].otherPrefabPaths??[])
+                .Concat(upgradeSources.Select(s=>s.Path)).Distinct().ToArray();
             trial.Discover(snapshot,truck,sdkGates,speed);
             LaneAttempts=trial.LaneAttempts;
             LaneAttemptContext=trial.LaneAttemptContext;
             if(trial.CurrentKey!=CurrentKey||trial.SelectedGate is not int gate||trial.PaymentFor(gate)!=TollPayment.Automatic||
-                !trial.plans.TryGetValue(gate,out var candidate)||!CanRestoreApplied(data,index,current,candidate,truck,speed)||
+                !trial.plans.TryGetValue(gate,out var candidate)||!CanPrepareUpgrade(data,index,current,candidate,truck,speed)||
                 readClearance?.Invoke(candidate)==false)return;
             plans.Clear();foreach(var pair in trial.plans)plans[pair.Key]=pair.Value;
+            upgradeSources.Clear();upgradeSources.AddRange(trial.upgradeSources);
             entryCosts.Clear();foreach(var pair in trial.entryCosts)entryCosts[pair.Key]=pair.Value;
             replacements.Clear(); // The prior manual mapping is not the new automatic path.
             Choices=trial.Choices;modelPayments=trial.modelPayments;SelectedGate=gate;
@@ -264,8 +318,11 @@ public sealed class TollRouter
             "Keine eindeutig passende Lkw-Mautspur – manuell übernehmen";
         RefreshSelectedBarrier();
     }
-    string LaneStatus(int gate) => (PaymentFor(gate)==TollPayment.Automatic
-        ? "Automatisch abrechnende Lkw-Spur: " : "Lkw-Spur mit manueller Zahlung: ") +
+    string LaneStatus(int gate) => (PaymentFor(gate) switch {
+        TollPayment.Automatic=>"Automatisch abrechnende Lkw-Spur: ",
+        TollPayment.Manual=>modelPayments.Values.Contains(TollPayment.Automatic)
+            ?"Bestätigte manuelle Spur; automatische Zufahrt derzeit nicht freigegeben: ":"Lkw-Spur mit manueller Zahlung: ",
+        _=>"Zahlart der ausgewählten Spur nicht bestätigt: "})+
         Choices.FirstOrDefault(c=>c.GateId==gate)?.Label;
     public void Confirm(int gate,TollPayment payment)
     {
@@ -289,6 +346,7 @@ public sealed class TollRouter
         if(coverage==PrefixCoverage.Deferred){Defer(CurrentKey);return null;}
         if(coverage!=PrefixCoverage.Connected){UnknownHold(CurrentKey,"Maut-Haltegrenze oder aktuelle Position ist nicht eindeutig – geplanter Halt bis zur erneuten Prüfung");return null;}
         StopDistance=distance;
+        UpdatePlanningStop(data,data.PlannedPath.IndexOf(item),trace,truck);
         return StopDistance;
     }
 
@@ -326,6 +384,90 @@ public sealed class TollRouter
             if(projected.Along>=trace.Length-.01)return PrefixCoverage.Deferred;
         }
         return PrefixCoverage.Unknown;
+    }
+    void UpdatePlanningStop(PlannedPathData data,int tollIndex,RouteTrace trace,Vector3 truck,string? owner=null)
+    {
+        PreparingAutomaticEntry=false;
+        const double reserve=TollEntry.MinimumChangeMetres+ApproachStop.BufferMetres;
+        owner??=StopKey;
+        if(owner==null||tollIndex<1){ClearPlanningStop();return;}
+        var toll=data.PlannedPath[tollIndex];var road=data.PlannedPath[tollIndex-1];
+        if(road.item is not (ParsedRoad or ParsedRoadList)||road.endNode.Uid!=toll.startNode.Uid||
+            road.laneIndex==0||road.targetLaneIndex!=0||!road.allowedToLaneChange||
+            !RouteMatcher.TryItemIdentity(road,out string identity)||!trace.TryItemRange(identity,out double start,out double end))
+            {ClearPlanningStop();return;}
+        bool backward=road.direction==Direction.Backward;
+        var ends=road.item is ParsedRoadList list?(list.StartNode,list.EndNode):(((ParsedRoad)road.item).StartNode,((ParsedRoad)road.item).EndNode);
+        if((backward?ends.Item1:ends.Item2).Uid!=road.endNode.Uid||
+            (backward?ends.Item2:ends.Item1).Uid!=road.startNode.Uid){ClearPlanningStop();return;}
+        double length=road.GetLength();var side=road.laneIndex<0?Side.Left:Side.Right;
+        int count=road.item is ParsedRoadList lanes?lanes.GetLaneCount(side):((ParsedRoad)road.item).GetLaneCount(side);
+        if(!double.IsFinite(length)||length<=0||end-start<=reserve+1||Math.Abs((long)road.laneIndex)>count){ClearPlanningStop();return;}
+        Vector3 At(float f)=>road.item is ParsedRoadList roads?roads.InterpolateLane(f,side,Math.Abs(road.laneIndex)-1).Position:
+            ((ParsedRoad)road.item).InterpolateLane(f,side,Math.Abs(road.laneIndex)-1).Position;
+        var samples=new[]{0f,.25f,.5f,.75f,1f}.Select(At).ToArray();
+        if(samples.Any(p=>!float.IsFinite(p.X)||!float.IsFinite(p.Y)||!float.IsFinite(p.Z))){ClearPlanningStop();return;}
+        // A partial prefix of this same road is not proof of its actual end.
+        if(!trace.TryAtAlong(end,out var roadEnd)||Vector3.Distance(roadEnd.Position,At(backward?0:1))>.1)
+            {ClearPlanningStop();return;}
+        var ids=road.item is ParsedRoadList group?group.Roads.Select(r=>r.Road.Uid):new[]{((ParsedRoad)road.item).Road.Uid};
+        if(!trace.TryAtAlong(end-reserve,out var reservePoint)||reservePoint.Connector||reservePoint.SegmentIdentity!=identity)
+            {ClearPlanningStop();return;}
+        string key=owner+"|approach:"+identity+"|"+string.Join(',',ids)+"|"+BitConverter.DoubleToInt64Bits(end-start)+"|"+
+            string.Join(',',samples.SelectMany(p=>new[]{BitConverter.SingleToInt32Bits(p.X),BitConverter.SingleToInt32Bits(p.Y),BitConverter.SingleToInt32Bits(p.Z)}));
+        var anchor=PlanningStopKey==key&&PlanningBoundary is Vector3 existing?existing:reservePoint.Position;
+        var target=trace.ProjectNearForTracking(anchor,(start+end)/2,(end-start)/2+.00001);
+        var current=BarrierBinding.UniqueCurrent(trace,truck,target.Along);
+        if(current==null||target.Offset>.1||Math.Abs(target.HeightOffset)>.1||target.Along<start||target.Along>end||
+            trace.EndsAtGap&&target.Along>=trace.Length-.01){ClearPlanningStop();return;}
+        double remaining=target.Along-current.Along;
+        // Do not relocate an already passed target ahead of the truck. Once
+        // anchored, retain it (also when overshot) until its exact source ends.
+        if(PlanningStopKey!=key&&remaining<0){ClearPlanningStop();return;}
+        PlanningBoundary=anchor;PlanningStopKey=key;PlanningStopDistance=remaining;
+    }
+    void UpdateAutomaticPreparation(PlannedPathData data,int index,PrefabPath current,Vector3 truck,double speed)
+    {
+        bool wasPreparing=PreparingAutomaticEntry;
+        void NoPreparation() {
+            if(wasPreparing||PlanningStopKey?.StartsWith("auto-prepare:",StringComparison.Ordinal)==true)ClearPlanningStop();
+            if(wasPreparing&&SelectedGate is int manual&&PaymentFor(manual)==TollPayment.Manual)Status=LaneStatus(manual);
+        }
+        if(SelectedGate is not int gate||modelPayments.GetValueOrDefault(gate)!=TollPayment.Manual||
+            findClearRoute==null||readClearance==null||shortChangeRoad!=null||data.PlannedPath.Any(i=>i.targetLaneIndex!=0)||
+            !double.IsFinite(speed)||speed<=TollEntry.ShortChangeSpeed){NoPreparation();return;}
+        try {
+            upgradeSources.RemoveAll(s=>!CurrentUpgradeSource(s,current));
+            foreach(var source in upgradeSources) {
+                var ids=source.Path.Curves.Where(c=>c.SemaphoreId>=0).Select(c=>c.SemaphoreId).Distinct().ToArray();
+                if(ids.Length!=1||modelPayments.GetValueOrDefault(ids[0])!=TollPayment.Automatic)continue;
+                var candidate=findClearRoute(source.Path,ids[0]).Path;
+                if(candidate==null||!readClearance(candidate))continue;
+                var check=RouteSnapshot.Capture(data);
+                if(TollEntry.Plan(check,index,current,candidate,truck,speed)!=null)continue;
+                var slow=TollEntry.Plan(check,index,current,candidate,truck,TollEntry.ShortChangeSpeed);
+                if(slow?.SlowRoad==null||slow.Apply.Count==0||index<1||!ReferenceEquals(slow.SlowRoad,check.PlannedPath[index-1]))continue;
+                foreach(var change in slow.Apply)change();
+                check.PlannedPath[index].prefabPath=candidate;
+                if(!ExitHandoff.Align(check,index,truck,out _)||!readClearance(candidate))continue;
+                var trace=RouteMatcher.SampleForTracking(data,truck,speed);
+                string owner="auto-prepare:"+CurrentKey+":"+ids[0];
+                bool existing=PlanningStopKey?.StartsWith(owner+"|approach:",StringComparison.Ordinal)==true;
+                UpdatePlanningStop(data,index,trace,truck,owner);
+                if(PlanningStopDistance is not double distance)continue;
+                double usable=distance-.25-speed*.35;
+                // Same explicit response reserve as the own stop controller.
+                // An impossible new preparation must retain the reachable
+                // manual fallback, never force a late lateral change.
+                if(!existing&&(usable<=0||speed*speed/(2*usable)>=LongitudinalController.MaximumBrakeDeceleration)) {
+                    ClearPlanningStop();continue;
+                }
+                PreparingAutomaticEntry=true;
+                Status="Automatikzufahrt wird vorbereitet – geplanter Halt mit Einordnungsreserve";
+                return;
+            }
+        }catch(InvalidOperationException) { /* Unknown approach: retain manual fallback. */ }
+        NoPreparation();
     }
     void ClearOwnedHold(string? key)
     {
@@ -420,6 +562,7 @@ public sealed class TollRouter
                 if(boundaryCoverage==PrefixCoverage.Deferred){Defer(CurrentKey);return true;}
                 if(boundaryCoverage!=PrefixCoverage.Connected){UnknownHold(CurrentKey,"Maut-Haltegrenze ist im verbundenen Routenabschnitt nicht eindeutig verfolgbar – geplanter Halt");return true;}
                 StopBoundary=boundary;StopKey=CurrentKey;StopDistance=distance;
+                UpdatePlanningStop(data,itemIndex,prefix,truck);
                 item.allowedToLaneChange=false;
                 Status="Unbestätigte Mautspur: geplanter Halt vor der Aufteilung; F9 zur Übernahme";
                 return true;
@@ -526,6 +669,7 @@ public sealed class TollRouter
             replacements[current]=replacement;replacements[replacement]=replacement;
             RefreshSelectedBarrier(item);
             Status=LaneStatus(SelectedGate.Value);
+            UpdateAutomaticPreparation(data,itemIndex,item.prefabPath!,truck,speed);
         }
         if(!matched&&CurrentKey!=null)Defer(CurrentKey);
         return true;
@@ -554,6 +698,24 @@ public sealed class TollRouter
         return ExitHandoff.Align(check,index,truck,out _);
     }
 
+    // An upgrade is a NEW entry plan, not restoration of an already-applied
+    // topology. A currently valid short adjacent change must not inherit the
+    // restoration-only zero-change condition. Test all actions on detached
+    // items; Apply re-derives them against the actual current source before
+    // publishing either the entry target or the selected toll path.
+    static bool CanPrepareUpgrade(PlannedPathData data,int index,PrefabPath current,PrefabPath candidate,Vector3 truck,double speed)
+    {
+        var check=RouteSnapshot.Capture(data);
+        var changes=TollEntry.Plan(check,index,current,candidate,truck,speed);
+        if(changes==null)return false;
+        var oldPoint=current.Interpolate(current.GetFactorForPoint(truck),0)?.Position;
+        var newPoint=candidate.Interpolate(candidate.GetFactorForPoint(truck),0)?.Position;
+        if(!oldPoint.HasValue||!newPoint.HasValue||Vector3.Distance(truck,oldPoint.Value)<5&&Vector3.Distance(oldPoint.Value,newPoint.Value)>2)return false;
+        foreach(var change in changes.Apply)change();
+        check.PlannedPath[index].prefabPath=candidate;
+        return ExitHandoff.Align(check,index,truck,out _);
+    }
+
     bool TryHoldBeforeBranch(PlannedPathData data, PlannedItem item, PrefabPath approach, Vector3 truck, double speed)
     {
         try
@@ -569,6 +731,7 @@ public sealed class TollRouter
             StopBoundary = boundary;
             StopKey = CurrentKey;
             StopDistance = distance;
+            UpdatePlanningStop(data,data.PlannedPath.IndexOf(item),trace,truck);
             item.allowedToLaneChange = false;
             Status = "Mautspur nicht mehr erreichbar: geplanter Halt vor der Aufteilung";
             return true;

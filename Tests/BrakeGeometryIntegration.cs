@@ -22,13 +22,13 @@ public static class BrakeGeometryIntegration
             delivered=Task.Run(()=>{
                 for(int i=0;i<=21;i++) {
                     f.Call("OnControlOutput",new ControlEvent {
-                        ChannelDefinition=new(){Id="AdaptiveCruiseControl.Acceleration"},Variables=new(){aforward=0f,abackward=-.5f}
+                        ChannelDefinition=new(){Id=TollPlugin.LongitudinalChannelId},Variables=new(){aforward=0f,abackward=-.5f}
                     });
                     f.Call("ObserveBrakeResponse",Frame(i));
                 }
             });
             assert(delivered.Wait(TimeSpan.FromSeconds(1)),"A brake-response warning cannot wait for route work");
-            assert(f.Get<object?>("brakeWarning")!=null,"Real ACC output fields must feed the response guard");
+            assert(f.Get<object?>("brakeWarning")!=null,"Own output fields must feed the response guard");
             assert(f.State.EnableAssists&&f.Plugin.Active&&!f.Plugin.FaultBraking&&f.Outputs.Count==before,
                 "Diagnostic failure must not drop working steering or inject another ineffective brake command");
         } finally {Monitor.Exit(routeLock);delivered?.Wait(TimeSpan.FromSeconds(2));}

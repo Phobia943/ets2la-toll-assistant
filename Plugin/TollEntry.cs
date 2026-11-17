@@ -9,6 +9,8 @@ public static class TollEntry
 {
     public sealed record Changes(List<Action> Apply, PlannedItem? SlowRoad = null);
     public const double ShortChangeSpeed = 20 / 3.6;
+    public const double MinimumChangeMetres=45;
+    public const double FullChangeMetres=160;
 
     public static Changes? Plan(PlannedPathData plan, int index, PrefabPath original, PrefabPath replacement, Vector3 truck, double speed=0)
     {
@@ -84,14 +86,14 @@ public static class TollEntry
             if (!float.IsFinite(factor)) return null;
             bool onRoad = Vector3.Distance(Point(factor,Math.Abs(road.laneIndex)-1),truck) <= 3;
             if (onRoad && road.allowedToLaneChange && Math.Abs(wanted-road.laneIndex) == 1 &&
-                Math.Abs(end-factor)*road.GetLength() >= 160)
+                Math.Abs(end-factor)*road.GetLength() >= FullChangeMetres)
                 return new([() => road.targetLaneIndex=wanted]);
 
             double beforeRoad = DistanceBefore(i);
             double brakingDistance = Math.Max(0,(speed*speed-ShortChangeSpeed*ShortChangeSpeed)/2.4) + Math.Max(0,speed)*1.5;
             bool nearBeginning = Math.Abs(start-factor)*road.GetLength() < 3;
             if (road.allowedToLaneChange && Math.Abs(wanted-road.laneIndex)==1 &&
-                Math.Abs(end-factor)*road.GetLength() >= 45 &&
+                Math.Abs(end-factor)*road.GetLength() >= MinimumChangeMetres &&
                 (onRoad && speed <= ShortChangeSpeed || !onRoad && nearBeginning && beforeRoad >= Math.Max(5,brakingDistance)))
                 return new([() => road.targetLaneIndex=wanted],road);
 

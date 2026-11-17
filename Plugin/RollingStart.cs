@@ -23,7 +23,7 @@ public sealed partial class TollPlugin
         double now=clock.Elapsed.TotalSeconds;
         if (!_IsRunning || faultBrake.Latched || brakeHeld || now<takeoverUntil || !SensorsFresh(now) || !double.IsFinite(speed) || speed<=.1 ||
             (!active && !automaticPreparation.Requested) || readPlanner() is not { } planner ||
-            ConnectorStart.IsLoadingMap(planner) || readAcc()==null)
+            ConnectorStart.IsLoadingMap(planner) || CheckHostCompatibility()!=null)
             return false;
         active=false;
         ResetDriving();
@@ -111,10 +111,6 @@ public sealed partial class TollPlugin
                 if(testRouter.StopBoundary.HasValue || initial.RequiresTakeover)
                     issue??="Vor der Mautstelle bitte zuerst manuell übernehmen und sicher anhalten.";
                 if(issue!=null) { FailRollingStart(issue);return; }
-                var acc=readAcc();
-                if(acc==null) { FailRollingStart("Tempomat ist nicht bereit.");return; }
-                bridge.Attach(acc,Evaluate,()=>Status);
-                if(bridge.Constraint==null) { FailRollingStart("Tempomat wird noch initialisiert.");return; }
                 // All potentially failing geometry checks precede the native commit.
                 // The verified adapter refuses foreign threads/builds or a nonempty plan.
                 if(planner==null || !installStart(planner,planned,published,position,headingTurns))

@@ -57,7 +57,7 @@ public sealed partial class TollPlugin
         // Use the public output contract to overwrite residual/in-flight native
         // commands. Merely expiring a channel can leave the last value in memory.
         // Refresh briefly after disable; zero releases the modern override.
-        foreach(var id in new[]{"AdaptiveCruiseControl.Acceleration","LaneAssist.SteeringCorrection",FaultBrake.ChannelId})
+        foreach(var id in new[]{LongitudinalChannelId,"AdaptiveCruiseControl.Acceleration","LaneAssist.SteeringCorrection",FaultBrake.ChannelId})
             publishOutput(new() {ChannelDefinition=new() {Id=id,Timeout=.1f},
                 Variables=new() {aforward=0,abackward=0,steering=0}});
     }

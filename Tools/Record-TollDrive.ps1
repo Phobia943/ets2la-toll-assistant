@@ -55,12 +55,7 @@ try {
                 }
                 if($status.utc -ne $lastStatus) {
                     $lastStatus=$status.utc
-                    $newStatus=$status|Select-Object utc,version,assists,active,mode,phase,targetSpeedKph,gate,candidate,
-                        selectedLane,selectedPayment,plaza,faultBraking,pathError,driveAction,connectedMetresAhead,
-                        requiredLookahead,telemetryAge,gatesAge,pathAge,options,routing,routeFault,plannedStop,stopDistance,
-                        steeringFeed,steeringAge,steeringFault,brakeHeld,brakeInputValue,
-                        laneAttempts,laneAttemptContext,laneDecisionContext,laneProtection,detailedRigProtection,planningProfile,rigPrediction,
-                        sceneStopping,sceneStatus,scenePedalFloor,sceneHoldOwner,sceneHolding,holdPedalFloor,tollAccelerationLimit,nativeAcc
+                    $newStatus=Select-TollCaptureStatus $status
                 }
             } catch {$issues.Add('StatusUnreadable')}
         }

@@ -49,6 +49,12 @@ void Run()
     var results=new List<string>();
     void Check(string name, Action test) { if(args is ["--filter",var filter]&&!name.Contains(filter,StringComparison.OrdinalIgnoreCase))return;try {test(); results.Add("PASS "+name);} catch(Exception ex) {results.Add("FAIL "+name+": "+ex); } }
     void Assert(bool v,string message="Assertion failed") {if(!v)throw new Exception(message);}
+    Check("Own longitudinal controller preserves safety, epochs and pedal ownership",()=>LongitudinalControllerTests.SafetyAndOwnership(Assert));
+    Check("Own longitudinal controller coasts, holds, resumes and rejects missing delivery",()=>LongitudinalControllerTests.CoastStopsAndFeedback(Assert));
+    Check("Own longitudinal controller drives loaded and downhill vehicle simulations",()=>LongitudinalControllerTests.Dynamics(Assert));
+    Check("Own traffic controller separates lanes, levels, stopped traffic and closing vehicles",()=>TrafficSpeedTests.Run(Assert));
+    Check("Independent longitudinal review rejects oncoming and repeated-route geometry errors",()=>OwnLongitudinalReviewTests.TrafficGeometry(Assert));
+    Check("Independent longitudinal review detects unapplied holding and full braking",()=>OwnLongitudinalReviewTests.DeliveryDuringHold(Assert));
     Check("Native command ages keep producer and observer clock domains separate",()=>NativeCommandTimingTests.ClockDomains(Assert));
     Check("Native command timestamp bounds retain admission and full diagnostic ages",()=>NativeCommandTimingTests.Bounds(Assert));
     Check("Native age watchdog preserves real failure and startup deadlines",()=>NativeCommandTimingTests.GuardContract(Assert));
@@ -224,6 +230,23 @@ void Run()
         }
     });
     #if INTEGRATION
+    Check("Own Tick drives without native ACC and yields on physical brake and F9",()=>LongitudinalIntegration.TickAndTakeover(Assert));
+    Check("Own dynamics use simulation time through actual frame draining",()=>LongitudinalIntegration.SimulationClock(Assert));
+    Check("Own Tick rejects late observation work and cancellation",()=>LongitudinalIntegration.LateWork(Assert));
+    Check("Independent own pedal watchdog brakes on a stalled controller with healthy steering",()=>LongitudinalIntegration.PedalDeadman(Assert));
+    Check("Open local passage survives missing road speed data while game cruise excludes own takeover",()=>LongitudinalIntegration.RoadLimitAndGameCruise(Assert));
+    Check("SDK byte orientations and fixed empty slots preserve real traffic geometry",()=>TrafficWireIntegration.Run(Assert));
+    Check("Actual toll Tick binds open and closed canonical gates independently of the opposite lane",()=>CanonicalGateTickReview.Run(Assert));
+    Check("Exit continuation carries a selected toll lane through the next road",()=>RoutingContinuationIntegration.RoadExit(Assert));
+    Check("Exit continuation chooses a real directed connector alternative",()=>RoutingContinuationIntegration.ConnectorAlternatives(Assert));
+    Check("Exit continuation rejects unresolved downstream joins transactionally",()=>RoutingContinuationIntegration.StrictContinuation(Assert));
+    Check("Unconfirmed toll approach retains maneuver space before the physical stop boundary",()=>RoutingContinuationIntegration.AdvanceHold(Assert));
+    Check("Early approach hold follows directed curved road arclength",()=>RoutingContinuationIntegration.CurvedHold(Assert));
+    Check("Unknown automatic payment evidence is not reported as manual-only",()=>RoutingContinuationIntegration.PaymentStatus(Assert));
+    Check("Late automatic entry replaces an early manual fallback only with a valid current maneuver",()=>RoutingContinuationIntegration.LateAutomaticUpgrade(Assert));
+    Check("Retained automatic topology loses authority on source changes",()=>RoutingContinuationIntegration.UpgradeSourceRevocation(Assert));
+    Check("Own speed regulation prepares and reaches a valid automatic entry in a closed plant",()=>RoutingContinuationIntegration.AutomaticPreparationPlant(Assert));
+    Check("Unavailable automatic entries cannot create an endless preparation hold",()=>RoutingContinuationIntegration.AutomaticPreparationUnavailable(Assert));
     Check("Old fault work and publishing refresh cannot outlive manual takeover",()=>FaultLeaseIntegration.Run(Assert));
     Check("Exact host package identity rejects originals and preserves verified Lane diagnostics",()=>HostCompatibilityIntegration.Run(Assert));
     Check("Cruise preset requires sufficient preview and preserves SET/off behaviour",()=>CruiseOptionsIntegration.Cruise(Assert));

@@ -33,6 +33,8 @@ public static class RollingStartIntegration
         public readonly Vector3 Point;
         public Action? DuringProbe;
         public Action? DuringReadAcc;
+        public Action? DuringReadTraffic;
+        public Func<TrafficSpeedDecision>? Traffic;
         public Action? DuringInstall;
         public Func<PlannedPathData?> Plan;
         public bool InstallSucceeds=true;
@@ -40,16 +42,19 @@ public static class RollingStartIntegration
         public Fixture(bool monitorSteering=false,Func<IPlugin?>? readLaneAssist=null,Action<string,string>? writeDiagnostic=null,
             Func<RouteTrace?,Vector3,ETS2LA.Game.SDK.Semaphore[],object>? buildStatusGeometry=null,
             Func<RouteTrace,Vector3,CurveSpeedProfile>? buildCurveProfile=null,Func<CruiseLimits>? readCruiseLimits=null,
-            Func<RigRuntimeObservation>? readRigObservation=null,TollModelEvidence? runtimeModels=null)
+            Func<RigRuntimeObservation>? readRigObservation=null,TollModelEvidence? runtimeModels=null,bool withoutAcc=false)
         {
+            IPlugin? acc=null;
+            if(!withoutAcc) {
             var assembly=AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"../../../../References/AdaptiveCruiseControl.dll")));
             var type=assembly.GetType("AdaptiveCruiseControl.AdaptiveCruiseControlPlugin",true)!;
-            var acc=(IPlugin)RuntimeHelpers.GetUninitializedObject(type);
+            acc=(IPlugin)RuntimeHelpers.GetUninitializedObject(type);
             var field=type.GetField("constraints")!;
             var constraints=(IList)Activator.CreateInstance(field.FieldType)!;
             var neutral=AccBridge.CreateConstraint(assembly.GetType("AdaptiveCruiseControl.Constraints.Constraint",true)!,()=>float.NaN,()=>"test");
             for(int i=0;i<3;i++)constraints.Add(neutral);
             field.SetValue(acc,constraints);
+            }
             var rotation=Quaternion.CreateFromAxisAngle(Vector3.UnitY,MathF.PI);
             var start=new Node {Uid=901,Position=Vector3.Zero,Rotation=rotation};
             var end=new Node {Uid=902,Position=new(0,0,400),Rotation=rotation};
@@ -70,7 +75,8 @@ public static class RollingStartIntegration
                     published.PlannedPath=planned.PlannedPath;published.ErrorMessage=null;published.HasError=false;return true;
                 },monitorSteering:monitorSteering,readLaneAssist:readLaneAssist,writeDiagnostic:writeDiagnostic,
                 buildStatusGeometry:buildStatusGeometry,buildCurveProfile:buildCurveProfile,readCruiseLimits:readCruiseLimits,
-                readRigObservation:readRigObservation,runtimeModels:runtimeModels);
+                readRigObservation:readRigObservation,runtimeModels:runtimeModels,
+                readLongitudinalTraffic:()=>{DuringReadTraffic?.Invoke();return Traffic?.Invoke()??new(float.NaN,true,"Isolated current empty SDK traffic");});
             Plugin._IsRunning=true;
             Set("subscribed",true);Set("lastWrite",double.MaxValue);Set("position",Point);Set("headingTurns",.5d);
             Fresh();Set("path",Disabled());
@@ -100,7 +106,7 @@ public static class RollingStartIntegration
         f.Probe();
         assert(f.Installs==1&&f.State.EnableAssists&&f.Plugin.Active&&!f.Plugin.FaultBraking,"A route covering the latest moving position can start FSD");
         f.Fresh();f.Plugin.Tick();f.Fresh();f.Call("Evaluate");
-        assert(f.State.EnableAssists&&!f.Plugin.FaultBraking&&f.Outputs.Count==0,"The first rolling control cycle does not reject the old disabled frame or emergency brake");
+        assert(f.State.EnableAssists&&!f.Plugin.FaultBraking&&f.Outputs.All(o=>o.ChannelDefinition.Id==TollPlugin.LongitudinalChannelId),"The first rolling control cycle publishes only the own controller without rejecting the old disabled frame");
         f.F9();
         assert(!f.State.EnableAssists&&!f.Plugin.Active&&!f.Plugin.FaultBraking,"F9 hands a rolling session back to manual control");
         f.Fresh();f.F8();f.DuringProbe=null;f.Probe();
@@ -193,7 +199,7 @@ public static class RollingStartIntegration
         assert(f.State.EnableAssists&&f.Outputs.Count==0,"Invalid values and small trigger noise do not cancel driving");
         Brake(.2f);
         assert(!f.State.EnableAssists&&!f.Plugin.Active&&!f.Plugin.FaultBraking&&f.Get<bool>("brakeHeld"),"Physical brake cancels steering and ACC");
-        assert(f.Outputs.Count==3&&f.Outputs.All(o=>o.Variables.aforward==0&&o.Variables.abackward==0&&o.Variables.steering==0),
+        assert(f.Outputs.Count==4&&f.Outputs.Any(o=>o.ChannelDefinition.Id==TollPlugin.LongitudinalChannelId)&&f.Outputs.All(o=>o.Variables.aforward==0&&o.Variables.abackward==0&&o.Variables.steering==0),
             "Takeover clears residual commands without generating a brake pulse");
         f.F8();assert(!f.State.EnableAssists&&!f.Get<bool>("rollingStartPending"),"Held brake blocks F8");
         Brake(.09f);f.F8();assert(!f.Get<bool>("rollingStartPending"),"Hysteresis prevents trigger chatter from enabling a restart");

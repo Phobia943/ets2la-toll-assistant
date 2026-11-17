@@ -23,7 +23,7 @@ internal sealed class Replay
     bool block,blockEvaluation;
     readonly ManualResetEventSlim entered=new(),release=new();
     const B All=B.Public|B.NonPublic|B.Instance|B.Static;
-    const string AccId="AdaptiveCruiseControl.Acceleration",LaneId="LaneAssist.SteeringCorrection";
+    const string AccId="local.mautassistent.longitudinal",NativeAccId="AdaptiveCruiseControl.Acceleration",LaneId="LaneAssist.SteeringCorrection";
     static void Set(object owner,string name,object? value)=>owner.GetType().GetField(name,All)!.SetValue(owner,value);
     static object? Get(object owner,string name)=>owner.GetType().GetField(name,All)!.GetValue(owner);
     static void BodyReturnStatic(TypeDefinition type,string getter,string fieldName)
@@ -74,9 +74,12 @@ internal sealed class Replay
             }
             var camera=game.GetType("ETS2LA.Game.SDK.CameraProvider");BodyReturnStatic(camera,"get_Current","ReplayCurrent");ForbidConstructors(camera);
             BodyReturnStatic(camera,"GetCurrentData","ReplayData");
-            ForbidConstructors(game.GetType("ETS2LA.Game.Telemetry.GameTelemetry"));
+            var telemetry=game.GetType("ETS2LA.Game.Telemetry.GameTelemetry");
+            BodyReturnStatic(telemetry,"get_Current","ReplayCurrent");BodyReturnStatic(telemetry,"GetCurrentData","ReplayData");
+            ForbidConstructors(telemetry);
             foreach(string name in new[]{"TrafficProvider","ParkedVehiclesProvider","SemaphoreProvider"}) {
                 var provider=game.GetType("ETS2LA.Game.SDK."+name);ForbidConstructors(provider);
+                SourceFrameReplay.PrepareSandbox(provider);
                 // Failed-open terminal only: never execute an actual memory
                 // opening path, even when testing the provider's Update guard.
                 var open=Rewrite.Method(provider,"TryOpenMemory");open.Body=new(open);var il=open.Body.GetILProcessor();
@@ -131,6 +134,15 @@ internal sealed class Replay
         propertiesType=gameAsm.GetType("ETS2LA.Game.Output.ControlProperties",true)!;
         host=RuntimeHelpers.GetUninitializedObject(outputType);state=RuntimeHelpers.GetUninitializedObject(stateType);
         outputType.GetField("ReplayCurrent")!.SetValue(null,host);stateType.GetField("ReplayCurrent")!.SetValue(null,state);
+        // PathLib's real lane-change builder reads this passive speed-limit
+        // DTO. Both getters above are isolated field reads, never singletons.
+        var telemetryType=gameAsm.GetType("ETS2LA.Game.Telemetry.GameTelemetry",true)!;
+        telemetryType.GetField("ReplayCurrent")!.SetValue(null,RuntimeHelpers.GetUninitializedObject(telemetryType));
+        var telemetryData=RuntimeHelpers.GetUninitializedObject(telemetryType.GetField("ReplayData")!.FieldType);
+        var truckFloatField=telemetryData.GetType().GetField("truckFloat")!;
+        var truckFloat=truckFloatField.FieldType.IsValueType?Activator.CreateInstance(truckFloatField.FieldType)!:RuntimeHelpers.GetUninitializedObject(truckFloatField.FieldType);
+        Set(truckFloat,"speedLimit",100f/3.6f);truckFloatField.SetValue(telemetryData,truckFloat);
+        telemetryType.GetField("ReplayData")!.SetValue(null,telemetryData);
         foreach(var field in outputType.GetFields(All).Where(f=>f.Name.StartsWith("Maut",StringComparison.Ordinal))) {
             _=field.GetCustomAttributes(false);_=new NullabilityInfoContext().Create(field);
         }
@@ -148,7 +160,7 @@ internal sealed class Replay
         outputType.GetField("ReplayWriteDouble")!.SetValue(null,(Action<MemoryMappedViewAccessor,int,double>)Write);
         // Compile the transplanted output terminals before assigning short-lived
         // native timestamps. First JIT latency must not become a test grace.
-        foreach(string name in new[]{"OnControlEvent","MautFrame","MautAccept","MautSnapshotDefinition"})
+        foreach(string name in new[]{"OnControlEvent","MautFrame","MautAccept","MautSnapshotDefinition","MautSnapshotVariables","MautPedalsValid"})
             RuntimeHelpers.PrepareMethod(outputType.GetMethod(name,All)!.MethodHandle);
         void Assert(bool ok,string message){if(!ok)throw new Exception(message);checks++;Console.WriteLine("PASS "+message);}
         void Frame(bool modernOutput=false)=>outputType.GetMethod("MautFrame")!.Invoke(host,[modernOutput]);
@@ -156,13 +168,15 @@ internal sealed class Replay
         float Brake()=>(float)legacy.GetValueOrDefault(offsets["abackward"]);
         void Enable(bool value)=>stateType.GetProperty("EnableAssists")!.SetValue(state,value);
         long Epoch()=>(long)outputType.GetMethod("MautCaptureEpoch")!.Invoke(null,null)!;
+        object? lastSentVariables=null;
         object Send(string id,long epoch,float pedal=0,float? steering=null,float timeout=1,long? issuedAt=null) {
             long origin=issuedAt??Stopwatch.GetTimestamp();
-            var definition=Activator.CreateInstance(definitionType)!;Set(definition,"Id",id);Set(definition,"Timeout",timeout);Set(definition,"MautEpoch",epoch);Set(definition,"MautIssuedAt",origin);
+            var definition=Activator.CreateInstance(definitionType)!;Set(definition,"Id",id);Set(definition,"Timeout",timeout);Set(definition,"MautEpoch",epoch);Set(definition,"MautIssuedAt",origin);Set(definition,"MautSourceEpoch",outputType.GetField("MautOwnSourceEpoch")!.GetValue(null));Set(definition,"MautSourceAt",origin);
             var properties=Activator.CreateInstance(propertiesType)!;Set(properties,"Weight",1f);
             var variables=Activator.CreateInstance(variablesType)!;
             if(steering.HasValue)Set(variables,"steering",steering.Value);else Set(variables,pedal<0?"abackward":"aforward",pedal);
             var message=Activator.CreateInstance(eventType)!;Set(message,"ChannelDefinition",definition);Set(message,"Properties",properties);Set(message,"Variables",variables);
+            lastSentVariables=variables;
             outputType.GetMethod("OnControlEvent")!.Invoke(host,[message]);
             return definition;
         }
@@ -179,11 +193,44 @@ internal sealed class Replay
             Assert(Gas()==0&&Brake()==0&&modern[0]>.39,"Expired pedal owner is neutral while steering remains active");
         }
         Send(AccId,Epoch(),.5f,timeout:.001f);Send("test.other-owner",0,.3f);Thread.Sleep(10);Frame();
-        Assert(Math.Abs(Gas()-.3)<.001,"Expiry does not neutralize a different valid pedal owner");
+        Assert(Gas()==0&&Brake()==0,"Expiry cannot transfer longitudinal authority to an unrecognized weighted pedal owner");
         ((System.Collections.IDictionary)Get(host,"Channels")!).Remove("test.other-owner");
+        foreach(float hostile in new[]{1f,-1f}) {
+            Send(NativeAccId,Epoch(),hostile);Send("hostile.foreign-pedals",0,hostile);Frame();
+            Assert(Gas()==0&&Brake()==0,"Native ACC and unknown channels are permanently excluded from normal pedal authority: "+hostile);
+        }
+        ((System.Collections.IDictionary)Get(host,"Channels")!).Remove("hostile.foreign-pedals");
         Send(AccId,Epoch(),.6f);Frame(true);
         Assert(Gas()==0&&Brake()==0&&modern[13]>.59&&modern[17]==1,"Modern mode clears the abandoned legacy pedal path");
         Frame(false);Assert(modern[13]==0&&modern[17]==0&&Gas()>.59,"Legacy mode clears the abandoned modern override");
+        Send(NativeAccId,Epoch(),-1);Send("hostile.weighted-throttle",0,1);Frame();
+        Assert(Math.Abs(Gas()-.6f)<.001&&Brake()==0,"Foreign brake and throttle cannot dilute or veto the one authorized longitudinal owner");
+        ((System.Collections.IDictionary)Get(host,"Channels")!).Remove("hostile.weighted-throttle");
+        Send("local.mautassistent.fault-brake",0,-1);Frame();
+        Assert(Brake()==1&&Gas()==0,"Fault brake dominates even a fresh strong authorized throttle without weighting dilution");
+        Set(lastSentVariables!,"abackward",float.NaN);Frame();
+        Assert(Brake()==1&&Gas()==0,"Mutating the publisher's old variables cannot erase the snapshotted fault brake");
+        Send("local.mautassistent.fault-brake",0,1);Send("local.mautassistent.fault-brake",0,float.NaN);Frame();
+        Assert(Brake()==1&&Gas()==0,"Malformed fault-channel replacements cannot revoke an existing valid full brake");
+        ((System.Collections.IDictionary)Get(host,"Channels")!).Remove("local.mautassistent.fault-brake");
+        Send("local.mautassistent.fault-brake",0,1);Frame();
+        Assert(Math.Abs(Gas()-.6f)<.001&&Brake()==0,"Forged positive fault-channel throttle cannot create or dilute normal pedal authority");
+        Send("local.mautassistent.fault-brake",0,float.NaN);Frame();
+        Assert(Math.Abs(Gas()-.6f)<.001&&Brake()==0,"A nonfinite fault-channel value cannot poison the physical pedal axis");
+        ((System.Collections.IDictionary)Get(host,"Channels")!).Remove("local.mautassistent.fault-brake");
+        Send(AccId,Epoch(),.6f);Set(lastSentVariables!,"aforward",1f);Frame();
+        Assert(Math.Abs(Gas()-.6f)<.001,"Publisher mutation cannot rewrite an accepted original longitudinal result");
+        var normal=((System.Collections.IDictionary)Get(host,"Channels")!)[AccId]!;
+        Set(Get(normal,"Properties")!,"Weight",float.NaN);Frame();
+        Assert(Math.Abs(Gas()-.6f)<.001&&Brake()==0,"The sole longitudinal source does not depend on a foreign weighting property");
+        Set(Get(normal,"Variables")!,"abackward",-.4f);Frame();
+        Assert(Gas()==0&&Brake()==0,"Mutated simultaneous throttle and brake are rejected as one invalid command at frame time");
+        foreach(float invalid in new[]{float.NaN,float.PositiveInfinity,2f,-2f}) {
+            Send(AccId,Epoch(),invalid);Frame();Assert(Gas()==0&&Brake()==0,"Invalid signed pedal command is wholly rejected: "+invalid);
+        }
+        Send(LaneId,Epoch(),steering:.2f);Send(AccId,Epoch(),steering:.9f);Frame();
+        Assert(Math.Abs(modern[0]-.2f)<.001&&Gas()==0&&Brake()==0,"Longitudinal channel cannot smuggle steering into the original lane owner");
+        Send(AccId,Epoch(),.6f);
         Enable(false);Enable(true);long next=Epoch();Send(AccId,next,.2f);Send(AccId,firstEpoch,1);Frame();
         Assert(Math.Abs(Gas()-.2)<.001,"Late old session cannot replace or remove a fresh new-session result");
         var reused=Send(AccId,Epoch(),.4f);Enable(false);Enable(true);Set(reused,"MautEpoch",Epoch());Frame();
@@ -214,8 +261,8 @@ internal sealed class Replay
         Set(acc,"ReplayTarget",-.35f);outputType.GetMethod("OnControlEvent")!.Invoke(host,[NewNeutralEvent()]);
         TickAcc();Frame(); // Warm the real Tick/PID/event path without relaxing production age checks.
         int before=published.Count;TickAcc();Frame();
-        Assert((float)Get(acc,"currentSpeed")! == .3f&&published.Count==before+1&&Brake()>0&&Gas()==0,
-            "Actual native 0.3 m/s tick publishes a brake for the former no-publish band");
+        Assert((float)Get(acc,"currentSpeed")! == .3f&&published.Count==before+1&&Brake()==0&&Gas()==0,
+            "Actual native low-speed ACC Tick may publish but cannot acquire pedal authority");
         // Freeze a real native result before host ingestion, then cancel AND
         // start a new session before allowing the old result to arrive.
         Set(acc,"ReplayTarget",1f);block=true;entered.Reset();release.Reset();
@@ -239,7 +286,8 @@ internal sealed class Replay
             !((System.Collections.IDictionary)Get(host,"Channels")!).Contains(AccId),
             "Actual native Tick delayed after Evaluate and before publication is rejected at ingestion without a session change");
         Frame();Assert(Gas()==0&&Brake()==0,"Stale native calculation cannot become newly stamped gas in the physical frame");
-        TickAcc();Frame();Assert(Gas()>0&&Brake()==0,"A genuinely new Tick in the same session can publish fresh output after the delayed result is rejected");
+        TickAcc();Frame();Assert(Gas()==0&&Brake()==0,"Even a genuinely fresh native ACC Tick remains excluded after the delayed result");
+        Send(AccId,Epoch(),.2f);Frame();Assert(Gas()>.19&&Brake()==0,"The real local longitudinal channel independently acquires current authority");
         Enable(false);Frame();Assert(Gas()==0&&Brake()==0,"F9 still clears fresh native output immediately after age rejection");
         Enable(true);
         var holdMethod=outputType.GetMethod("MautSetPlannedHold")!;
@@ -261,7 +309,7 @@ internal sealed class Replay
         Assert(Gas()>.19&&Brake()==0,"Changing assist epoch resets native and hold origin watermarks");
         Set(Get(Get(acc,"telemetryData")!,"truckFloat")!,"speed",.384f);Set(acc,"ReplayTarget",-.9f);
         TickAcc();Frame();
-        Assert(Brake() is >.08f and <.10f&&Gas()==0,"Actual native tick reproduces the recorded approximately 8.9 percent brake at creeping speed");
+        Assert(Gas()>.19&&Brake()==0,"Actual native creeping-speed brake cannot veto a fresh authorized local command");
         Hold(Epoch(),"plaza-A",.35f);Frame();
         Assert(Math.Abs(Brake()-.35f)<.001&&Gas()==0,"Planned hold applies a physical pedal floor after real native aggregation");
         Send("test.strong-throttle",0,1);Frame();
@@ -294,61 +342,17 @@ internal sealed class Replay
             "A foreign or previous native route cannot borrow the current plugin route's eligibility");
         var isolatedSettings=RuntimeHelpers.GetUninitializedObject(settingsType);Set(isolatedSettings,"IgnoredConstraints",new List<string>());
         settingsType.GetField("ReplayCurrent")!.SetValue(null,isolatedSettings);
-        // Exercise real Tick/PID/publication/aggregation, with only its constraint
-        // boundary injected. These are policy tests, not a driven traffic proof.
-        var controls=new Dictionary<string,float>{{"Path Curvature",-.7f},{"Leading Vehicle",float.NaN},{"Path Semaphore",float.NaN},{"Mautassistent (experimentell)",float.NaN}};
-        Set(acc,"constraintValues",controls);Set(Get(Get(acc,"telemetryData")!,"truckFloat")!,"speed",85/3.6f);
-        stateType.GetProperty("DesiredSpeed")!.SetValue(state,80/3.6f);Set(acc,"ReplayTarget",-.7f);
-        outputType.GetField("MautCoastPermission")!.SetValue(null,(Func<bool>)(()=>true));
-        object trafficEvidence=new(),parkedEvidence=new(),semaphoreEvidence=new();
-        outputType.GetField("MautTrafficData")!.SetValue(null,trafficEvidence);outputType.GetField("MautParkedData")!.SetValue(null,parkedEvidence);outputType.GetField("MautSemaphoreData")!.SetValue(null,semaphoreEvidence);
-        void Curve(float raw=float.PositiveInfinity,bool failed=false) {
-            outputType.GetMethod("MautMarkNoLimit")!.Invoke(null,[0,"\nNo significant vehicle. ",true,trafficEvidence,parkedEvidence]);
-            outputType.GetMethod("MautMarkNoLimit")!.Invoke(null,[1,"No upcoming semaphores.",true,semaphoreEvidence,null]);
-            outputType.GetMethod("MautBeginCurve")!.Invoke(null,null);outputType.GetMethod("MautCurveSample")!.Invoke(null,[raw]);
-            if(failed)outputType.GetMethod("MautInvalidateCurve")!.Invoke(null,null);
-            outputType.GetMethod("MautFinishCurve")!.Invoke(null,null);
+        // Native ACC's real Tick is intentionally still executable in this
+        // fixture, proving that late/hostile native publications cannot mix
+        // into the new owner's physical axis even if the plugin is re-enabled.
+        ((System.Collections.IDictionary)Get(host,"Channels")!).Clear();
+        foreach(float hostile in new[]{1f,-.7f}) {
+            Set(acc,"ReplayTarget",hostile);TickAcc();Frame();
+            Assert(Gas()==0&&Brake()==0,"Real native ACC calculation has no normal output authority: "+hostile);
         }
-        void FreshTraffic() {
-            long stamp=Stopwatch.GetTimestamp();outputType.GetField("MautTrafficAt")!.SetValue(null,stamp);outputType.GetField("MautParkedAt")!.SetValue(null,stamp);
-            outputType.GetField("MautSemaphoreAt")!.SetValue(null,stamp);
-            // Our injected constraint boundary supplies a complete same-cycle
-            // snapshot; the real evaluator stamps these before enumeration.
-            outputType.GetField("MautCycleTrafficAt",All)!.SetValue(null,stamp);outputType.GetField("MautCycleParkedAt",All)!.SetValue(null,stamp);
-        }
-        Curve();FreshTraffic();TickAcc();Frame();
-        Assert(Gas()==0&&Brake()==0&&(float)Get(acc,"pedalOutput")! ==0,"85 to 80 correction publishes genuinely neutral gas and brake through real native Tick");
-        foreach(int kind in new[]{0,1}) {
-            outputType.GetMethod("MautMarkNoLimit")!.Invoke(null,[kind,"No planned path or telemetry data.",false,null,null]);
-            FreshTraffic();TickAcc();Frame();Assert(Brake()>0,"Fresh SDK reads cannot disguise unavailable native constraint inputs: "+kind);Curve();
-        }
-        outputType.GetMethod("MautMarkNoLimit")!.Invoke(null,[0,"\nNo significant vehicle. ",true,new object(),parkedEvidence]);
-        FreshTraffic();TickAcc();Frame();Assert(Brake()>0,"Fresh provider reads cannot certify a foreign/default native traffic container");Curve();
-        foreach(string hazard in new[]{"Leading Vehicle","Path Semaphore","Mautassistent (experimentell)"}) {
-            controls[hazard]=-.2f;FreshTraffic();TickAcc();Frame();
-            Assert(Brake()>0,"The same small speed difference keeps native braking for "+hazard);controls[hazard]=float.NaN;
-        }
-        Curve(80/3.6f);FreshTraffic();TickAcc();Frame();Assert(Brake()>0,"A future raw curve target below current speed prohibits coasting before the bound turns negative");
-        Curve(failed:true);FreshTraffic();TickAcc();Frame();Assert(Brake()>0,"Caught native curve-sampling failure cannot become straight-road permission");
-        Curve();outputType.GetField("MautTrafficAt")!.SetValue(null,0L);TickAcc();Frame();Assert(Brake()>0,"Unknown/default empty traffic is not confirmed live-empty traffic");
-        FreshTraffic();outputType.GetField("MautParkedAt")!.SetValue(null,Stopwatch.GetTimestamp()-Stopwatch.Frequency);TickAcc();Frame();Assert(Brake()>0,"Stale parked-vehicle evidence prohibits coasting");
-        FreshTraffic();outputType.GetField("MautCoastPermission")!.SetValue(null,(Func<bool>)(()=>false));TickAcc();Frame();Assert(Brake()>0,"Unknown route or recovery prohibits neutralization");
-        outputType.GetField("MautCoastPermission")!.SetValue(null,(Func<bool>)(()=>true));
-        Set(Get(Get(acc,"telemetryData")!,"truckVector")!,"acceleration",new System.Numerics.Vector3(0,0,-1));
-        // Direct check uses the same native measured-acceleration contract; its
-        // downhill latch must survive the subsequent controller braking cycle.
-        bool Check(float acceleration)=>(bool)outputType.GetMethod("MautCanCoast")!.Invoke(null,[Epoch(),85/3.6f,80/3.6f,acceleration,controls])!;
-        FreshTraffic();Assert(!Check(.2f)&&!Check(-.1f),"Downhill acceleration exits coasting and stays locked out until target speed or a new target/session");
-        bool crossedThread=Task.Run(()=>{Curve();FreshTraffic();return Check(-.1f);}).GetAwaiter().GetResult();
-        Assert(!crossedThread,"A following ACC tick on another worker cannot lose the downhill session latch");
-        Enable(false);Frame();Assert(Gas()==0&&Brake()==0,"Manual cancellation also clears a coasting session");
-        Enable(true);Curve();FreshTraffic();
-        Assert(Check(-.1f),"A new session can coast again with complete fresh same-cycle evidence");
-        outputType.GetField("MautTrafficAt")!.SetValue(null,Stopwatch.GetTimestamp()-Stopwatch.Frequency);
-        var trafficProvider=gameAsm.GetType("ETS2LA.Game.SDK.TrafficProvider",true)!;
-        trafficProvider.GetMethod("MautReconnectMemory",All)!.Invoke(RuntimeHelpers.GetUninitializedObject(trafficProvider),null);
-        Assert(!Check(-.1f),"A normal reconnect cannot renew old evidence beyond the 0.2 second freshness bound");
-        outputType.GetField("MautCoastPermission")!.SetValue(null,null);
+        Send(AccId,Epoch(),.3f);Set(acc,"ReplayTarget",-1f);TickAcc();Frame();
+        Assert(Math.Abs(Gas()-.3f)<.001&&Brake()==0,"A real native brake cannot compete with the one new local controller");
+        ((System.Collections.IDictionary)Get(host,"Channels")!).Clear();
         foreach(string name in new[]{"PathCurvatureConstraint","LeadingVehicleConstraint","PathSemaphoreConstraint"}) {
             var type=accType.Assembly.GetType("AdaptiveCruiseControl.Constraints."+name,true)!;
             RuntimeHelpers.PrepareMethod(type.GetMethod("GetMaxAcceleration")!.MethodHandle);
@@ -396,6 +400,44 @@ internal sealed class Replay
         Assert(legacy.GetValueOrDefault(offsets["pause"])==0,"Actual old-origin lane-error helper cannot pause a new session");
         Pause(Epoch(),Stopwatch.GetTimestamp()-Stopwatch.Frequency);Frame();
         Assert(legacy.GetValueOrDefault(offsets["pause"])==0,"Actual same-session lane pause helper preserves its old tick origin and cannot freshly stamp a stale calculation");
+        SourceFrameReplay.Run(context,gameAsm,outputType,Assert);
+        foreach(bool modernMode in new[]{false,true}) {
+            Enable(false);Enable(true);((System.Collections.IDictionary)Get(host,"Channels")!).Clear();
+            var owned=Send(AccId,Epoch(),.4f);Frame(modernMode);
+            Assert(modernMode?modern.GetValueOrDefault(13)>0:Gas()>0,"Fresh own source epoch admits normal output before source Close");
+            long oldSource=(long)Get(owned,"MautSourceEpoch")!;
+            outputType.GetMethod("MautInvalidateOwnSources")!.Invoke(null,null);
+            Set(owned,"MautSourceEpoch",outputType.GetField("MautOwnSourceEpoch")!.GetValue(null));Frame(modernMode);
+            Assert(Gas()==0&&Brake()==0&&modern.GetValueOrDefault(13)==0,"Source Close revokes already stored throttle in either output mode; publisher mutation cannot relabel its snapshot");
+            var staleDefinition=Send(AccId,Epoch(),.6f);Set(staleDefinition,"MautSourceEpoch",oldSource);
+            // Re-submit the explicit stale epoch with a fresh issue clock.
+            var staleMessage=Activator.CreateInstance(eventType)!;var vars=Activator.CreateInstance(variablesType)!;Set(vars,"aforward",.8f);
+            Set(staleDefinition,"MautIssuedAt",Stopwatch.GetTimestamp());Set(staleMessage,"ChannelDefinition",staleDefinition);
+            Set(staleMessage,"Properties",Activator.CreateInstance(propertiesType));Set(staleMessage,"Variables",vars);
+            ((System.Collections.IDictionary)Get(host,"Channels")!).Clear();outputType.GetMethod("OnControlEvent")!.Invoke(host,[staleMessage]);Frame(modernMode);
+            Assert(Gas()==0&&Brake()==0&&modern.GetValueOrDefault(13)==0,"Stale source epoch is rejected at ingress even with a fresh command issue time");
+            ((System.Collections.IDictionary)Get(host,"Channels")!).Clear();
+            var aging=Send(AccId,Epoch(),.4f);Set(aging,"MautSourceAt",Stopwatch.GetTimestamp()-Stopwatch.Frequency*19/100);
+            Set(aging,"MautIssuedAt",Stopwatch.GetTimestamp());
+            var ageMessage=Activator.CreateInstance(eventType)!;Set(ageMessage,"ChannelDefinition",aging);Set(ageMessage,"Properties",Activator.CreateInstance(propertiesType));Set(ageMessage,"Variables",vars);
+            outputType.GetMethod("OnControlEvent")!.Invoke(host,[ageMessage]);Frame(modernMode);
+            Assert(modernMode?modern.GetValueOrDefault(13)>0:Gas()>0,"A source still within200ms may publish a bounded positive command");
+            Thread.Sleep(20);SourceFrameReplay.Capture(outputType,"Traffic",SourceFrameReplay.EmptyTraffic(gameAsm));Frame(modernMode);
+            Assert(Gas()==0&&Brake()==0&&modern.GetValueOrDefault(13)==0,"Original source expires at physical Frame despite a newer provider publication and still-fresh command");
+            foreach(long invalidOrigin in new[]{0L,-1L,Stopwatch.GetTimestamp()+Stopwatch.Frequency}) {
+                ((System.Collections.IDictionary)Get(host,"Channels")!).Clear();
+                Set(aging,"MautIssuedAt",Stopwatch.GetTimestamp());Set(aging,"MautSourceAt",invalidOrigin);
+                outputType.GetMethod("OnControlEvent")!.Invoke(host,[ageMessage]);Frame(modernMode);
+                Assert(Gas()==0&&Brake()==0&&modern.GetValueOrDefault(13)==0,"Nonpositive/future source origin cannot authorize throttle");
+            }
+            ((System.Collections.IDictionary)Get(host,"Channels")!).Clear();
+            var noGas=Send(AccId,Epoch(),-.35f);Set(noGas,"MautSourceAt",0L);Set(noGas,"MautIssuedAt",Stopwatch.GetTimestamp());
+            var noGasVars=Activator.CreateInstance(variablesType)!;Set(noGasVars,"abackward",-.35f);Set(ageMessage,"ChannelDefinition",noGas);Set(ageMessage,"Variables",noGasVars);
+            outputType.GetMethod("OnControlEvent")!.Invoke(host,[ageMessage]);Frame(modernMode);
+            Assert(modernMode?modern.GetValueOrDefault(13)<0:Brake()>0,"Unknown-source ordinary no-gas braking remains available with source origin0");
+
+        }
+
         if(Environment.GetEnvironmentVariable("MAUT_PLUGIN_CANDIDATE") is {Length:>0} pluginCandidate)
             PluginHoldReplay.Run(pluginCandidate,root,prepared,sandbox,context,gameAsm,stateAsm,host,state,Frame,Gas,Brake,Enable,Epoch,Assert,()=> (float)modern.GetValueOrDefault(13));
         File.WriteAllText(Path.Combine(prepared,"native-replay.json"),System.Text.Json.JsonSerializer.Serialize(new{checks,passed=true,liveMapsOpened=false,outputThreadsStarted=false,fixtureDirectory=sandbox}));

@@ -22,6 +22,8 @@ public sealed partial class TollPlugin
         public long? IssuedTicks {get;init;}
         public long? ReceivedTicks {get;init;}
         public long? Epoch {get;init;}
+        public long? SourceEpoch {get;init;}
+        public long? SourceAt {get;init;}
     }
     sealed record SteeringFailure(double At,DateTimeOffset Utc,string Reason,double? CommandAge,float? LastCommand,
         NativeSteeringSnapshot Native) {
@@ -42,11 +44,13 @@ public sealed partial class TollPlugin
 
     void OnControlOutput(ControlEvent output)
     {
+        if(output.ChannelDefinition?.Id==LongitudinalChannelId&&
+            (output.Properties==null||output.Variables==null||!float.IsFinite(output.ChannelDefinition.Timeout)||output.ChannelDefinition.Timeout<=0))return;
         double receivedAt=clock.Elapsed.TotalSeconds;
         long receivedTicks=System.Diagnostics.Stopwatch.GetTimestamp();
         double observedAt=receivedAt;
         long? issuedTicks=null,issuedEpoch=null;
-        if(requireHostCompatibility&&output.ChannelDefinition?.Id is "LaneAssist.SteeringCorrection" or "AdaptiveCruiseControl.Acceleration") {
+        if(requireHostCompatibility&&output.ChannelDefinition?.Id is "LaneAssist.SteeringCorrection" or LongitudinalChannelId) {
             var definition=output.ChannelDefinition;
             if(definition.GetType().GetField("MautIssuedAt")?.GetValue(definition) is not long issued||
                 NativeCommandTime.AgeSeconds(issued,System.Diagnostics.Stopwatch.GetTimestamp(),System.Diagnostics.Stopwatch.Frequency) is not double age||
@@ -60,8 +64,9 @@ public sealed partial class TollPlugin
         if(output.ChannelDefinition?.Id=="LaneAssist.SteeringCorrection" &&
             output.Variables?.steering is float command && float.IsFinite(command) && Math.Abs(command)<=1 && State.EnableAssists)
             StoreSteering(new(observedAt,command){ReceivedAt=receivedAt,IssuedTicks=issuedTicks,ReceivedTicks=receivedTicks,Epoch=issuedEpoch});
-        if(output.ChannelDefinition?.Id=="AdaptiveCruiseControl.Acceleration")
-            StorePedals(new(observedAt,output.Variables?.aforward,output.Variables?.abackward){ReceivedAt=receivedAt,IssuedTicks=issuedTicks,ReceivedTicks=receivedTicks,Epoch=issuedEpoch});
+        if(output.ChannelDefinition?.Id==LongitudinalChannelId)
+            StorePedals(new(observedAt,output.Variables?.aforward,output.Variables?.abackward){ReceivedAt=receivedAt,IssuedTicks=issuedTicks,ReceivedTicks=receivedTicks,Epoch=issuedEpoch,
+                SourceEpoch=outputSourceEpoch?.GetValue(output.ChannelDefinition) as long?,SourceAt=outputSourceAt?.GetValue(output.ChannelDefinition) as long?});
     }
     void StoreSteering(SteeringCommand value)
     {
@@ -80,6 +85,10 @@ public sealed partial class TollPlugin
     void StorePedals(PedalCommand value)
     {
         faultBrake.RunCurrent(()=> {
+            if(value.Throttle is float gas&&(!float.IsFinite(gas)||gas is <0 or >1)||
+                value.Brake is float brake&&(!float.IsFinite(brake)||brake is < -1 or >0)||
+                value.Throttle is >0&&value.Brake is <0)return;
+            if(requireHostCompatibility&&!PedalSourcesCurrent(value))return;
             if(requireHostCompatibility&&(value.Epoch is not long epoch||value.IssuedTicks is not long issued||
                 captureOutputEpoch?.Invoke(null,null) is not long current||epoch!=current||
                 NativeCommandTime.AgeSeconds(issued,System.Diagnostics.Stopwatch.GetTimestamp(),System.Diagnostics.Stopwatch.Frequency)==null))return;
@@ -88,6 +97,8 @@ public sealed partial class TollPlugin
             Volatile.Write(ref lastAccCommand,value);
         });
     }
+    bool PedalSourcesCurrent(PedalCommand value)=>value.SourceEpoch is long epoch&&CaptureSourceEpoch()==epoch&&
+        (value.Throttle is not >0||value.SourceAt is long origin&&FreshSource(origin));
 
     static double? CommandAge(long? issued,double? localAt,long rawNow,double localNow)=>issued is long ticks?
         NativeCommandTime.UnboundedAgeSeconds(ticks,rawNow,System.Diagnostics.Stopwatch.Frequency):localAt is double at?localNow-at:null;
@@ -184,10 +195,12 @@ public sealed partial class TollPlugin
             ClearBrakeResponse();
             ResetCruiseStartPreference();
             steeringMonitoringLive=true;
+            ResetLongitudinalWatchdog();
             ConnectCoasting();
             using var suppressed=ExecutionContext.SuppressFlow();
             steeringTimer=new Timer(_=> {
                 CheckSteeringOutput();
+                CheckLongitudinalOutput();
                 if(!Monitor.TryEnter(sync))return;
                 try {if(subscribed)SafetyWatchdog(clock.Elapsed.TotalSeconds);}
                 finally {Monitor.Exit(sync);}
@@ -200,6 +213,7 @@ public sealed partial class TollPlugin
         lock(steeringSync)
         {
             steeringMonitoringLive=false;State.EnableAssists=false;steeringGuard.Reset();
+            ResetLongitudinalWatchdog();
             lastSteeringCommand=null;lastAccCommand=null;
             DisconnectCoasting();
             faultBrake.Release();
@@ -217,6 +231,7 @@ public sealed partial class TollPlugin
         {
             CancelRollingStart();
             State.EnableAssists=false;steeringGuard.Reset();steeringFeedState=SteeringFeedState.Off;
+            ResetLongitudinalWatchdog();
             lastSteeringCommand=null;lastAccCommand=null;
             faultBrake.Release();
             collectingSteeringFailure=pendingSteeringFailure=null;
@@ -247,6 +262,7 @@ public sealed partial class TollPlugin
         public float PlannedPedalFloor {get;init;}
         public float TollAccelerationLimit {get;init;}
         public NativeAccSnapshot? NativeAcc {get;init;}
+        public LongitudinalSnapshot? Longitudinal {get;init;}
         public long? SteeringIssuedTicks {get;init;}
         public long? SteeringReceivedTicks {get;init;}
         public long? SteeringEpoch {get;init;}
@@ -254,10 +270,6 @@ public sealed partial class TollPlugin
         public long ObservedTicks {get;init;}
         public long ClockFrequency {get;init;}
     }
-    NativeAccSnapshot? nativeAccSnapshot;
-    double nativeAccObservedAt=-100;
-    object? nativeAccOwner;
-    long nativeAccRequest;
     readonly Queue<MotionSnapshot> motionHistory=new();
     double lastMotionAt=-100;
     void RecordMotion(double now,bool force=false)
@@ -268,22 +280,6 @@ public sealed partial class TollPlugin
         now=clock.Elapsed.TotalSeconds;
         long observedTicks=System.Diagnostics.Stopwatch.GetTimestamp();
         lastMotionAt=now;
-        if(now-nativeAccObservedAt>=.1) {
-            var observedOwner=bridge.DiagnosticOwner;
-            if(!ReferenceEquals(observedOwner,nativeAccOwner)) {
-                nativeAccOwner=observedOwner;Volatile.Write(ref nativeAccSnapshot,null);
-            }
-            long request=Interlocked.Increment(ref nativeAccRequest);
-            // Foreign field inspection, schema validation and the cached pin's
-            // first file read run ONLY on the bounded diagnostic worker.
-            // The watchdog never waits for that work, a provider or filesystem.
-            diagnostics.Enqueue(DiagnosticQueue.Slot.AccObservation,()=> {
-                var observed=NativeAccDiagnostics.Capture(observedOwner);
-                if(request==Interlocked.Read(ref nativeAccRequest)&&ReferenceEquals(bridge.DiagnosticOwner,observedOwner))
-                    Volatile.Write(ref nativeAccSnapshot,observed);
-            });
-            nativeAccObservedAt=now;
-        }
         var projected=safetyTrace?.ProjectForTracking(position);
         if(motionHistory.Count==240)motionHistory.Dequeue();
         motionHistory.Enqueue(new(now,DateTimeOffset.UtcNow,State.EnableAssists,speed*3.6,position.X,position.Y,position.Z,
@@ -294,7 +290,7 @@ public sealed partial class TollPlugin
                 AccReceivedAge=acc?.ReceivedAt is double accReceived?now-accReceived:null,
                 ScenePedalFloor=scenePedalFloor,SceneHoldOwner=sceneHold.OwnerKey,SceneHolding=sceneHold.Holding,
                 SceneStopping=sceneStopping,SceneReason=sceneStatus,PlannedPedalFloor=holdPedalFloor,
-                TollAccelerationLimit=decision.MaxAcceleration,NativeAcc=Volatile.Read(ref nativeAccSnapshot),
+                TollAccelerationLimit=decision.MaxAcceleration,Longitudinal=longitudinalSnapshot,
                 SteeringIssuedTicks=steering?.IssuedTicks,SteeringReceivedTicks=steering?.ReceivedTicks,
                 SteeringEpoch=steering?.Epoch,AccEpoch=acc?.Epoch,
                 ObservedTicks=observedTicks,ClockFrequency=System.Diagnostics.Stopwatch.Frequency

@@ -1,88 +1,68 @@
 # ETS2LA Mautassistent
 
-**0.3.22 ist installiert und inzwischen im laufenden Spiel bestätigt.** Weitere Mautstopps sind offen: eine fehlende Zufahrtsfreigabe und spätere Halte in der richtigen Spur vor laut Nutzer bereits offenen Schranken. Die neue Fassung korrigiert falsche Standmessungen und die Zeit-/Sitzungszuordnung der Lenksignale, mit unveränderten Schutzfristen. 177 Integrations-, 87 Kernlogik-, 146 Host-/Plugin- und 63 Aufnahmeprüfungen bestehen; die kritische Gegenprüfung und alle drei GitHub-Prüfungen sind abgeschlossen. [Befunde, Prüfungen und Grenzen](REVIEW-0.3.22.md).
+**0.4.0 ist offline fertig und das Paket ist geprüft, aber noch nicht installiert. Installiert ist weiterhin 0.3.22.** Die neue Fassung übernimmt Gas und Bremse mit einer eigenen Geschwindigkeitsregelung. Der bisherige native ACC-Regler wird nicht mehr für die Fahrt benötigt und bekommt im neuen Hostpaket keine normale Pedalautorität. Die Offlineprüfungen bestehen: 200 Integration, 93 Kernlogik, 223 isolierte Host-/Plugin-Pipeline, 64 Aufnahme und 3 historische Wiedergabeprüfungen. Der zusätzliche Routingrunner besteht 255 teilweise überlappende Assertions; diese Zahlen werden nicht addiert. Stand- und Fahrprüfung der neuen Fassung fehlen weiterhin. [Änderungen, Nachweise und Grenzen](REVIEW-0.4.0.md).
 
-Mit .21 wurde inzwischen eine automatische Mautdurchfahrt samt anschließender Spurführung ohne Eingriff bestätigt. Eine andere Passage erforderte wegen eines Halts vor dem offenen Tor eine manuelle Übernahme; außerdem gab es eine separate Bremsung der Lenküberwachung. Diese Fälle sind nicht pauschal gelöst. [Übergangsfix 0.3.21](REVIEW-0.3.21.md), [Standardmodus 0.3.20](REVIEW-0.3.20.md), [Baseline 0.3.18](REVIEW-0.3.18.md).
+Die Erweiterung arbeitet mit ETS2LA Pathfinding und Lane Assist in Euro Truck Simulator 2/TruckersMP. Sie plant erreichbare Mautspuren, bremst vor der zugeordneten Schranke und wartet auf deren beobachtete Freigabe. Sie ist ein experimenteller Fahrassistent; allgemeine Hindernisvermeidung und fehlerfreie Fahrten in allen Ländern sind nicht nachgewiesen.
 
-Standardmäßig wird ein benannter Planungskorridor von 4,5 m Höhe und 3,4 m Breite verwendet. Eine unbekannte Ladung blockiert allein weder Zahlungsarterkennung noch lokale Fahrentscheidung. Die zusätzliche genaue Gespannprüfung bleibt optional. Dieser Standardkorridor bestätigt keine vollständige Ladungs- oder Aufliegerfreiheit.
+## Neue Regelung in 0.4.0
 
-Die Standardwerte sind Annahmen für die Spurplanung, keine gemessenen Ladungsmaße. Bekannte niedrige Durchfahrten, Hindernisse, aktuelle Schranken und die gerichtete An-/Ausfahrt bleiben geprüft. Vollständige Freiheit für lange oder überstehende Ladung wird damit nicht nachgewiesen. Geladen ist nicht gleich fahrbereit; nach dem Einbau bleiben Standprüfung und reale Mautpassage erforderlich.
+- Ein eigener Regler erzeugt Gas und Bremse aus Zieltempo, gemessener Fahrzeugbewegung und den aktiven Begrenzungen. Die normale Pedalausgabe gehört ausschließlich diesem Kanal. Alte ACC-Befehle und fremde Pedalkanäle werden nicht beigemischt. Fehlerbremsung und manuelle Übernahme bleiben getrennt wirksam.
+- Der eingebaute Spiel-Tempomat muss ausgeschaltet sein. Bei aktivem Spieltempomat übernimmt die eigene Regelung nicht und schaltet ihn nicht blind um. Ein unabhängiger Pedalwächter erkennt einen ausgefallenen eigenen Regelzyklus auch dann, wenn die Lane-Assist-Lenkausgabe weiter frisch ist. Seine 150-ms-Ursprungsfrist bleibt unverändert; ein aktueller Quellenwiderruf allein wird über den normalen Brems-/Haltepfad behandelt und nicht pauschal sofort zur Notbremsung erklärt.
+- Ein fehlendes Straßenlimit mit dem Wert 0 bedeutet nicht Tempo 0. Als vorsichtige Ersatzgrenze gelten dann höchstens 30 km/h; engere lokale Kurven-/Mautgrenzen bleiben stärker. 100 km/h sind nur bei belegter freier Strecke vorgesehen.
+- Das gewünschte Tempo auf freier Strecke beträgt in der vorgesehenen Konfiguration bis zu 100 km/h. Kurvenvorschau, erkannter Verkehr, Ampeln, Mautschranken, aktuelle Streckenbelege und konfigurierte Geschwindigkeitsgrenzen können es senken. Leichte Überschreitung eines weichen Tempowunschs darf bei freier Strecke durch Rollen abgebaut werden; ein harter Gefahren- oder Haltgrund bleibt bremswirksam.
+- Verkehrsobjekte werden aus den vorhandenen SDK-Quellen mit geprüfter Provider-Orientierung und Leerplatzbehandlung übernommen. Die Quelle ist begrenzt: 39 Verkehrsslots, 40 Parkslots und begrenzte Aufliegerfelder sind keine vollständige Erfassung aller Verkehrsteilnehmer, Hindernisse oder künftigen Spawns.
+- Mauttore erhalten ihre Freigabe aus dem zugeordneten gerichteten Tor-/Routenbeleg. Ein räumlich naher SDK-Pfosten aus der Gegenrichtung wird nicht als Ersatz einer anderen Mautschranke verwendet. Ampelbegrenzungen bleiben getrennt.
+- Eine fehlende frühe Spurbestätigung kann einen eigenen normalen Halt mit Wechselreserve auf der belegten Zufahrt erzeugen. Der Anker liegt 60 m gerichtete Straßenlänge vor dem tatsächlichen Zufahrtsende. Die bisherige physische Grenze bleibt unverändert. Ein bereits zu später Haltepunkt wird nicht nachträglich vor den Lkw verschoben.
+- Eine vorläufig gewählte manuelle Spur beendet die Automatiksuche nicht. Ist eine automatische Alternative aktuell physisch belegt und nur wegen zu hohen Tempos noch nicht erreichbar, bleibt bei nachgewiesener Zufahrt und möglichem Bremsweg der eigene normale Vorhalteanker aktiv. Der manuelle Pfad bleibt bis zum tatsächlich zulässigen Wechsel erhalten. Bei fehlendem Beleg, fehlender Wechselberechtigung oder unmöglicher neuer Vorbereitung wird kein endloser Vorbereitungshalt erzeugt.
+- Hinter der Maut wird auch der Anschluss der folgenden Straße an das nächste Verbindungsstück geprüft. Eine echte passende Alternative mit denselben gerichteten Kontrollknoten kann den falschen Anschluss ersetzen. Andernfalls wird nur ein nachweisbar möglicher späterer Spurwechsel geplant. Kartenlücken werden nicht durch größere Toleranzen oder seitliche Sprünge geschlossen.
+- Unbekannte Zahlungsart bleibt unbekannt. Eine gewählte manuelle Spur bei noch nicht freigegebener Automatikzufahrt wird nicht als ausschließlich manuelle Mautanlage bezeichnet.
 
-Die Erweiterung ergänzt ETS2LA Pathfinding, Lane Assist und Adaptive Cruise Control in Euro Truck Simulator 2. Sie plant eine erreichbare Lkw-Mautspur, begrenzt die Anfahrt und wartet auf die tatsächlich geöffnete Schranke. Oberfläche und Meldungen sind auf Deutsch.
+Die neue Regelung behebt nicht automatisch einen im Spiel unwirksamen Pedalweg. **Gas und Bremse nach Alt+Tab in TruckersMP sind weiterhin nicht zuverlässig geklärt. Das Spiel muss für den Fahrtest im Vordergrund bleiben.** [Fokusbefunde](BACKGROUND_INPUT.md).
 
-## Umgesetzt und geprüft für 0.3.19
+## Planung und Geometrie
 
-- Die gerichtete Suche läuft innerhalb des belegten freien Navigationsgraphen. Eine gesperrte kürzeste Verbindung verwirft nicht automatisch dieselbe Mautspur, wenn eine längere belegte Verbindung zum selben Tor existiert. `AllowedVehicles` beschreibt laut [SCS eine Eignung für KI-Verkehr](https://modding.scssoft.com/wiki/Documentation/Tools/SCS_Blender_Tools/Locators/Prefab_Locators#Allowed_Vehicles), keinen geometrischen Lkw-Freiraumnachweis. Eine `SmallVehicles`-Präferenz ist ausschließlich für belegte automatische Tore mit abgeschlossener vollständiger physischer Kurvenprüfung überstimmbar. `PlayerOnly`, fehlende Belege, Gegenrichtung, fremde Tore und die aktuelle Anfahrtsprüfung werden dadurch nicht allgemein freigegeben.
-- Eine zunächst gewählte manuelle Spur kann nur dann auf eine inzwischen belegte automatische Spur wechseln, wenn die gemeinsame Zufahrt noch reicht und keine laufende Spuränderung stört. Fehlender Nachweis oder ein zu später Wechsel lässt die bisherige Auswahl bestehen. Manuelle Zahlung wird dadurch nicht als automatische Zahlung ausgegeben.
-- Diagnose hält je Spur Auswahl-/Ausschlussgrund, blockierte Kurven, Modell-/Profilrevision und den tatsächlichen Routen-/Anfahrtskontext fest. Spätere Suchversuche haben einen eigenen Kontext; ein gescheiterter Versuch überschreibt nicht den Kontext der tatsächlich gewählten Spur. Der Aufnahmehelfer bewahrt bei verworfenen Rohschranken zusätzlich Slot, ID, Originalzustand beziehungsweise Positionsbits; die gültigen Zustände und Fail-Closed-Regeln bleiben unverändert.
+Standardmäßig wird ein ausdrücklich angenommener Planungskorridor von **4,5 m Höhe und 3,4 m Breite** verwendet. Fehlende genaue Ladungsdefinitionen verhindern allein weder die Zahlungsarterkennung noch jede lokale Fahrentscheidung. Der Standard bestätigt aber keine vollständige Ladungs- oder Aufliegerfreiheit.
 
-Die konkrete Kartenanalyse fand eine physisch freie Verbindung zu Auto-Tor 15, die am bisherigen harten `SmallVehicles`-Filter scheiterte. Sechs Produktions-API-Gegenfälle bei 50/85/100 km/h und jeweils 200/300 m Zufahrtsrest wählen diese Spur erfolgreich. Sie verwenden rekonstruierte Positionen auf echten Kartendaten und ein ausdrücklich festgelegtes Profil; sie sind keine gefahrenen Passagen. Auto-Tor 16 bleibt physisch gesperrt. Keine Durchfahrt in allen Ländern ist belegt.
+Bekannte niedrige Durchfahrten, blockierte Modellkurven, aktuelle Schranken und die gerichtete An-/Ausfahrt bleiben geprüft. Eine `SmallVehicles`-KI-Präferenz darf ausschließlich für ein belegtes automatisches Tor mit abgeschlossener physischer Modellprüfung überstimmt werden. `PlayerOnly`, fremde Tore, unbekannte Geometrie oder eine unerreichbare Zufahrt erhalten dadurch keine Freigabe.
 
-Für das abgeschlossene .19-Update wurde nur die Plugin-Datei ersetzt. Die sechs unveränderten Host-/SDK-/Geometriedateien der geprüften .18-Baseline müssen weiterhin exakt passen; sie müssen deshalb nicht pauschal erneut ausgetauscht werden. Dafür muss nur ETS2LA geschlossen sein, das Spiel kann geöffnet bleiben.
+Die optionale genaue Gespannprüfung benötigt zusammenpassende Fahrzeug-/Aufliegerposen, Kupplungs- und feste Achsdaten, auflösbare Ladungsdefinitionen und den gerichteten Navi-Bezug. Mehrfachauflieger, lenkbare Auflieger und unbekannte Haupt-Ladungsmodelle sind dort nicht allgemein unterstützt. Das langsame Bewegungsmodell gilt vorwärts auf nahezu ebenem Grund im Mautbereich bis 20 km/h. Die native Eigenschaft `CargoCoverageKnown` bleibt false.
 
-## Übernommene Laufzeitfunktionen der .18-Basis
-
-- Eine modellseitig belegte und geometrisch passende Spur kann bereits geplant werden, bevor das kurze SDK-Sichtfeld ihre Schranke meldet. Fehlende Modellbelege führen zunächst nur zum Vorladen.
-- **Geplante Spur und live zugeordnete Schranke sind getrennte Zustände.** Ohne passende frische Torprobe bleibt innerhalb des geschwindigkeitsabhängigen Bremshorizonts ein normaler Halt vor dem Kartenanker erforderlich. SDK-Typ, Nummer, Weltposition und gerichteter Routenabschnitt müssen zusammenpassen; die Nummer allein genügt nicht.
-- Standardmäßig muss die vollständige Öffnung weiterhin zwei Sekunden beobachtet sein. Bei breiten Durchfahrten müssen alle getrennten Schrankenarme offen sein. Nach normaler Freigabe gilt standardmäßig höchstens 10 km/h bis 30 m hinter dem Tor.
-- Ein erreichter geplanter Halt bekommt eine physische Bremshalteausgabe. Mehrere Haltegründe werden gemeinsam begrenzt; das Ende eines Grundes darf einen anderen nicht lösen. Eine stärkere Fehler- oder native Bremsung bleibt erhalten.
-- Fehlende obligatorische lokale Szenen- oder statische Streckenbelege können weiterhin einen geplanten Halt verlangen. Nur im optionalen detaillierten Modus ist zusätzlich ein vollständiger Fahrzeug-/Ladungsnachweis erforderlich. Bereits bekannte Routentopologie allein ist keine Durchfahrtfreigabe.
-- Die vier angepassten Hostkomponenten `0.3.18-host-3` binden native Ausgaben und Haltebefehle an ihre Sitzung und ursprüngliche Berechnungszeit. Ergebnisse über 200 ms erhalten keine neue Ausgabeautorität. Die Halteleihe endet spätestens 250 ms nach ihrem Ursprung.
-- Bewegte Modellteile erhalten einen gemeinsamen Mittelpunkt für ihre Rotationshülle. Generische Lichtklassen werden nur nach vollständigem Render-/Schema-/Geometrienachweis als reine Lichtdarstellung behandelt. Diese lokalen Korrekturen beweisen keine allgemein freie Durchfahrt.
-- Im optionalen detaillierten Gespannschutz verwendet die Fahrregelung getrennte Vorhersagen von Zugmaschine und Auflieger mit gemessenen Kupplungspunkten/Radachsen und geprüften Ladungsboxen. Im Standardmodus folgt der lokale Prüfkorridor dem bestätigten Straßenverlauf; er verspricht keine gesamte Aufliegerbewegungsfläche. Die frühere Kugel für alle Gespannwinkel ist kein Kollisionskorridor mehr.
-- Unbekannte Bewegung wird lokal zum jeweiligen Körper/Korridor behandelt. Modellabweichung und Radkontakt werden überwacht; ein unveränderter Kontaktzustandswechsel erhält höchstens 600 ms Übergangszeit. Unbekannte Bewegung gilt weiterhin nicht als gemessene Physik oder als Stillstand.
-- Die zusätzliche Notbremsprüfung nutzt aktuelle gemessene, ungepolsterte Zugmaschinenboxen. Sie verwendet nicht den früheren pauschal mehrfach verbreiterten Korridor. Der geprüfte Nachbarspurfall mit 46 cm Abstand bleibt frei, eine zentrale Box bei 20 km/h löst weiter die Notbremsung aus. Das sind abgegrenzte Offline-Gegenproben.
-
-Standardwerte sind 20 km/h Anfahrt und 10 km/h Passage. Das sind Begrenzungen, keine gemessene Bremswegzusage für jedes Gespann. Ein passend eingeordneter Lkw kann automatisch abrechnende Spuren bevorzugen. Die Zahlung in einer manuell abrechnenden Spur bleibt beim Spieler.
-
-## Fahrzeughülle und lokale Szene
-
-Der frühere pauschale 6 × 3-m-Prüfkorridor wird nicht wieder eingeführt. Standardführung plant ausdrücklich mit 4,5 × 3,4 m und benötigt für lokale Szenenaussagen aktuelle rohe TruckersMP-Messungen. Die optionale genaue Hülle benötigt darüber hinaus zusammenpassende Fahrzeug-/Aufliegerposen, Kupplungs-/Achsdaten, Ladungsdefinitionen und Navi-Bezug. Die native Eigenschaft `CargoCoverageKnown` bleibt **false**; aus einer Modellbox oder dem Standardkorridor allein wird keine Ladungsfreigabe.
-
-Im optionalen detaillierten Modus erhalten unbekannte Haupt-Ladungsmodelle, Mehrfachauflieger und nicht belegte Kopplungen keine automatische Hüllenfreigabe. Unterstützt ist dort das ausdrücklich gemeldete SCS-Konfigurationsmodell `chain_type=single` mit passenden nativen Messungen und festen gemessenen Achsen. Das Bewegungsmodell gilt vorwärts auf nahezu ebenem Grund im langsamen Mautbereich bis 20 km/h. Im Standardmodus werden diese fehlenden Detailnachweise nicht zur Start- oder Haltebedingung; die grundsätzliche Eignung für Sonderladung ist damit nicht bestätigt.
-
-Die zusätzliche [spielseitige Szenenerfassung](Native/ParkedScene/README.md) meldet aktuell erfasste geparkte Fahrzeugkörper und die gelesenen Bereiche geladener Mautanlagen. Sie ersetzt keine vollständige Verkehrs- oder Hinderniserkennung. `Complete` und ein vollständiger gelesener Bereich sind **kein `SpawnFinished`-Nachweis**. Noch nicht erschienene Fahrzeuge, aktive Fahrzeuge außerhalb dieser Quelle und zukünftige Änderungen bleiben außerhalb dieser Aussage. Fehlende oder unbekannte Bewegung kann weiterhin einen vorsichtigen normalen Halt auslösen.
-
-Die bisherige [TruckersMP-Geometriequelle](Native/TruckersMPGeometry/README.md) ist für diese automatischen Mautnachweise erforderlich. Sie betätigt selbst keine Lenkung oder Pedale.
+Die [spielseitige Szenenerfassung](Native/ParkedScene/README.md) und die [TruckersMP-Geometriequelle](Native/TruckersMPGeometry/README.md) sind zusätzliche lokale Belege. `Complete` ist kein Nachweis abgeschlossener Spawns. Unbekannte Bewegung gilt weder als gemessene Physik noch als gesicherter Stillstand.
 
 ## Voraussetzungen und Paket
 
-Die lokale Grundlage ist ETS2LA `2026.11.5297`, ETS2/SDK `1.62`, Pathfinding `1.2.9`, Lane Assist `1.6.2`, ACC `2.1.1`, PathLib `1.2.8`, PIDLib `1.0.4` und .NET 10. Andere Builds benötigen eine eigene Kompatibilitätsprüfung.
+Die geprüfte lokale Grundlage ist ETS2LA `2026.11.5297`, ETS2/SDK `1.62`, Pathfinding `1.2.9`, Lane Assist `1.6.2`, PathLib `1.2.8`, PIDLib `1.0.4` und .NET 10. Andere Builds benötigen eine eigene Kompatibilitätsprüfung.
 
-Die geprüfte **0.3.18-Baseline umfasst sieben zusammengehörige Dateien**:
+Für die Fahrt werden **Pathfinding, Lane Assist und Mautassistent** sowie deren Bibliotheken benötigt. Der native Adaptive Cruise Control ist optional und darf ausgeschaltet bleiben; sein alter normaler Pedalkanal ist im neuen Host unabhängig davon gesperrt.
 
-| ETS2LA-Anwendung | Spiel `bin/win_x64/plugins` |
+Das 0.4.0-Update ersetzt vier ETS2LA-Dateien:
+
+| Datei | Aufgabe |
 | --- | --- |
-| `Plugins/MautAssistent.dll` | `ets2la_plugin.dll` mit zusätzlicher Szenenerfassung |
-| `ETS2LA.Game.dll`, `ETS2LA.State.dll` | `MautGeometry.dll` mit 16-ms-Beobachtung |
-| `Plugins/tumppi066.adaptivecruisecontrol/AdaptiveCruiseControl.dll` | |
-| `Plugins/tumppi066.laneassist/LaneAssist.dll` | |
+| `Plugins/MautAssistent.dll` | Eigene Regelung, Maut- und Routenplanung |
+| `ETS2LA.Game.dll` | Exklusive, zeit- und sitzungsgebundene Ausgabe und Quelldiagnose |
+| `ETS2LA.State.dll` | Zusammenpassende Zustands-/Ausgabeschnittstelle |
+| `Plugins/tumppi066.laneassist/LaneAssist.dll` | Geschützter Lenk- und Pausepfad |
 
-Nur die neue Plugin-DLL zu kopieren ergibt keine unterstützte Kombination. Die Geometriequelle gehört jetzt zum gemeinsamen Austausch, weil ihr Beobachtungsintervall und ihre Zeitstempel Bestandteil der Laufzeitkorrelation sind. [Quellen der Hostanpassung](Tools/HostCompatibility) und [Review 0.3.18](REVIEW-0.3.18.md) beschreiben die Zuordnung.
+Die vorhandene ACC-Datei wird bei diesem Update nicht ausgetauscht. Die bereits geprüften Spiel-DLLs `ets2la_plugin.dll` und `MautGeometry.dll` bleiben ebenfalls unverändert; sie müssen zur unterstützten Baseline passen. Das Host-Vorbereitungswerkzeug kann weitere Komponenten isoliert prüfen: daraus folgt keine pauschale Installationsanweisung.
 
-Beim damaligen vollständigen Sieben-Datei-Austausch mussten ETS2LA **und ETS2/TruckersMP geschlossen bleiben**, da auch Spiel-DLLs ersetzt wurden. Der Ablauf prüfte Quellen, Ziele, Modulkennungen, Hostmanifest und Runtimegate, sicherte alle sieben Originale und staged alle Ersatzdateien vor dem ersten Austausch. Jeder einzelne Austausch war atomisch; sieben Dateien in zwei Wurzeln bilden keinen gemeinsamen atomischen Dateisystemwechsel. Das geplante .19-Plugin-Update prüft diese Baseline weiter, ersetzt aber keine Spiel-DLL und benötigt deshalb nur geschlossenes ETS2LA. Der Installer startet weder Apps noch Assistenz oder Fahrtests.
+Für den Austausch muss ETS2LA geschlossen sein. Der kontrollierte Installer prüft die konkrete Kombination, sichert die Ausgangsdateien und startet weder Apps noch Assistenz. Niemals gesamte Vorbereitungsordner oder `isolated-replay-*` installieren oder verteilen: diese enthalten absichtlich veränderte Testkopien. Ein installiertes Paket ist noch kein bestandener Stand- oder Fahrtest.
 
-**Niemals den gesamten Host-Vorbereitungsordner oder `isolated-replay-*` installieren oder verteilen.** Die Replay-Unterordner enthalten absichtlich umgeschriebene Test-DLLs mit anderen Prüfsummen. Nur die ausdrücklich im versiegelten Sieben-Datei-Paket aufgeführten Produktionspfade dürfen ausgetauscht werden.
-
-Der installierte .21-Plugin-Build besteht 170 Integrations-, 84 Kernlogik-, 120 Host-/Plugin- und 63 Aufnahmetests ohne Fehler sowie den geometrischen Vergleich aller 480 gespeicherten Bewegungsproben des früheren Ausfahrtstopps. Die Prüfungen der neuen Fassung stehen im [aktuellen Prüfbericht](REVIEW-0.3.22.md). Die unveränderten Geometriequellen haben zuvor 31 isolierte Beobachterprüfungen und 33 + 18 SDK-Szenenprüfungen bestanden. ETS2LA-Updates können die Kombination ersetzen; danach sind Fassungen und Prüfsummen erneut zu prüfen.
-
-Die Initialisierung stößt reine Modellarbeit im Hintergrund an, und der F8-Wartezustand hält bis zur Bereitschaft. Ein vorbereiteter Korridor wird einmal pro Auswertung erzeugt und zwischen den lokalen Prüfungen geteilt. Die Laufzeitbelege der .18-Basis und die separaten .19-Kartenproben sind in den Reviews abgegrenzt; sie garantieren keine entsprechende Laufzeit für alle Modelle oder den gesamten Ausgabepfad. `Supported` des Bewegungsmodells allein erteilt keine Fahrberechtigung.
-
-## Bedienung nach kontrollierter Einrichtung
+## Bedienung
 
 | Eingabe | Funktion |
 | --- | --- |
-| F8 – Increase/RES | Start/erneute Routenprüfung, während der Fahrt zunächst selbst steuern |
-| F9 – Cancel/MODE | Manuell übernehmen; im ausgeschalteten Zustand außerdem Modus wechseln |
+| F8 – Increase/RES | Start/erneute Routenprüfung; während der Prüfung selbst steuern |
+| F9 – Cancel/MODE | Manuell übernehmen; ausgeschaltet außerdem Modus wechseln |
 | F10 – Decrease/SET | Tempo verringern/setzen |
 | F11 – Next/OK | Weiter/bestätigen |
-| Physische Bremsachse | Ab 12 % übernehmen; Loslassen startet die Assistenz nicht erneut |
+| Physische Bremsachse | Ab 12 % manuell übernehmen; Loslassen startet nicht erneut |
 
-Die Belegungen werden in ETS2LA Controls eingerichtet; ein Stream-Deck-Hotkey kann dieselbe Taste senden. F12 bleibt frei. Ein Overlay ist nicht erforderlich. Einstellungen liegen unter `%LOCALAPPDATA%\ETS2LA-Mautassistent\settings.json`.
+Die Belegungen werden in ETS2LA Controls eingerichtet. Das Stream Deck kann dieselben Tasten senden. F12 bleibt frei, ein Overlay ist nicht erforderlich. Einstellungen liegen unter `%LOCALAPPDATA%\ETS2LA-Mautassistent\settings.json`.
 
-Vor dem Fahrtest sind Stillstand, normaler Luftdruck, geladene Gespann-/Szenennachweise, Aktivierung und die Rückgabe von Lenkung/Pedalen mit Bremse oder F9 zu prüfen. Für die neue Kombination fehlen diese Standprüfung und eine vollständige reale Mautdurchfahrt noch.
+Nach dem Update zuerst Version, Modulbereitschaft und frische Quellen im Stand mit Feststellbremse prüfen. Eingebauten Spieltempomat selbst ausschalten. Dann F8 und die tatsächliche Rückgabe von Lenkung/Pedalen durch Bremse und F9 testen. Erst danach folgt eine überwachte Fahrt mit geschlossener und geöffneter Mautschranke, Ausfahrt und Anschlussstraße. Kein unbeaufsichtigter Fahrbetrieb.
 
-## Bauen und offline prüfen
+## Offline prüfen
 
 Im Projektordner mit PowerShell 7 und .NET 10:
 
@@ -94,23 +74,18 @@ dotnet build Plugin/MautAssistent.csproj -c Release
 dotnet run --project Tests -c Release
 ```
 
-`Prepare-References.ps1` prüft Herstellerbibliotheken und legt sie ausschließlich im ignorierten lokalen Ordner `References` ab. Es verändert keine Installation. Die Plugin-Ausgabe ist `Plugin/bin/Release/net10.0/MautAssistent.dll`; für den Kandidaten müssen zusätzlich das passende Hostpaket und die spielseitigen Quellen gebaut und geprüft werden.
+`Prepare-References.ps1` prüft lokale Herstellerbibliotheken und verändert keine Installation. Das Plugin muss das Manifest des genau passenden vorbereiteten Hostpakets einbetten. Die [Hostprüfungen](Tools/HostCompatibility) laufen gegen isolierte Kopien und öffnen keine Spielspeicher oder realen Ausgabekanäle.
 
-Die Logik- und Integrationstests verwenden synthetische Daten und echte Bibliothekstypen. Der isolierte Hosttest führt echte native Tick-/Publikationswege und optional die echten Plugin-Methoden `CommitPlannedHolds`/`ClearSceneHold` gegen umgeleitete Ausgabesenken aus. Er öffnet keine Spielspeicher und startet keine Ausgabe-Threads. Die Quellen und Skripte liegen unter [Tools/HostCompatibility](Tools/HostCompatibility) und [Native/ParkedScene](Native/ParkedScene). Die optional getestete Plugin-Datei und ihre Prüfsumme werden gesondert protokolliert; ein späterer Build benötigt eine neue Prüfung.
+Die geschlossene synthetische Geschwindigkeitsprobe koppelt echten Router und eigenen Regler an ein unabhängiges beladenes Fahrzeugmodell mit 150 ms Pedalantwort. Aus 130 m Zufahrtsrest bei 77 km/h erreicht sie den tatsächlich zulässigen Wechselbeginn bei etwa 62 m und 19,5 km/h. Das beweist weder eine ganze reale Spuränderung noch Spielphysik oder eine autonome Mautpassage.
 
-## Noch offen
+Die private Kartenprobe für 0.4.0 reproduziert eine 4,499-m-Routenlücke hinter der Maut und findet einen realen passenden Anschluss ohne Spurwechsel oder Geometrieveränderung. Die vollständigen damaligen Nachfolge-UIDs fehlen; das ist eine geometrische Rekonstruktion des gespeicherten Befunds, kein historischer oder neuer Fahrnachweis. Die damalige Passage mit manuellem Gas und anschließend gemeldetem Trackingverlust zählt nicht als autonome Durchfahrt.
 
-- .19 ist installiert und geladen; Startfreigabe, vollständiger Standtest und echte Durchfahrt sind noch offen. Aktuelle Spurlage und Auflieger-/Ladungsdefinition müssen zuerst geklärt werden. Die FR-Gegenproben bleiben abgegrenzte Offlinefälle.
-- Der französische Vorfall ist statisch untersucht. Die damalige Position hatte nur etwa 14,44 m auf der Zufahrt übrig und war für den erforderlichen Spurwechsel zu spät. Eine frühere virtuelle Position mit ungefähr 67 m Rest ist eine Offline-Hypothese, kein beobachteter Fahrnachweis. Eine weitere gespeicherte Niedrigtempo-Gegenprobe im v16-Zwischenstand ohne SDK-Tore plante rund 198 m vor dem Tor die passende automatische Spur. Eine Live-Schrankenzuordnung oder reale Passage belegt sie nicht; die reale Wiederholung steht noch aus.
-- Die französische v20-Breitenprobe erlaubt statisch 3,4 m auf Spur 10; 3,5 m und breiter bleiben an fester Modellgeometrie abgelehnt. Die Mover-Mittelpunktkorrektur behebt diese getrennte Breitenfrage nicht.
-- Die neue Hüllen- und Szenenerfassung wurde noch nicht gemeinsam im laufenden Spiel als Grundlage einer Mautdurchfahrt bestätigt. Unbekannte Hüllen oder Bewegungen können weiterhin zu Halten führen.
-- Mehrfachauflieger, unbekannte Haupt-Ladungsmodelle, lenkbare Auflieger und Fahrten außerhalb der expliziten Modellannahmen sind nicht automatisch freigegeben. Eine endliche Modellvorhersage ist keine vollständige zukünftige physische Schleppkurve.
-- Allgemeine Baustellen-, Verkehrsschild- und Hindernisvermeidung ist nicht gelöst. Kurvenvorschau und lokale Schrankenprüfung ersetzen sie nicht.
-- Der Vollgespannsweep gilt für den Mautbereich, nicht für jede normale Straßenkurve. Für die berichtete Kurvenkollision fehlt eine Aufnahme des Ablaufs davor; ein späterer Snapshot beweist keinen Lenkausfall und die .19-Spurwahlkorrektur keine Behebung dieses Unfalls.
-- Hintergrund-Gas und -Bremse nach Alt+Tab in TruckersMP bleiben ungelöst. Für die Prüfung muss das Spiel im Vordergrund bleiben. [Bekannter Fokus-/Pedalnachweis](BACKGROUND_INPUT.md).
+## Grenzen und Diagnose
 
-Keine Abdeckung aller Länder und keine vollständige Behebung aller bisherigen Fahrprobleme ist nachgewiesen. Historische Beobachtungen stehen in [CHANGELOG.md](CHANGELOG.md), [TOLL_COVERAGE.md](TOLL_COVERAGE.md) und [VALIDATION.md](VALIDATION.md).
+- Keine nachgewiesene Abdeckung aller Mautanlagen/Länder oder aller bisherigen Fahrprobleme.
+- Baustellen, Verkehrsschilder, Sonderladung und sämtliche Hindernisse werden nicht allgemein zuverlässig umfahren.
+- Die Verkehrs-/Parkquellen sind begrenzt und können unbekannt, verspätet oder unvollständig sein. Die Regelung ersetzt keine vollständige Wahrnehmung.
+- Ein geplanter Halt kann bei fehlenden Belegen weiterhin notwendig sein. Notbremsung bleibt für konkrete Fehler-/Gefahrenfälle erhalten.
+- Hintergrund-Pedale in TruckersMP und eine vollständige reale Prüfung der neuen Regelung bleiben offen.
 
-## Diagnose und Quelldaten
-
-Rein lesende Aufnahmen sind mit `Tools/Record-TollDrive.ps1` und die Auswertung mit `Tools/Measure-TollDrive.ps1` möglich. Aufnahmen, private Wiederholungsfälle und extrahierte Spielmodelle gehören außerhalb des Repositorys. Diagnose enthält Spielpositionen; `*.jsonl`, Hersteller-DLLs, Referenzen und Buildausgaben werden nicht veröffentlicht. Das Projekt verteilt keine SCS-Spieldateien, fremden SDK-Quellbäume oder vorgefertigten Spurfreigaben.
+Rein lesende Aufnahmen sind mit `Tools/Record-TollDrive.ps1`, Auswertungen mit `Tools/Measure-TollDrive.ps1` möglich. Private Aufnahmen, extrahierte Spielmodelle, Hersteller-DLLs und Buildausgaben werden nicht veröffentlicht. Ältere Nachweise stehen in [CHANGELOG.md](CHANGELOG.md), [TOLL_COVERAGE.md](TOLL_COVERAGE.md), [VALIDATION.md](VALIDATION.md) und den versionsbezogenen Reviews.

@@ -28,7 +28,8 @@ public sealed partial class TollPlugin
     string? CheckHostCompatibility()
     {
         if(!requireHostCompatibility)return null; // Dependency-injected offline fixtures.
-        Type?[] types=[typeof(GameOutput),typeof(ApplicationState),readAcc()?.GetType(),readLaneAssist()?.GetType()];
+        Type?[] types=[typeof(GameOutput),typeof(ApplicationState),readLaneAssist()?.GetType()];
+        string[] files=["ETS2LA.Game.dll","ETS2LA.State.dll","Plugins/tumppi066.laneassist/LaneAssist.dll"];
         if(types.Any(t=>t==null))return "Ausgabemodule werden noch geladen.";
         var assemblies=types.Select(t=>t!.Assembly).ToArray();
         if(checkedHostAssemblies!=null&&assemblies.SequenceEqual(checkedHostAssemblies)&&
@@ -38,15 +39,14 @@ public sealed partial class TollPlugin
             using var source=typeof(TollPlugin).Assembly.GetManifestResourceStream("MautAssistent.HostCompatibility.json")??throw new InvalidDataException("Paketnachweis fehlt");
             using var manifest=JsonDocument.Parse(source);
             var rows=manifest.RootElement.GetProperty("files").EnumerateArray().ToArray();
-            if(rows.Length!=4)throw new InvalidDataException("Unvollständiges Ausgabepaket");
-            for(int i=0;i<4;i++) {
-                var row=rows[i];var type=types[i]!;var assembly=assemblies[i];
+            for(int i=0;i<types.Length;i++) {
+                var row=rows.Single(r=>r.GetProperty("file").GetString()!.Replace('\\','/')==files[i]);var type=types[i]!;var assembly=assemblies[i];
                 if(!PinnedHostBuild.Matches(type,row.GetProperty("file").GetString()!))
                     throw new InvalidDataException("Ausgabepaket passt nicht zur geladenen Komponente: "+assembly.GetName().Name);
             }
             return hostCheckIssue=null;
         } catch(Exception ex) {
-            return hostCheckIssue="Ausgabekorrektur 0.3.18 ist nicht vollständig geladen. ETS2LA geschlossen aktualisieren und neu starten. "+ex.Message;
+            return hostCheckIssue="Ausgabekorrektur 0.4.0 ist nicht vollständig geladen. ETS2LA geschlossen aktualisieren und neu starten. "+ex.Message;
         }
     }
 }

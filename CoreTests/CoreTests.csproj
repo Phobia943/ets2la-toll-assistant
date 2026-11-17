@@ -6,6 +6,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../Tests/LongitudinalControllerTests.cs" Link="LongitudinalControllerTests.cs" />
+    <Compile Include="../Tests/TrafficSpeedTests.cs" Link="TrafficSpeedTests.cs" />
+    <Compile Include="../Tests/OwnLongitudinalReviewTests.cs" Link="OwnLongitudinalReviewTests.cs" />
     <Compile Include="../Tools/Research/PmcEnvelope.cs" Link="Research/PmcEnvelope.cs" />
     <Compile Include="../Core/*.cs" Link="Core/%(Filename)%(Extension)" />
     <Compile Include="../Tests/Program.cs" Link="Program.cs" />

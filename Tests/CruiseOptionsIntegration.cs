@@ -23,8 +23,10 @@ public static class CruiseOptionsIntegration
         assert(SpinWait.SpinUntil(()=>preview.Read(trace,f.Point,420)!=null,TimeSpan.FromSeconds(3)),"Wait for the genuinely sufficient preview");
         f.Call("ApplyCruiseStartPreference");
         assert(Math.Abs(f.State.DesiredSpeed*3.6-100)<.01,"A verified open corridor can adopt the requested target");
-        preview.Clear();f.Fresh(25);float bound=(float)f.Call("Evaluate")!;
-        assert(bound<=0&&bound>=-1.20001,"Lost preview authorization must fall back with bounded slowing, not accelerate or hard-stop");
+        preview.Clear();f.Fresh(25);f.Plugin.Tick();
+        var own=f.Get<TollPlugin.LongitudinalSnapshot>("longitudinalSnapshot");
+        assert(own.Input.TargetSpeed<=80/3.6+.01&&own.Output.TargetAcceleration<=0&&own.Output.TargetAcceleration>=-1.20001,
+            "Lost preview authorization falls back to the original cruise target with bounded own-regulator slowing");
         f.F9();assert(!f.State.EnableAssists&&!f.Get<bool>("preferredCruiseOwned"),"Manual takeover clears preset ownership");
 
         var off=new RollingStartIntegration.Fixture();off.Set("options",new TollOptions{BriskOpenRoads=false,ComfortableDeceleration=.5});

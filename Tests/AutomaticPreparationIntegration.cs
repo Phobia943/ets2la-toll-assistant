@@ -73,7 +73,7 @@ public static class AutomaticPreparationIntegration
         Set("path",new PlannedPathData {HasError=true,ErrorMessage="Assists are disabled.",PlannedPath=[]});
         plugin.Tick();assert(!plugin.Active,"No automatic preparation without current telemetry");
         Fresh();plugin.Tick();assert(!plugin.Active,"Wait for stable standstill before preparing");
-        ReadyWindow();Fresh();plugin.Tick();assert(!plugin.Active,"Wait for ACC to load");
+        ReadyWindow();Fresh(10);plugin.Tick();assert(!plugin.Active,"No parked preparation while moving, regardless of absent ACC");
         availableAcc=acc;ReadyWindow();Fresh(10);plugin.Tick();
         assert(!plugin.Active&&sent.Count==0,"Never prepare while rolling or send outputs");
         ReadyWindow();Fresh();Set("paused",true);plugin.Tick();assert(!plugin.Active,"Do not prepare in a paused simulation");
@@ -82,16 +82,14 @@ public static class AutomaticPreparationIntegration
         plugin.Tick();assert(!plugin.Active,"An explicit pathfinding error cannot be hidden by automatic preparation");
         Set("path",new PlannedPathData {HasError=true,ErrorMessage="Assists are disabled.",PlannedPath=[]});
         field.SetValue(acc,Activator.CreateInstance(field.FieldType)!);
-        ReadyWindow();Fresh();plugin.Tick();assert(!plugin.Active,"Wait until ACC has installed its native constraints");
+        ReadyWindow();Fresh();plugin.Tick();assert(!plugin.Active,"Wait for a verified route, not native ACC constraints");
         assert(!state.EnableAssists&&plugin.Status.Contains("Routenprobe"),"Do not report ready before a route check");
         Fresh();Call("OnPath",new PlannedPathData {HasError=true,ErrorMessage="Assists are disabled.",PlannedPath=[]});
         field.SetValue(acc,native);
         ReadyWindow();Fresh();plugin.Tick();
         assert(plugin.Active&&!state.EnableAssists&&!plugin.FaultBraking&&sent.Count==0,"Ready automatically without pressing F8 or emitting vehicle output");
-        assert(((IList)field.GetValue(acc)!).Count==4,"Actual ACC receives one limiter");
-        var limiter=((IList)field.GetValue(acc)!)[3]!;
-        assert(float.IsNaN((float)limiter.GetType().GetMethod("GetMaxAcceleration")!.Invoke(limiter,null)!),"Prepared limiter stays neutral until user starts F8");
-        Fresh();plugin.Tick();assert(((IList)field.GetValue(acc)!).Count==4,"Repeated ticks do not duplicate limiter");
+        assert(((IList)field.GetValue(acc)!).Count==3,"Own regulation never mutates native ACC constraints");
+        Fresh();plugin.Tick();assert(((IList)field.GetValue(acc)!).Count==3,"Repeated ticks leave native ACC untouched");
         planner.Route(11,12);
         Fresh();plugin.Tick();assert(plugin.Active,"Repeated telemetry for the same navigation nodes retains readiness");
         planner.Route(11,13);
@@ -111,11 +109,11 @@ public static class AutomaticPreparationIntegration
         assert(plugin.Active,"Standing at a newly checked location can prepare again");
         Fresh();
         assert(plugin.PreviewRoute().StartsWith("Routenprobe läuft"),"Request a probe with ACC still attached");
-        assert(plugin.Active&&!state.EnableAssists&&sent.Count==0&&((IList)field.GetValue(acc)!).Count==4,
+        assert(plugin.Active&&!state.EnableAssists&&sent.Count==0&&((IList)field.GetValue(acc)!).Count==3,
             "Probe cannot activate assists or detach ACC");
         nextProbe=null;
         Call("OnPath",new PlannedPathData {HasError=true,ErrorMessage="Assists are disabled.",PlannedPath=[]});
-        assert(!plugin.Active&&!state.EnableAssists&&!plugin.FaultBraking&&sent.Count==0&&((IList)field.GetValue(acc)!).Count==4,
+        assert(!plugin.Active&&!state.EnableAssists&&!plugin.FaultBraking&&sent.Count==0&&((IList)field.GetValue(acc)!).Count==3,
             "A failed route check blocks starting while keeping driving modules intact");
         int checkedCount=probes;
         ReadyWindow();Fresh();plugin.Tick();
@@ -137,7 +135,7 @@ public static class AutomaticPreparationIntegration
         Fresh();ReadyWindow();plugin.Tick();
         Fresh();Call("OnPath",new PlannedPathData {HasError=true,ErrorMessage="Assists are disabled.",PlannedPath=[]});
         ReadyWindow();Fresh();plugin.Tick();
-        assert(plugin.Active&&!state.EnableAssists&&((IList)field.GetValue(acc)!).Count==4,"After F9 and standstill prepare without a second UI action");
+        assert(plugin.Active&&!state.EnableAssists&&((IList)field.GetValue(acc)!).Count==3,"After F9 and standstill prepare without a second UI action");
         plugin.SetActive(false);Fresh();plugin.Tick();
         assert(!plugin.Active&&!automatic.Requested&&((IList)field.GetValue(acc)!).Count==3,"Explicit observation pauses automatic preparation and detaches limiter");
         Call("OnCancel",null,new ControlChangeEventArgs(false,null!));

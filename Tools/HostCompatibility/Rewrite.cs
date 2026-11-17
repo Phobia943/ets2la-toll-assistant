@@ -42,10 +42,20 @@ internal static class Rewrite
         var definition=module.GetType("ETS2LA.Game.Output.ControlChannelDefinition");
         definition.Fields.Add(new("MautEpoch",FieldAttributes.Public,module.TypeSystem.Int64));
         definition.Fields.Add(new("MautIssuedAt",FieldAttributes.Public,module.TypeSystem.Int64));
+        definition.Fields.Add(new("MautSourceEpoch",FieldAttributes.Public,module.TypeSystem.Int64));
+        definition.Fields.Add(new("MautSourceAt",FieldAttributes.Public,module.TypeSystem.Int64));
         var clone=new MethodDefinition("MautClone",MethodAttributes.Public|MethodAttributes.HideBySig,definition);
         var cloneIl=clone.Body.GetILProcessor();cloneIl.Emit(OpCodes.Ldarg_0);
         cloneIl.Emit(OpCodes.Call,module.ImportReference(typeof(object).GetMethod("MemberwiseClone",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic)!));
         cloneIl.Emit(OpCodes.Castclass,definition);cloneIl.Emit(OpCodes.Ret);definition.Methods.Add(clone);
+        var variables=module.GetType("ETS2LA.Game.Output.ControlVariables");
+        if(variables.IsValueType||variables.Fields.Any(f=>!f.IsStatic&&f.FieldType.FullName is not
+            ("System.Nullable`1<System.Single>" or "System.Nullable`1<System.Boolean>")))
+            throw new InvalidDataException("Unverified primitive control-variable layout");
+        var variableClone=new MethodDefinition("MautClone",MethodAttributes.Public|MethodAttributes.HideBySig,variables);
+        var variableCloneIl=variableClone.Body.GetILProcessor();variableCloneIl.Emit(OpCodes.Ldarg_0);
+        variableCloneIl.Emit(OpCodes.Call,module.ImportReference(typeof(object).GetMethod("MemberwiseClone",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic)!));
+        variableCloneIl.Emit(OpCodes.Castclass,variables);variableCloneIl.Emit(OpCodes.Ret);variables.Methods.Add(variableClone);
         foreach(var field in template.Fields.Where(f=>f.Name.StartsWith("Maut",StringComparison.Ordinal))) {
             var copy=new FieldDefinition(field.Name,field.Attributes,module.ImportReference(field.FieldType));
             foreach(var attribute in field.CustomAttributes.Where(a=>a.AttributeType.FullName==typeof(ThreadStaticAttribute).FullName))
@@ -63,8 +73,15 @@ internal static class Rewrite
         var getterIl=epochGetter.Body.GetILProcessor();getterIl.Emit(OpCodes.Ldarg_0);getterIl.Emit(OpCodes.Ldfld,definition.Fields.Single(f=>f.Name=="MautEpoch"));getterIl.Emit(OpCodes.Ret);
         var issuedGetter=Method(target,"MautDefinitionIssuedAt");issuedGetter.Body=new(issuedGetter);
         var issuedIl=issuedGetter.Body.GetILProcessor();issuedIl.Emit(OpCodes.Ldarg_0);issuedIl.Emit(OpCodes.Ldfld,definition.Fields.Single(f=>f.Name=="MautIssuedAt"));issuedIl.Emit(OpCodes.Ret);
+        var sourceEpochGetter=Method(target,"MautDefinitionSourceEpoch");sourceEpochGetter.Body=new(sourceEpochGetter);
+        var sourceEpochIl=sourceEpochGetter.Body.GetILProcessor();sourceEpochIl.Emit(OpCodes.Ldarg_0);sourceEpochIl.Emit(OpCodes.Ldfld,definition.Fields.Single(f=>f.Name=="MautSourceEpoch"));sourceEpochIl.Emit(OpCodes.Ret);
+        var sourceOriginGetter=Method(target,"MautDefinitionSourceAt");sourceOriginGetter.Body=new(sourceOriginGetter);
+        var sourceOriginIl=sourceOriginGetter.Body.GetILProcessor();sourceOriginIl.Emit(OpCodes.Ldarg_0);sourceOriginIl.Emit(OpCodes.Ldfld,definition.Fields.Single(f=>f.Name=="MautSourceAt"));sourceOriginIl.Emit(OpCodes.Ret);
         var snapshot=Method(target,"MautSnapshotDefinition");snapshot.Body=new(snapshot);
         var snapshotIl=snapshot.Body.GetILProcessor();snapshotIl.Emit(OpCodes.Ldarg_0);snapshotIl.Emit(OpCodes.Callvirt,clone);snapshotIl.Emit(OpCodes.Ret);
+        var snapshotVariables=Method(target,"MautSnapshotVariables");snapshotVariables.Body=new(snapshotVariables);
+        var variableSnapshotIl=snapshotVariables.Body.GetILProcessor();variableSnapshotIl.Emit(OpCodes.Ldarg_0);
+        variableSnapshotIl.Emit(OpCodes.Callvirt,variableClone);variableSnapshotIl.Emit(OpCodes.Ret);
         var cctor=Method(target,".cctor");var first=cctor.Body.Instructions[0];var il=cctor.Body.GetILProcessor();
         il.InsertBefore(first,Instruction.Create(OpCodes.Newobj,module.ImportReference(typeof(object).GetConstructor(Type.EmptyTypes)!)));
         il.InsertBefore(first,Instruction.Create(OpCodes.Stsfld,target.Fields.Single(f=>f.Name=="MautGate")));
@@ -160,6 +177,13 @@ internal static class Rewrite
         foreach(var pair in new[]{("TrafficProvider","MautTrafficAt"),("ParkedVehiclesProvider","MautParkedAt"),("SemaphoreProvider","MautSemaphoreAt")}) {
             var provider=game.GetType("ETS2LA.Game.SDK."+pair.Item1);
             var update=Method(provider,"Update");var il=update.Body.GetILProcessor();
+            var readOrigin=new VariableDefinition(game.TypeSystem.Int64);var readEpoch=new VariableDefinition(game.TypeSystem.Int64);
+            update.Body.Variables.Add(readOrigin);update.Body.Variables.Add(readEpoch);update.Body.InitLocals=true;
+            var entry=update.Body.Instructions[0];
+            il.InsertBefore(entry,Instruction.Create(OpCodes.Call,game.ImportReference(Method(output,"MautReadOwnSourceEpoch"))));
+            il.InsertBefore(entry,Instruction.Create(OpCodes.Stloc,readEpoch));
+            il.InsertBefore(entry,Instruction.Create(OpCodes.Call,game.ImportReference(typeof(System.Diagnostics.Stopwatch).GetMethod("GetTimestamp")!)));
+            il.InsertBefore(entry,Instruction.Create(OpCodes.Stloc,readOrigin));
             var publishes=update.Body.Instructions.Where(i=>i.Operand is MethodReference m&&m.Name=="Publish").ToArray();
             if(publishes.Length!=1)throw new InvalidDataException("Unverified SDK read publisher");
             var originalClose=Method(provider,"CloseMemory");
@@ -171,26 +195,31 @@ internal static class Rewrite
             var reconnect=new MethodDefinition("MautReconnectMemory",MethodAttributes.Private,game.TypeSystem.Void);
             provider.Methods.Add(reconnect);CopyBody(originalClose,reconnect,provider,provider);
             successfulCloses[0].Operand=reconnect;
+            string ownSuffix=pair.Item1=="TrafficProvider"?"Traffic":pair.Item1=="ParkedVehiclesProvider"?"Parked":"Semaphore";
+            var ownField=output.Fields.Single(f=>f.Name=="MautOwn"+ownSuffix+"Frame");
+            il.InsertBefore(publishes[0],Instruction.Create(OpCodes.Ldarg_0));
+            il.InsertBefore(publishes[0],Instruction.Create(OpCodes.Ldfld,provider.Fields.Single(f=>f.Name=="_currentData")));
+            il.InsertBefore(publishes[0],Instruction.Create(OpCodes.Ldloc,readOrigin));
+            il.InsertBefore(publishes[0],Instruction.Create(OpCodes.Ldloc,readEpoch));
+            il.InsertBefore(publishes[0],Instruction.Create(OpCodes.Call,game.ImportReference(Method(output,"MautCaptureOwn"+ownSuffix))));
             var call=Instruction.Create(OpCodes.Call,game.ImportReference(typeof(System.Diagnostics.Stopwatch).GetMethod("GetTimestamp")!));
             var dataField=output.Fields.Single(f=>f.Name==pair.Item2[..^2]+"Data");
             var load=Instruction.Create(OpCodes.Ldarg_0);var read=Instruction.Create(OpCodes.Ldfld,provider.Fields.Single(f=>f.Name=="_currentData"));
             var save=Instruction.Create(OpCodes.Stsfld,dataField);
             il.InsertAfter(publishes[0],load);il.InsertAfter(load,read);il.InsertAfter(read,save);
             il.InsertAfter(save,call);il.InsertAfter(call,Instruction.Create(OpCodes.Stsfld,output.Fields.Single(f=>f.Name==pair.Item2)));
-            foreach(var method in new[]{Method(provider,"CloseMemory")}) {
-                var processor=method.Body.GetILProcessor();var first=method.Body.Instructions[0];
-                processor.InsertBefore(first,Instruction.Create(OpCodes.Ldc_I8,0L));
-                processor.InsertBefore(first,Instruction.Create(OpCodes.Stsfld,output.Fields.Single(f=>f.Name==pair.Item2)));
-                processor.InsertBefore(first,Instruction.Create(OpCodes.Ldnull));processor.InsertBefore(first,Instruction.Create(OpCodes.Stsfld,dataField));
-            }
+            // No callbacks or decoder work run under this gate. Revocation and
+            // the final copied-frame store use the same short critical section.
+            var close=Method(provider,"CloseMemory");var closeIl=close.Body.GetILProcessor();
+            closeIl.InsertBefore(close.Body.Instructions[0],Instruction.Create(OpCodes.Call,game.ImportReference(Method(output,"MautInvalidateOwnSources"))));
             var thread=Method(provider,"UpdateThread");var threadIl=thread.Body.GetILProcessor();
             foreach(var handler in thread.Body.ExceptionHandlers.Where(h=>h.HandlerType==ExceptionHandlerType.Catch)) {
-                var first=handler.HandlerStart;var zero=Instruction.Create(OpCodes.Ldc_I8,0L);
-                threadIl.InsertBefore(first,zero);threadIl.InsertBefore(first,Instruction.Create(OpCodes.Stsfld,output.Fields.Single(f=>f.Name==pair.Item2)));
+                var first=handler.HandlerStart;var revoke=Instruction.Create(OpCodes.Call,game.ImportReference(Method(output,"MautInvalidateOwnSources")));
+                threadIl.InsertBefore(first,revoke);
                 foreach(var boundary in thread.Body.ExceptionHandlers) {
-                    if(boundary.TryEnd==first)boundary.TryEnd=zero;if(boundary.HandlerEnd==first)boundary.HandlerEnd=zero;
+                    if(boundary.TryEnd==first)boundary.TryEnd=revoke;if(boundary.HandlerEnd==first)boundary.HandlerEnd=revoke;
                 }
-                handler.HandlerStart=zero;
+                handler.HandlerStart=revoke;
             }
         }
         var curve=acc.GetType("AdaptiveCruiseControl.Constraints.PathCurvatureConstraint");

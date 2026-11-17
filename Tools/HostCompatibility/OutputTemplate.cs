@@ -9,7 +9,7 @@ namespace MautHostCompatibility;
 // Authored replacement methods, transplanted only into the exactly verified
 // host. This template is never constructed or executed by the preparation tool.
 #pragma warning disable CS0649
-internal sealed class OutputTemplate
+internal sealed partial class OutputTemplate
 {
     public Dictionary<string,ControlChannel> Channels=null!;
     Dictionary<string,List<Tuple<float,float>>> curFrameFloats=null!;
@@ -28,7 +28,8 @@ internal sealed class OutputTemplate
     public static long MautEpoch;
     public static bool MautAssists;
     public static int MautMode;
-    public const string MautCompatibility="0.3.18-host-3";
+    public const string MautCompatibility="0.4.0-host-1";
+    public const string MautLongitudinalChannel="local.mautassistent.longitudinal";
     static string? MautHoldKey;
     static long MautHoldEpoch,MautHoldUntil;
     static float MautHoldFloor;
@@ -119,24 +120,46 @@ internal sealed class OutputTemplate
     public static void MautSetMode(int mode)
     {lock(MautGate){if(MautMode!=mode){MautClearPlannedHold();MautResetOrigins();MautMode=mode;MautEpoch++;}}}
     static long MautDefinitionEpoch(ControlChannelDefinition definition)=>throw new NotSupportedException(); // generated field accessor
+    static long MautDefinitionSourceEpoch(ControlChannelDefinition definition)=>throw new NotSupportedException(); // generated field accessor
+    static long MautDefinitionSourceAt(ControlChannelDefinition definition)=>throw new NotSupportedException(); // generated field accessor
     static long MautDefinitionIssuedAt(ControlChannelDefinition definition)=>throw new NotSupportedException(); // generated field accessor
     static ControlChannelDefinition MautSnapshotDefinition(ControlChannelDefinition definition)=>throw new NotSupportedException(); // generated clone
-    static bool MautNative(string id)=>id is "AdaptiveCruiseControl.Acceleration" or "LaneAssist.SteeringCorrection" or "LaneAssist.PauseWhenUnstable";
+    static ControlVariables MautSnapshotVariables(ControlVariables variables)=>throw new NotSupportedException(); // generated primitive DTO clone
+    static bool MautNative(string id)=>id is MautLongitudinalChannel or "LaneAssist.SteeringCorrection" or "LaneAssist.PauseWhenUnstable";
+    static bool MautPedalsValid(ControlVariables variables)
+    {
+        float forward=variables.aforward??0,backward=variables.abackward??0;
+        return float.IsFinite(forward)&&float.IsFinite(backward)&&forward is >=0 and <=1&&backward is >=-1 and <=0&&
+            (forward==0||backward==0);
+    }
+    static bool MautPedalSourceValid(ControlChannelDefinition definition,ControlVariables variables)=>
+        (variables.aforward??0)<=0||MautOwnOriginFresh(MautDefinitionSourceAt(definition));
+    static bool MautFaultValid(ControlVariables variables)
+    {
+        float forward=variables.aforward??0,backward=variables.abackward??0;
+        return forward==0&&float.IsFinite(backward)&&backward is >=-1 and <=0;
+    }
     static bool MautAccept(ControlChannelDefinition definition)
     {
+        // Native ACC is deliberately never a pedal owner in this revision,
+        // even if another component enables it or supplies valid epoch fields.
+        if(definition.Id=="AdaptiveCruiseControl.Acceleration")return false;
+        if(!float.IsFinite(definition.Timeout)||definition.Timeout<=0)return false;
         if(!MautNative(definition.Id))return true;
         long issued=MautDefinitionIssuedAt(definition),now=Stopwatch.GetTimestamp();
         // Age belongs to the native calculation's entry, never ingestion or
         // publication. A same-session blocked tick cannot refresh stale gas.
         if(issued<=0||issued>now||now-issued>Stopwatch.Frequency/5)return false;
         if(!MautAssists||MautMode is <0 or >2||MautDefinitionEpoch(definition)!=MautEpoch)return false;
-        return definition.Id=="AdaptiveCruiseControl.Acceleration"?MautMode!=2:MautMode!=0;
+        return definition.Id==MautLongitudinalChannel?MautMode!=2&&MautDefinitionSourceEpoch(definition)==MautOwnSourceEpoch:MautMode!=0;
     }
     public void OnControlEvent(ControlEvent input)
     {
         lock(MautGate) {
             var definition=input.ChannelDefinition;
             if(definition==null||string.IsNullOrEmpty(definition.Id))return;
+            if(definition.Id=="local.mautassistent.fault-brake"&&
+                (input.Variables==null||input.Properties==null||!MautFaultValid(input.Variables)))return;
             if(!MautAccept(definition)) {
                 if(Channels.TryGetValue(definition.Id,out var old)&&!MautAccept(old.Definition))Channels.Remove(definition.Id);
                 return;
@@ -147,7 +170,8 @@ internal sealed class OutputTemplate
                 if(MautNativeOrigins.TryGetValue(definition.Id,out long accepted)&&origin<=accepted)return;
                 MautNativeOrigins[definition.Id]=origin;
             }
-            if(input.Variables==null||input.Properties==null){Channels.Remove(definition.Id);return;}
+            if(input.Variables==null||input.Properties==null||definition.Id==MautLongitudinalChannel&&(!MautPedalsValid(input.Variables)||!MautPedalSourceValid(definition,input.Variables)))
+                {Channels.Remove(definition.Id);return;}
             if(!Channels.TryGetValue(definition.Id,out var channel)) {
                 channel=new ControlChannel {Definition=definition,Properties=input.Properties,Variables=input.Variables};
                 Channels.Add(definition.Id,channel);
@@ -155,7 +179,7 @@ internal sealed class OutputTemplate
             // Snapshot both concrete origin fields. Reusing the publisher's
             // definition must not relabel the stored result's epoch or age.
             channel.Definition=MautSnapshotDefinition(definition);
-            channel.Properties=input.Properties;channel.Variables=input.Variables;
+            channel.Properties=input.Properties;channel.Variables=MautSnapshotVariables(input.Variables);
             channel.LastUpdate.Restart();channel.BoolsProcessed=false;
         }
     }
@@ -166,6 +190,7 @@ internal sealed class OutputTemplate
         lock(MautGate) {
             curFrameFloats.Clear();
             long now=Stopwatch.GetTimestamp();
+            float longitudinal=0,faultBrake=0;
             bool holdActive=MautAssists&&MautMode is 0 or 1&&MautHoldKey!=null&&MautHoldEpoch==MautEpoch&&now<MautHoldUntil;
             if(MautPauseUntil!=0&&(now>=MautPauseUntil||MautPauseEpoch!=MautEpoch||!MautAssists||MautMode==0)) {
                 WriteBool(legacyAccessor,legacyShmOffsets["pause"],false);MautPauseUntil=0;
@@ -176,7 +201,16 @@ internal sealed class OutputTemplate
                     channel.LastUpdate.Elapsed.TotalSeconds>channel.Definition.Timeout) {
                     Channels.Remove(channel.Definition.Id);continue;
                 }
-                if(channel.Definition.Id=="LaneAssist.PauseWhenUnstable") {
+                if(channel.Definition.Id==MautLongitudinalChannel) {
+                    if(!MautPedalsValid(channel.Variables)||!MautPedalSourceValid(channel.Definition,channel.Variables)){Channels.Remove(channel.Definition.Id);continue;}
+                    longitudinal=(channel.Variables.aforward??0)+(channel.Variables.abackward??0);
+                } else if(channel.Definition.Id=="local.mautassistent.fault-brake") {
+                    if(!MautFaultValid(channel.Variables))continue;
+                    float requested=channel.Variables.abackward??0;
+                    // Fault authority is braking-only and never participates in
+                    // a weighted average with throttle or another owner's zero.
+                    if(float.IsFinite(requested)&&requested is >=-1 and <0)faultBrake=Math.Min(faultBrake,requested);
+                } else if(channel.Definition.Id=="LaneAssist.PauseWhenUnstable") {
                     // No deferred ToggleBool task may outlive its origin session.
                     if(!channel.BoolsProcessed&&channel.Variables.pause==true) {
                         WriteBool(legacyAccessor,legacyShmOffsets["pause"],true);
@@ -185,9 +219,10 @@ internal sealed class OutputTemplate
                     channel.BoolsProcessed=true;
                 } else ProcessChannel(channel);
             }
-            // Missing owners are neutral AFTER aggregation; a valid fault or
-            // other pedal owner keeps its own value, without averaging a zero in.
-            if(!curFrameFloats.ContainsKey("acceleration"))curFrameFloats.Add("acceleration",[Tuple.Create(1f,0f)]);
+            // Only our current longitudinal owner may drive the normal pedal
+            // axis. Unknown channels' pedal fields and weights are discarded.
+            curFrameFloats["acceleration"]=[Tuple.Create(1f,Math.Min(longitudinal,faultBrake<0?faultBrake:longitudinal))];
+            if(faultBrake<0)curFrameFloats["steering"]=[Tuple.Create(1f,0f)];
             if(!curFrameFloats.ContainsKey("steering"))curFrameFloats.Add("steering",[Tuple.Create(1f,0f)]);
             double stamp=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()/1000d;
             foreach(var frame in curFrameFloats) {
@@ -199,7 +234,7 @@ internal sealed class OutputTemplate
                 if(frame.Key=="steering") {
                     WriteFloat(modernAccessor,0,output);WriteBool(modernAccessor,4,output!=0);WriteDouble(modernAccessor,5,stamp);
                 } else if(frame.Key=="acceleration") {
-                    // Apply the authorized planned hold AFTER channel weighting,
+                    // Apply the authorized planned hold AFTER owner selection,
                     // not as a competing zero/floor owner. It cannot raise or
                     // dilute an existing stronger safety brake.
                     if(holdActive)

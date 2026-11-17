@@ -101,7 +101,7 @@ internal static class PluginHoldReplay
             if(pinned.Mvid!=gameAssembly.ManifestModule.ModuleVersionId)throw new InvalidDataException("Wrong isolated host module identity");
         using(var pinned=ModuleDefinition.ReadModule(copy))
             if(pinned.Mvid!=assembly.ManifestModule.ModuleVersionId)throw new InvalidDataException("Wrong candidate module identity");
-        if((string?)output.GetField("MautCompatibility")!.GetRawConstantValue()!="0.3.18-host-3")throw new InvalidDataException("Plugin hold replay requires Host3");
+        if((string?)output.GetField("MautCompatibility")!.GetRawConstantValue()!="0.4.0-host-1")throw new InvalidDataException("Plugin replay requires the exclusive longitudinal host revision");
 
         // Do not invoke any product constructor. Build precisely the fields
         // used by the real Commit/Clear and FaultBrake.RunCurrent methods.
@@ -148,10 +148,10 @@ internal static class PluginHoldReplay
         {
             enable(false);enable(true);Fresh();ClearChannels();Floors(0,0);Commit();frame(false);
         }
-        void NativeBrake(float value)
+        void OwnBrake(float value)
         {
-            var definition=Activator.CreateInstance(definitionType)!;Set(definition,"Id","AdaptiveCruiseControl.Acceleration");
-            Set(definition,"Timeout",1f);Set(definition,"MautEpoch",epoch());Set(definition,"MautIssuedAt",Stopwatch.GetTimestamp());
+            var definition=Activator.CreateInstance(definitionType)!;Set(definition,"Id","local.mautassistent.longitudinal");
+            Set(definition,"Timeout",1f);Set(definition,"MautEpoch",epoch());Set(definition,"MautIssuedAt",Stopwatch.GetTimestamp());Set(definition,"MautSourceEpoch",output.GetMethod("MautReadOwnSourceEpoch")!.Invoke(null,null));
             var variables=Activator.CreateInstance(variablesType)!;Set(variables,"abackward",-value);
             var properties=Activator.CreateInstance(propertiesType)!;Set(properties,"Weight",1f);
             var message=Activator.CreateInstance(eventType)!;Set(message,"ChannelDefinition",definition);Set(message,"Variables",variables);Set(message,"Properties",properties);
@@ -173,8 +173,8 @@ internal static class PluginHoldReplay
         Reset();Floors(.65f,.35f);Commit();faultType.GetMethod("Trip")!.Invoke(fault,null);frame(false);
         Check(brake()==1&&gas()==0,"an actual FaultBrake publication remains stronger than the planned floor");
         faultType.GetMethod("Release")!.Invoke(fault,null);
-        Reset();Floors(.65f,0);Commit();NativeBrake(1);frame(false);
-        Check(brake()==1&&gas()==0,"a genuine native full brake is not diluted by the combined plugin floor");
+        Reset();Floors(.65f,0);Commit();OwnBrake(1);frame(false);
+        Check(brake()==1&&gas()==0,"a genuine own-channel full brake is not diluted by the combined plugin floor");
 
         Reset();Floors(.65f,.35f);Commit();frame(false);
         Check(brake()>.64,"F9 regression begins with an established product floor");
@@ -372,11 +372,12 @@ internal static class PluginHoldReplay
             "SDK pause delivered during the FINAL epoch wait cancels the stale decision without faulting or disabling assists");
         Set(plugin,"latestDeliveredTelemetry",null);
         Reset();enable(false);frame(false);
+        int longitudinalTickChecks=LongitudinalPluginReplay.Run(copy,root,assembly,gameAssembly,stateAssembly,context,host,state,frame,gas,brake,modernPedal,enable,epoch,assert);
         File.WriteAllText(Path.Combine(prepared,"plugin-hold-replay.json"),System.Text.Json.JsonSerializer.Serialize(new{
-            checks,steeringOriginChecks,epochWaitProbe,finalPauseProbe,passed=true,pluginSha256=sealedHash,
+            checks,steeringOriginChecks,longitudinalTickChecks,epochWaitProbe,finalPauseProbe,passed=true,pluginSha256=sealedHash,
             pluginMvid=assembly.ManifestModule.ModuleVersionId,hostMvid=gameAssembly.ManifestModule.ModuleVersionId,
-            liveMapsOpened=false,pluginInstanceConstructorsCalled=false,faultConstructorsCalled=false,
-            coreHoldConstructorsCalled=false,auditedStaticInitializersOnly=true,outputThreadsStarted=false,
-            scope="Real hold Commit/Clear and steering raw-origin observer/store/watchdog with controlled inputs, actual isolated Host3 epochs and real isolated output sinks; no live native Tick or timers"}));
+            liveMapsOpened=false,productionConstructorsCalled=false,auditedInjectedConstructorCalled=true,
+            auditedStaticInitializersOnly=true,outputThreadsStarted=false,
+            scope="Real hold Commit/Clear, own plugin Tick/controller, source decoding and independent deadman; private audited DI fixture, protected host epochs and dictionary sinks, no SDK maps or production timers"}));
     }
 }
