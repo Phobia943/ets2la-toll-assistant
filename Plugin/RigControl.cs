@@ -3,7 +3,11 @@ using System.Security.Cryptography;
 using System.Text;
 using PathLib;
 namespace MautAssistent;
-internal sealed record RigRuntimeObservation(EnvelopeContext? Context,PredictionEnvelope? Envelope,SceneSnapshot? Scene);
+internal sealed record RigRuntimeObservation(EnvelopeContext? Context,PredictionEnvelope? Envelope,SceneSnapshot? Scene)
+{
+    // Raw native measurement is independent of optional cargo/axle evidence.
+    internal VehicleGeometry? MeasuredShape {get;init;}
+}
 
 public sealed partial class TollPlugin
 {
@@ -21,6 +25,7 @@ public sealed partial class TollPlugin
     static string RigKey(string value)=>Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     ParkedSceneAdmission.Result[] EvaluateRigChecks(PlannedItem[] prefabs)
     {
+        if(!options.DetailedRigProtection)return EvaluateStandardChecks(prefabs);
         if(prefabs.Length==0){ResetRigEvaluation();return [];}
         if(safetyTrace==null||envelopeEvidence==null&&readRigObservation==null)return [new(false,"Gespann- oder Routenquelle noch nicht bereit",0)];
         var trace=safetyTrace;RigRuntimeObservation observedSource;

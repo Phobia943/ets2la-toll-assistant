@@ -12,6 +12,11 @@ public sealed record TollDecision(string Phase, double? TargetSpeed, float MaxAc
 
 public sealed record TollOptions
 {
+    // A declared lane-planning envelope, not measured cargo dimensions or a
+    // proof of articulated swept clearance. Detailed proof is opt-in.
+    public const float StandardLaneHeight = 4.5f;
+    public const float StandardLaneWidth = 3.4f;
+    public bool DetailedRigProtection {get;init;} = false;
     public bool CurvePreviewEnabled {get;init;}=true;
     public bool BriskOpenRoads {get;init;}=true;
     public double RoadCruiseSpeedKph {get;init;}=100;

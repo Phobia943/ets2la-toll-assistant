@@ -59,7 +59,7 @@ try {
                         selectedLane,selectedPayment,plaza,faultBraking,pathError,driveAction,connectedMetresAhead,
                         requiredLookahead,telemetryAge,gatesAge,pathAge,options,routing,routeFault,plannedStop,stopDistance,
                         steeringFeed,steeringAge,steeringFault,brakeHeld,brakeInputValue,
-                        laneAttempts,laneAttemptContext,laneDecisionContext
+                        laneAttempts,laneAttemptContext,laneDecisionContext,laneProtection,detailedRigProtection,planningProfile,rigPrediction
                 }
             } catch {$issues.Add('StatusUnreadable')}
         }

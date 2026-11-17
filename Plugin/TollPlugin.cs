@@ -61,7 +61,8 @@ public sealed partial class TollPlugin : Plugin
     readonly VehicleGeometryReader vehicleGeometry=new();
     readonly VehicleEnvelopeEvidence? envelopeEvidence;
     EnvelopeContext? envelopeContext;
-    public string? VehicleEnvelopeStatus=>envelopeEvidence?.Status;
+    public string? VehicleEnvelopeStatus=>options.DetailedRigProtection?envelopeEvidence?.Status:
+        "Genaue Ladungsprüfung ausgeschaltet. Vollständige Ladungsfreiheit nicht geprüft.";
     VehicleGeometry? lastEnvelopeShape;
     StationaryRoadEvidence? stationaryGround;
     (float Height,float Width) ReadEnvelopeProfile()
@@ -77,6 +78,7 @@ public sealed partial class TollPlugin : Plugin
     }
     (float Height,float Width) ReadPlanningProfile()
     {
+        if(!options.DetailedRigProtection)return(TollOptions.StandardLaneHeight,TollOptions.StandardLaneWidth);
         _=ReadEnvelopeProfile();
         var proven=envelopeEvidence?.ReadForPrediction(envelopeContext,lastEnvelopeShape,position,speed,headingTurns);
         return proven==null?(float.NaN,float.NaN):(proven.PlanningHeight,proven.PlanningWidth);
@@ -201,6 +203,9 @@ public sealed partial class TollPlugin : Plugin
     string lastLogged = "";
     public string DiagnosticPath => Path.Combine(AppContext.BaseDirectory, "MautAssistent", "status.json");
     public TollOptions Options { get { lock(sync) return options; } }
+    public string LaneProtectionStatus=>options.DetailedRigProtection?
+        "Detaillierter Gespannschutz: bestätigte Fahrzeug-, Ladungs- und Achsdaten erforderlich.":
+        "Standard-Spurführung: Planungskorridor 4,5 m hoch / 3,4 m breit. Unbekannte Ladungsdetails blockieren nicht; vollständige Gespannfreiheit ist damit nicht nachgewiesen.";
     public bool Active { get { lock(sync) return active; } }
     public bool FaultBraking { get { lock(sync) return faultBrake.Latched; } }
     public string VehicleGeometryStatus=>vehicleGeometry.Status;
@@ -317,6 +322,7 @@ public sealed partial class TollPlugin : Plugin
     {
         sceneStopping=false;sceneHold.Reset();
         ResetRigEvaluation();
+        standardMotions.Reset();
         ClearPlannedHold();
         approachStop.Reset();
         curvePreview.Clear();curveDecision=null;
@@ -706,6 +712,10 @@ public sealed partial class TollPlugin : Plugin
             try { newOptions.Validate(); } catch (ArgumentException e) { return e.Message; }
             try {preferences.Save(newOptions,preferences.Gates);} catch(Exception ex) {return "Einstellungen nicht gespeichert: "+ex.Message;}
             options = newOptions; controller = new(options); tracked = null; active = false;  bridge.Detach();
+            // Settings can only change while stopped with assists off. Retire
+            // the old model state; gate constraints are recomputed before any
+            // later activation rather than inherited as an obsolete rig hold.
+            ResetRigEvaluation();standardMotions.Reset();ClearSceneHold();
             ResetCruiseStartPreference();
             curvePreview.Clear();curveDecision=null;
             startCheck=null;
@@ -731,7 +741,7 @@ public sealed partial class TollPlugin : Plugin
     }
     void TryAutomaticPreparation(double now)
     {
-        if(active&&!State.EnableAssists&&!preview&&stationaryGround==null&&envelopeEvidence!=null&&
+        if(options.DetailedRigProtection&&active&&!State.EnableAssists&&!preview&&stationaryGround==null&&envelopeEvidence!=null&&
             envelopeContext!=null&&lastEnvelopeShape is { } observed&&SensorsFresh(now)&&Math.Abs(speed)<=.1&&
             VehicleEnvelopeEvidence.Coherent(envelopeContext,observed,position,speed,headingTurns,DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())) {
             active=false;startCheck=null;automaticPreparation.Request();
@@ -812,7 +822,8 @@ public sealed partial class TollPlugin : Plugin
             steeringFailure=lastSteeringFailure is { } failure&&failure.Reason==reason?failure:null,
             impact=reason==ImpactReason?lastImpact:null,
             pedalWarning=brakeWarning,
-            plannedHoldPedalFloor=holdPedalFloor,vehicleShape=shapeAtFault,vehicleEnvelope=envelopeEvidence?.Status,
+            plannedHoldPedalFloor=holdPedalFloor,vehicleShape=shapeAtFault,vehicleEnvelope=VehicleEnvelopeStatus,
+            laneProtection=LaneProtectionStatus,detailedRigProtection=options.DetailedRigProtection,
             envelopeIdentity=envelopeContext?.Identity,
             envelopeTrailers=envelopeContext?.Trailers.Select(t=>new{t.Id,t.Accessory,t.Body,t.Chain,
                 position=new{x=t.Position.X,y=t.Position.Y,z=t.Position.Z}}).ToArray(),
@@ -888,7 +899,7 @@ public sealed partial class TollPlugin : Plugin
             TryAutomaticPreparation(now);
             try
             {
-                if(envelopeEvidence!=null)_=ReadEnvelopeProfile();
+                if(options.DetailedRigProtection&&envelopeEvidence!=null)_=ReadEnvelopeProfile();
                 var state = State;
                 bool allow = state.EnableAssists && (!active || state.DrivingMode != DrivingMode.LaneAssistOnly);
                 if(!router.StopBoundary.HasValue){approachStop.Reset();if(!sceneStopping)ClearPlannedHold();}
@@ -957,7 +968,10 @@ public sealed partial class TollPlugin : Plugin
                         connectorAttempted, connectorPending, connectorSeeded,
                         driveAction=driveAction.ToString(),
                         plannedStop=router.StopBoundary.HasValue,stopDistance=router.StopDistance,holdPedalFloor,
-                        vehicleEnvelope=envelopeEvidence?.Status,
+                        vehicleEnvelope=VehicleEnvelopeStatus,
+                        laneProtection=LaneProtectionStatus,detailedRigProtection=options.DetailedRigProtection,
+                        planningProfile=options.DetailedRigProtection?"measured-rig":"standard-4.5m-3.4m",
+                        rigPrediction=rigStatus,
                         plannedStopHolding=approachStop.Holding,desiredCruiseSpeedKph=State.DesiredSpeed*3.6,
                         reportedSpeedLimitKph=physicsObservation?.SpeedLimitMps*3.6,
                         automaticPreparationPending=automaticPreparation.Requested,

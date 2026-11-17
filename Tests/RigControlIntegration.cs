@@ -29,7 +29,7 @@ internal static class RigControlIntegration
             new WheelSample(new(-1,.5f,3),true,false,false,true,0,0),new WheelSample(new(1,.5f,3),true,false,false,true,0,0),
             new WheelSample(new(-1,.5f,4.3f),true,false,false,true,0,0),new WheelSample(new(1,.5f,4.3f),true,false,false,true,0,0)});
         internal readonly RouteTrace Trace;
-        internal Fixture()
+        internal Fixture(bool detailed=true)
         {
             var rotation=Quaternion.CreateFromAxisAngle(Vector3.UnitY,MathF.PI);
             var curve=new NavCurve {StartPosition=Vector3.Zero,EndPosition=new(0,0,200),Length=200,
@@ -53,6 +53,7 @@ internal static class RigControlIntegration
             Evidence.Prefetch(prefab);
             if(!SpinWait.SpinUntil(()=>Evidence.Diagnose(prefab).Completed,TimeSpan.FromSeconds(2)))throw new Exception("Fixture model worker did not complete");
             Driver=new(readLaneAssist:()=>null,readRigObservation:()=>{DuringRead?.Invoke(++Reads);return Observation;},runtimeModels:Evidence);
+            Driver.Set("options",new TollOptions {DetailedRigProtection=detailed});
             Driver.State.EnableAssists=true;Driver.Set("active",true);Driver.Set("path",Plan);Driver.Set("safetyTrace",Trace);
             Driver.Set("driveAction",DriveAction.Drive);Driver.Set("takeoverUntil",-100d);
             Frame(40,0);
@@ -75,7 +76,7 @@ internal static class RigControlIntegration
             sceneSequence+=2;ulong clock=(ulong)(1000000+sceneSequence*10000);
             var scene=new SceneSnapshot(321,44,(uint)sceneSequence,now,clock,clock,1,clock,shape.Truck.Position+delta,59,
                 (uint)Bodies.Length,1,double.PositiveInfinity,Bodies,[new(55,3)]);
-            Observation=new(context,envelope,scene);Reads=0;
+            Observation=new(context,envelope,scene){MeasuredShape=shape};Reads=0;
             Driver.Set("position",shape.Truck.Position+delta);Driver.Set("headingTurns",.5d);Driver.Fresh(speed);
             var physics=typeof(TollPlugin).GetField("physicsObservation",BindingFlags.NonPublic|BindingFlags.Instance)!;
             physics.SetValue(Driver.Plugin,Activator.CreateInstance(physics.FieldType,clock,clock,0f,0f,0f,0f,0f,0f,0f));
@@ -126,5 +127,86 @@ internal static class RigControlIntegration
         var checks=(ParkedSceneAdmission.Result[])fast.Driver.Call("EvaluateRigChecks",(object)new[]{fast.Item})!;
         assert(checks.Any(c=>!c.RequiresPhysicalHold&&c.AccelerationLimit is >=-2 and <0)&&!checks.Any(c=>c.HoldKey.StartsWith("scene-evidence")&&c.StopDistance==0),
             "A fast early approach requests ordinary 20km/h deceleration instead of a zero-distance missing-model hold");
+    }
+    internal static void StandardPolicy(Action<bool,string> assert)
+    {
+        var f=new Fixture(detailed:false);
+        void UnknownCargo(float z=40,double speed=0) {
+            f.Frame(z,speed,phase:0);
+            // This is the reported Yacht failure class: no accepted accessory
+            // envelope and no axle proof, but a fresh raw truck and local scene.
+            f.Observation=f.Observation with{Context=null,Envelope=null};
+        }
+        UnknownCargo();
+        assert(f.Limit()>.3f&&!f.Driver.Plugin.FaultBraking&&f.Driver.Get<float>("scenePedalFloor")==0,
+            "Default standard runtime permits a scoped empty toll despite absent cargo and axle evidence");
+        var profile=((float Height,float Width))f.Driver.Call("ReadPlanningProfile")!;
+        assert(profile==(TollOptions.StandardLaneHeight,TollOptions.StandardLaneWidth)&&!f.Observation.MeasuredShape!.CargoCoverageKnown,
+            "Standard routing declares nominal dimensions without claiming measured cargo clearance");
+        f.Bodies=[f.Body(4,50,false)];UnknownCargo(40,20/3.6);
+        assert(f.Limit()>.3f&&!f.Driver.Plugin.FaultBraking,"Unknown-motion neighbouring car does not block standard runtime");
+        f.Bodies=[f.Body(0,45)];UnknownCargo();
+        assert(f.Limit()<0&&f.Driver.Get<float>("scenePedalFloor")>=.35f&&!f.Driver.Plugin.FaultBraking,
+            "Real lane obstruction still applies an ordinary physical hold in standard mode");
+        f.Bodies=[];UnknownCargo();
+        assert(f.Limit()>.3f&&f.Driver.Get<float>("scenePedalFloor")==0,
+            "A removed obstruction releases the standard hold automatically");
+        UnknownCargo();f.Observation=f.Observation with{Scene=null};
+        assert(f.Limit()<0&&f.Driver.Get<float>("scenePedalFloor")>=.35f,
+            "Missing actual scene remains a normal stop, independently of missing cargo");
+        UnknownCargo();assert(f.Limit()>.3f&&f.Driver.Get<float>("scenePedalFloor")==0,"Fresh scene recovery releases hold without restart");
+        var gate=new Gate("standard-closed",8,BarrierState.Closed);
+        var controller=f.Driver.Get<TollController>("controller");
+        f.Driver.Set("candidate",gate);
+        f.Driver.Set("decision",controller.Step(new(0,0,true,true,gate)));
+        UnknownCargo();
+        assert(f.Limit()<0&&f.Driver.Get<float>("scenePedalFloor")>=.35f&&!f.Driver.Plugin.FaultBraking,
+            "Closed live gate keeps its ordinary hold even when unknown cargo no longer blocks the scene");
+        controller.Reset();f.Driver.Set("candidate",null!);UnknownCargo();
+        assert(f.Limit()>.3f&&f.Driver.Get<float>("scenePedalFloor")==0,"Removing the independent gate constraint permits the otherwise clear standard scene");
+        UnknownCargo();f.Observation=f.Observation with{MeasuredShape=null};
+        assert(f.Limit()<0,"Standard source cannot silently reuse an expanded cargo envelope as raw measurement");
+        UnknownCargo();f.Observation=f.Observation with{Scene=f.Observation.Scene! with{ProcessId=999}};
+        assert(f.Limit()<0,"A foreign scene process cannot authorize the standard output");
+        UnknownCargo();f.Observation=f.Observation with{Scene=f.Observation.Scene! with{Session=999}};
+        assert(f.Limit()>.3f,"Independent geometry and scene producer sessions are not incorrectly equated");
+        // The prior epoch-change adversary intentionally retired session 44.
+        // A new independent source is required for the positive hazard case.
+        var acute=new Fixture(detailed:false);acute.Bodies=[acute.Body(0,50)];acute.Frame(40,20/3.6,phase:0);
+        acute.Observation=acute.Observation with{Context=null,Envelope=null};
+        assert(acute.Limit()==-5&&acute.Driver.Plugin.FaultBraking,"Measured imminent obstacle still stops standard driving");
+        acute.Driver.F9();
+        assert(!acute.Driver.Plugin.FaultBraking&&!acute.Driver.State.EnableAssists&&acute.Driver.Get<float>("scenePedalFloor")==0,
+            "F9 clears standard emergency/hold outputs and returns manual control");
+        var cancel=new Fixture(detailed:false);cancel.Observation=cancel.Observation with{Context=null,Envelope=null};
+        using(var operation=cancel.Driver.Get<FaultBrake>("faultBrake").BeginOperation()) {
+            cancel.DuringRead=n=>{if(n==2)cancel.Driver.F9();};
+            cancel.Limit();
+            assert(!cancel.Driver.State.EnableAssists&&cancel.Driver.Get<float>("scenePedalFloor")==0,
+                "F9 during the standard raw-source transaction cannot publish a new physical hold");
+        }
+    }
+    internal static void StandardSettings(Action<bool,string> assert)
+    {
+        string file=Path.Combine(Path.GetTempPath(),"maut-standard-options-"+Guid.NewGuid().ToString("N"),"settings.json");
+        var f=new Fixture();f.Driver.Set("preferences",new PreferenceStore(file));
+        try {
+            f.Observation=f.Observation with{Envelope=null};f.Frame(40,0,phase:0);
+            f.Observation=f.Observation with{Envelope=null};
+            assert(f.Limit()<0,"Explicit detailed policy still holds for missing detailed evidence");
+            f.Driver.State.EnableAssists=false;
+            var result=f.Driver.Plugin.Configure(new TollOptions {DetailedRigProtection=false});
+            assert(result.StartsWith("Einstellungen dauerhaft")&&f.Driver.Get<float>("scenePedalFloor")==0,
+                "Stopped mode change clears the obsolete detailed hold and requires fresh preparation");
+            var store=new PreferenceStore(file);store.Load();
+            assert(!store.Options.DetailedRigProtection,"Standard policy is persisted");
+            f.Driver.State.EnableAssists=true;f.Driver.Set("active",true);f.Frame(40,0,phase:0);
+            f.Observation=f.Observation with{Context=null,Envelope=null};
+            assert(f.Limit()>.3f&&!f.Driver.Get<bool>("sceneStopping"),"A previous missing-rig hold cannot retain its scene/coasting veto in standard mode");
+            assert(f.Driver.Plugin.Configure(new TollOptions {DetailedRigProtection=true}).StartsWith("Bitte im Stand"),
+                "Mode cannot change with active assists");
+        } finally {if(File.Exists(file))File.Delete(file);if(Directory.Exists(Path.GetDirectoryName(file)))Directory.Delete(Path.GetDirectoryName(file)!);}
+        var old=System.Text.Json.JsonSerializer.Deserialize<TollOptions>("{\"RoadCruiseSpeedKph\":100}")!;
+        assert(!old.DetailedRigProtection,"Old saved settings migrate to standard policy without a cargo gate");
     }
 }

@@ -179,6 +179,38 @@ public sealed class RouteTrace
         sample=new(Vector3.Lerp(points[end-1],points[end],fraction),Vector3.Normalize(direction),along,
             segmentKeys?[end-1],connectorEnds.Contains(end));return true;
     }
+    // Nominal road corridor, independent of the articulated no-slip model's
+    // near-flat scope. Keep every actual vertex, directed seam and endpoint;
+    // never extend a missing road or invent a gap connection.
+    public bool TryStandardSlice(double from,double to,double maxStep,out IReadOnlyList<TraceSlicePoint> slice,out string? issue)
+    {
+        slice=[];issue=null;
+        if(!IdentityKnown||segmentKeys==null||!double.IsFinite(from)||!double.IsFinite(to)||
+            !double.IsFinite(maxStep)||from<0||to<=from||to>Length||to-from>300||maxStep is <.05 or >.5)
+            {issue="Bounded identified standard trace is missing";return false;}
+        for(int i=1;i<points.Length;i++) {
+            if(distances[i]<=from||distances[i-1]>=to)continue;
+            var delta=points[i]-points[i-1];if(delta.LengthSquared()<1e-8){issue="Degenerate standard segment";return false;}
+            if(!connectorEnds.Contains(i))continue;
+            if(i<2||i>=points.Length-1||connectorEnds.Contains(i-1)||connectorEnds.Contains(i+1))
+                {issue="Standard seam lacks directed neighbours";return false;}
+            var a=points[i-1]-points[i-2];var b=points[i+1]-points[i];
+            if(a.LengthSquared()<1e-8||b.LengthSquared()<1e-8||Vector3.Dot(delta,a)<=0||Vector3.Dot(delta,b)<=0)
+                {issue="Standard seam reverses its directed trace";return false;}
+        }
+        var cuts=new[]{from}.Concat(distances.Where(d=>d>from+.0001&&d<to-.0001)).Append(to).Distinct().Order().ToArray();
+        var result=new List<TraceSlicePoint>();
+        for(int i=1;i<cuts.Length;i++) {
+            int count=(int)Math.Ceiling((cuts[i]-cuts[i-1])/maxStep);
+            if(count>4095-result.Count){issue="Standard trace sampling budget exhausted";return false;}
+            for(int n=i==1?0:1;n<=count;n++) {
+                double along=cuts[i-1]+(cuts[i]-cuts[i-1])*n/count;
+                if(!TryAtAlong(along,out var point)){issue="Standard tangent is ambiguous";return false;}
+                result.Add(point);
+            }
+        }
+        slice=result.AsReadOnly();return true;
+    }
     public bool TrySlice(double from,double to,double maxStep,out IReadOnlyList<TraceSlicePoint> slice,out string? issue)
     {
         slice=[];issue=null;

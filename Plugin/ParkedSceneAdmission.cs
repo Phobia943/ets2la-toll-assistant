@@ -15,6 +15,7 @@ internal static class ParkedSceneAdmission
         internal string HoldKey {get;init;}="scene-unresolved";
         internal float? AccelerationLimit {get;init;}
         internal bool RequiresPhysicalHold {get;init;}=true;
+        internal bool UsesLiveSource {get;init;}
     }
     internal static Result CheckRig(PrefabPath input,SceneSnapshot? scene,Vector3 own,RouteTrace road,double speed,
         ulong simulationTime,ulong renderTime,RigRuntimePrediction runtime,SceneMotionPrediction motions,string itemIdentity,

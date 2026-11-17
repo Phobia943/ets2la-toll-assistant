@@ -263,6 +263,17 @@ void Run()
     Check("Runtime rig cache exposes only current cargo-expanded local planning evidence",()=>RigPredictionRuntimeTests.ExpandedCache(Assert));
     Check("Actual toll control passes narrow moving lanes and recovers local planned holds",()=>RigControlIntegration.MovingAndRecovery(Assert));
     Check("Actual toll control preserves cancellation and ordinary fast approach slowdown",()=>RigControlIntegration.CancellationAndSpeed(Assert));
+    Check("Standard toll control decouples unknown cargo from real obstacles and takeover",()=>RigControlIntegration.StandardPolicy(Assert));
+    Check("Standard policy migration and stopped changes retire obsolete rig holds",()=>RigControlIntegration.StandardSettings(Assert));
+    Check("Standard source transactions retain original freshness and producer epochs",()=>StandardPolicyReviewTests.SourceTransactions(Assert));
+    Check("Standard policy isolates old rig faults without weakening other holds or F9",()=>StandardPolicyReviewTests.DetailIsolationAndCancellation(Assert));
+    Check("Standard guidance accepts ordinary slopes and retains observed actor motion",()=>StandardPolicyReviewTests.PracticalScopeAndMotion(Assert));
+    Check("Standard local scene checks bind current raw sources and real blockers",()=>StandardSceneAdmissionIntegration.CurrentEvidence(Assert));
+    Check("Standard route slices retain vertices and grades without extrapolation",()=>StandardSceneAdmissionIntegration.StandardTraceContract(Assert));
+    Check("Payment model recognition survives missing detailed clearance",()=>StandardModelEvidenceIntegration.PaymentWithoutClearance(Assert));
+    Check("Model metadata cache is independent of cargo profile but bound to assets",()=>StandardModelEvidenceIntegration.ProfileIndependentCache(Assert));
+    Check("Failed static geometry cannot grant passage through metadata",()=>StandardModelEvidenceIntegration.FailedGeometryStaysClosed(Assert));
+    Check("Metadata reuse stays bound to variant parts special job and descriptor",()=>StandardModelEvidenceIntegration.MetadataIdentity(Assert));
     Check("Current parked scene admission never reuses a prior empty scene as driving permission",()=>ParkedSceneAdmissionIntegration.CurrentEvidence(Assert));
     Check("Early lane choices require model proof and bind real barriers only to the directed selected item",()=>EarlyTollPlanningIntegration.Run(Assert));
     Check("Manual payment zones follow directed navigation geometry rather than backward host metadata",()=>ManualDirectionIntegration.Run(Assert));

@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.3.20 – Standard-Spurführung, Einbau und Fahrprüfung ausstehend
+
+- 166 Integrations-, 82 Kernlogik-, 120 isolierte Host-/Plugin- und 63 Aufnahmetests sowie sechs frühe FR-Kartenfälle bestanden; unabhängiges kritisches Review abgeschlossen. Kein Live-Fahrnachweis. Finaler Plugin-SHA256: `87050FC31939A896C83288E76E8C91046818B6D399374E2078D4F6D0F87B12FE`.
+- Normale Spurwahl und lokale Fahrentscheidung benötigen keine genaue Ladungs-/Achsfreigabe mehr. Benannter Standardkorridor 4,5 m hoch und 3,4 m breit, ausdrücklich kein gemessenes Ladungsmaß. Detaillierter Gespannschutz bleibt optional; bestehende Einstellungen wechseln standardmäßig zur Standardführung.
+- Zahlungs-/Anbauteilmetadaten bleiben unabhängig von einem fehlenden Detailprofil lesbar. Nachgelagerte Geometriefehler werden nicht als freie Spur interpretiert.
+- Lokale Hindernisprüfung bezieht Spielprozess und Fahrzeugpose direkt aus der rohen nativen Messung. Frische/Abdeckung und tatsächliche Hindernisse bleiben erforderlich; eine unbekannte Yacht löst allein keinen Gespannhalt aus.
+- Schranken-, Tracking-, Ausfahrts- und Übernahmeschutz bleiben getrennte Bedingungen. Grenzen und Nachweisumfang: [Review 0.3.20](REVIEW-0.3.20.md).
+
 ## 0.3.19 – installiert und geladen, Startfreigabe offen
 
 - Gerichtete Suche im belegten freien Navigationsgraphen statt ausschließlich kürzeste Verbindung suchen und anschließend verwerfen. Eine längere freie Verbindung zum selben Tor kann berücksichtigt werden. Der konkrete Fall zu Auto-Tor 15 scheiterte an `SmallVehicles` trotz freier physischer Profilmaske; SCS beschreibt dieses Metadatum als [KI-Eignung](https://modding.scssoft.com/wiki/Documentation/Tools/SCS_Blender_Tools/Locators/Prefab_Locators#Allowed_Vehicles). Eine Ausnahme ist nur für bestätigte automatische Tore mit abgeschlossenem vollständigem physischem Nachweis vorgesehen. Geprüfte Negativfälle sind `PlayerOnly`, unbekannte Zahlungsart und eine physisch blockierte automatische `SmallVehicles`-Spur; Gegenrichtung, fremde Tore und ungeklärte Modellmasken bleiben ausgeschlossen.

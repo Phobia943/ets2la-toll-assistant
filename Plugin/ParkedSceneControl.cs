@@ -84,7 +84,9 @@ public sealed partial class TollPlugin
             Disarm("Aktuell gemessenes Fahrzeug im unmittelbaren Fahrkorridor");return -5f;
         }
         var checks=sceneChecks.Where(c=>!c.Clear).Concat(extra).OrderBy(c=>c.StopDistance).ToArray();
-        if(checks.Length==0){sceneStatus="Aktuelle Maut-Parkfahrzeuge außerhalb der Gespannhülle.";ClearSceneHold();return original;}
+        if(checks.Length==0){sceneStatus=options.DetailedRigProtection?
+            "Aktuelle Maut-Parkfahrzeuge außerhalb der Gespannhülle.":
+            "Aktuelle Maut-Parkfahrzeuge außerhalb des Standard-Spurkorridors; Ladungshülle nicht bestätigt.";ClearSceneHold();return original;}
         var holds=checks.Where(c=>c.RequiresPhysicalHold).ToArray();
         var check=sceneHold.Holding?holds.FirstOrDefault(c=>c.HoldKey==sceneHold.OwnerKey)??holds.FirstOrDefault():holds.FirstOrDefault();
         sceneStopping=true;sceneStatus=(check??checks[0]).Reason;

@@ -33,10 +33,14 @@ public sealed class TollModelEvidence
         public readonly object Diagnostic=new{revision=Interlocked.Increment(ref nextRevision),key.Model,key.Variant,key.Parts,key.Height,key.Width,key.GeometryStamp};
     }
     sealed record Job(IFileSystem Source,ModelRequest Request,Entry Entry);
-    internal sealed record ModelRequest(string Model,string Variant,string[] Parts,bool SpecialJob,PrefabDescriptor Descriptor,string[] Archives,float Height=6,float Width=3);
+    internal sealed record ModelRequest(string Model,string Variant,string[] Parts,bool SpecialJob,PrefabDescriptor Descriptor,string[] Archives,
+        float Height=TollOptions.StandardLaneHeight,float Width=TollOptions.StandardLaneWidth);
     public sealed record ModelInspection(IReadOnlyDictionary<int,TollPayment> Payments,bool[] BlockedCurves)
     { public IReadOnlyDictionary<int,ManualStopZone> ManualStops {get;init;}=new Dictionary<int,ManualStopZone>();
       public string? Issue {get;init;}
+      // Attachment discovery completed independently of the clearance mask.
+      // This never makes a failed geometry inspection passable.
+      public bool AttachmentsVerified {get;init;}
       public bool HasDynamicParked {get;init;}
       public RigStaticGeometry? StaticGeometry {get;init;}
       public IReadOnlyList<ObstacleSphere> BoundedMovers {get;init;}=Array.Empty<ObstacleSphere>(); }
@@ -57,12 +61,12 @@ public sealed class TollModelEvidence
 
     public IReadOnlyDictionary<int,TollPayment> Read(ParsedPrefab prefab)
     {
-        var entry=GetEntry(prefab);
+        var entry=GetEntry(prefab,metadata:true);
         return entry==null?Unknown:Volatile.Read(ref entry.Result)?.Payments ?? Unknown;
     }
     public void Prefetch(ParsedPrefab prefab)
     {
-        if(prefab.Descriptor?.NavCurves.Any(c=>c.SemaphoreId>=0)==true)_=GetEntry(prefab);
+        if(prefab.Descriptor?.NavCurves.Any(c=>c.SemaphoreId>=0)==true)_=GetEntry(prefab,metadata:true);
     }
     internal ModelInspection? ReadInspection(ParsedPrefab prefab)
     {
@@ -79,6 +83,7 @@ public sealed class TollModelEvidence
         // Attachment kind is structural, independent of the current clearance
         // height/width. A temporarily unavailable rig profile must not hide a
         // previously verified parked-vehicle requirement from the output guard.
+        _=GetEntry(prefab,metadata:true);
         var current=readFiles();if(current==null||prefab.Descriptor==null)return null;
         lock(sync) {
             if(!ReferenceEquals(current,files))return null;
@@ -87,13 +92,13 @@ public sealed class TollModelEvidence
             string stamp=DescriptorStamp(prefab.Descriptor!);
             var known=cache.Where(p=>p.Key.Model==model&&p.Key.Variant==variant&&p.Key.Parts==parts&&p.Key.GeometryStamp==stamp&&
                 ReferenceEquals(p.Key.Descriptor,prefab.Descriptor)&&p.Key.SpecialJob==(readSpecialJob?.Invoke()??false))
-                .Select(p=>Volatile.Read(ref p.Value.Result)).Where(r=>r is {Issue:null}&&r.Payments.Count>0).ToArray();
+                .Select(p=>Volatile.Read(ref p.Value.Result)).Where(r=>r!=null&&(r.Issue==null||r.AttachmentsVerified)&&r.Payments.Count>0).ToArray();
             return known.Length==0?null:known.Any(r=>r!.HasDynamicParked);
         }
     }
     public ManualStopZone? ReadManualStop(ParsedPrefab prefab,int gate)
     {
-        var entry=GetEntry(prefab);
+        var entry=GetEntry(prefab,metadata:true);
         return entry==null?null:Volatile.Read(ref entry.Result)?.ManualStops.GetValueOrDefault(gate);
     }
 
@@ -105,7 +110,7 @@ public sealed class TollModelEvidence
         var path=PrefabRefinement.OriginalFor(input);
         var entry=GetEntry(path.Prefab);var result=entry==null?null:Volatile.Read(ref entry.Result);
         var descriptor=path.Prefab.Descriptor;
-        if(result==null||descriptor==null||result.BlockedCurves.Length!=descriptor.NavCurves.Count||path.Curves.Count==0)return false;
+        if(result==null||result.Issue!=null||descriptor==null||result.BlockedCurves.Length!=descriptor.NavCurves.Count||path.Curves.Count==0)return false;
         return path.Curves.All(curve=>descriptor.NavCurves.IndexOf(curve) is int i && i>=0 && !result.BlockedCurves[i]);
     }
 
@@ -131,7 +136,7 @@ public sealed class TollModelEvidence
             Enumerable.Range(0,blocked.Length).Where(i=>blocked[i]).ToArray()){Evidence=entry?.Diagnostic};
     }
 
-    Entry? GetEntry(ParsedPrefab prefab)
+    Entry? GetEntry(ParsedPrefab prefab,bool metadata=false)
     {
         var current=readFiles();var descriptor=prefab.Descriptor;
         if(current==null||descriptor==null)return null;
@@ -139,21 +144,31 @@ public sealed class TollModelEvidence
             if(!ReferenceEquals(current,files)) {files=current;archives=inspect==null?IndependentAssets.SnapshotPaths(current):[];cache.Clear();}
             if(archives==null)return null;
             var parts=prefab.Prefab.AdditionalParts.Select(p=>p.ToString()).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
-            var profile=readProfile?.Invoke()??(6f,3f);
-            if(!float.IsFinite(profile.Item1)||!float.IsFinite(profile.Item2)||profile.Item1 is <3 or >8||profile.Item2 is <2 or >5)return null;
+            var profile=readProfile?.Invoke()??(TollOptions.StandardLaneHeight,TollOptions.StandardLaneWidth);
+            if(!float.IsFinite(profile.Item1)||!float.IsFinite(profile.Item2)||profile.Item1 is <3 or >8||profile.Item2 is <2 or >5) {
+                // Payment markers and physical attachment kinds are model
+                // metadata. Inspect a named nominal corridor to obtain them,
+                // but strict clearance callers never enter this fallback.
+                if(!metadata)return null;
+                profile=(TollOptions.StandardLaneHeight,TollOptions.StandardLaneWidth);
+            }
             var key=new ModelKey(prefab.Prefab.Model.ToString(),prefab.Prefab.Variant.ToString(),string.Join('\u001f',parts),readSpecialJob?.Invoke()??false,descriptor,profile.Item1,profile.Item2,DescriptorStamp(descriptor));
             cache.TryGetValue(key,out var existing);
             if(existing!=null&&Volatile.Read(ref existing.Result)!=null)return existing;
+            var metadataKnown=metadata?cache.Where(p=>p.Key.Model==key.Model&&p.Key.Variant==key.Variant&&p.Key.Parts==key.Parts&&
+                p.Key.SpecialJob==key.SpecialJob&&ReferenceEquals(p.Key.Descriptor,key.Descriptor)&&p.Key.GeometryStamp==key.GeometryStamp&&
+                Volatile.Read(ref p.Value.Result) is { } result&&result.Payments.Count>0)
+                .Select(p=>p.Value).FirstOrDefault():null;
             var dominating=cache.Where(p=>p.Key.Model==key.Model&&p.Key.Variant==key.Variant&&p.Key.Parts==key.Parts&&
                 p.Key.SpecialJob==key.SpecialJob&&ReferenceEquals(p.Key.Descriptor,key.Descriptor)&&p.Key.GeometryStamp==key.GeometryStamp&&
                 p.Key.Height>=key.Height&&p.Key.Width>=key.Width&&Volatile.Read(ref p.Value.Result) is {Issue:null})
                 .OrderBy(p=>p.Key.Height*p.Key.Width).Select(p=>p.Value).FirstOrDefault();
-            if(existing!=null)return dominating??existing;
+            if(existing!=null)return dominating??metadataKnown??existing;
             // Bound pending heavy work; callers retry from discovery without waiting.
-            if(pending.Count>=4)return dominating;
+            if(pending.Count>=4)return dominating??metadataKnown;
             if(cache.Count>=64) {
                 var old=cache.FirstOrDefault(p=>Volatile.Read(ref p.Value.Result)!=null);
-                if(old.Key==null)return dominating;
+                if(old.Key==null)return dominating??metadataKnown;
                 cache.Remove(old.Key);
             }
             var copy=new PrefabDescriptor {NavCurves=descriptor.NavCurves.Select(CloneCurve).ToList()};
@@ -168,7 +183,7 @@ public sealed class TollModelEvidence
             // A larger completed corridor can safely prove a smaller one.
             // Still schedule the exact smaller profile: a blocked larger box
             // must not permanently hide a lane that the smaller rig can use.
-            return dominating??entry;
+            return dominating??metadataKnown??entry;
         }
     }
 
@@ -269,18 +284,6 @@ public sealed class TollModelEvidence
                 "tollgate.autopass.oversize" or "tollgate.autopass.ovs_disable" or "tollgate.autopass.ovs_disable.long" or
                 "tollgate.manual.ovs_disable" or "tollgate.custom") && (hookup==null||nonSolidHookups?.Contains(hookup)!=true))return Reject("Nicht geprüfter Modell-Hookup: "+(hookup??"ungültiger Verweis"));
         }
-        var staticGeometry=ModelClearance.CaptureGeometry(visible,children);
-        var blocked=ModelClearance.BlockedCurves(descriptor,visible,height,width,children,staticGeometry);
-        var movers=readBoundedMovers?.Invoke()?.ToArray()??[];
-        if(movers.Length>0) {
-            if(!cubicVerified.Value)return Reject("Ungeprüfte Maut-Splineformel");
-            for(int i=0;i<blocked.Length;i++) {
-                var curve=descriptor.NavCurves[i];
-                Vector3 At(float t)=>PrefabUtils.InterpolateNavCurve(curve,t);
-                var hull=CubicSeparation.FromCubicSamples(At(0),At(1f/3),At(2f/3),At(1));
-                blocked[i]|=movers.Any(s=>!CubicSeparation.Outside(hull.A,hull.B,hull.C,hull.D,s,width/2));
-            }
-        }
         var markers=visible.SelectMany(p=>p.Locators).Select(l=> {
             var hook=ReadHookup(pmg,l.HookupOffset);
             var payment=tollUnits==null?DecodeHookup(pmg,l.HookupOffset,specialJob):
@@ -288,11 +291,33 @@ public sealed class TollModelEvidence
             return (l.Position,Payment:payment);
         })
             .Where(l=>l.Payment!=TollPayment.Unknown);
-        return new(Match(descriptor,markers),blocked) {
-            StaticGeometry=staticGeometry,BoundedMovers=Array.AsReadOnly(movers),
+        var metadata=new ModelInspection(Match(descriptor,markers),[]) {
+            AttachmentsVerified=true,
             ManualStops=tollUnits==null?new Dictionary<int,ManualStopZone>():
                 ManualTriggerEvidence.Read(descriptor,visible,pmg,tollUnits,specialJob)
         };
+        // Only the independently validated root markers and attachment scan
+        // survive a later mesh/profile failure. Unknown visibility, hook-up
+        // structure or marker matching above still returns Unknown/rejects.
+        try {
+            var staticGeometry=ModelClearance.CaptureGeometry(visible,children);
+            if(!float.IsFinite(height)||!float.IsFinite(width)||height is <3 or >8||width is <2 or >5)
+                return metadata with {Issue="Ungültiger Maut-Prüfkorridor."};
+            var blocked=ModelClearance.BlockedCurves(descriptor,visible,height,width,children,staticGeometry);
+            var movers=readBoundedMovers?.Invoke()?.ToArray()??[];
+            if(movers.Length>0) {
+                if(!cubicVerified.Value)return metadata with {Issue="Ungeprüfte Maut-Splineformel"};
+                for(int i=0;i<blocked.Length;i++) {
+                    var curve=descriptor.NavCurves[i];
+                    Vector3 At(float t)=>PrefabUtils.InterpolateNavCurve(curve,t);
+                    var hull=CubicSeparation.FromCubicSamples(At(0),At(1f/3),At(2f/3),At(1));
+                    blocked[i]|=movers.Any(s=>!CubicSeparation.Outside(hull.A,hull.B,hull.C,hull.D,s,width/2));
+                }
+            }
+            return metadata with {BlockedCurves=blocked,StaticGeometry=staticGeometry,BoundedMovers=Array.AsReadOnly(movers)};
+        } catch(Exception ex) when(ex is InvalidDataException or ArgumentException or OverflowException or IndexOutOfRangeException) {
+            return metadata with {Issue="Maut-Geometrieprüfung: "+ex.Message};
+        }
     }
     internal static bool IsNonSolidHookup(Unit unit)
     {
