@@ -1,6 +1,6 @@
 # 0.4.2 – Stillstand, Feststellbremse und Rollbewegung
 
-Stand: 17. November 2026. Kandidat, noch nicht installiert. Im Spiel ist 0.4.1 installiert; nach dem fehlgeschlagenen Standtest wurde die manuelle Übernahme vom Nutzer bestätigt. Für den nächsten Einbau wird ausschließlich die Plugin-Datei ausgetauscht. Die geprüften Hostbibliotheken und ihr Manifest bleiben unverändert.
+Stand: 17. November 2026. Am 17. November 2026 um 17:59 Uhr MEZ nach bestätigtem Stillstand und geschlossenem ETS2LA installiert. Ausschließlich die Plugin-Datei wurde ersetzt; deren Prüfsumme und die gesicherte vorherige 0.4.1 wurden unabhängig kontrolliert. ETS2LA wurde nicht automatisch gestartet. Die geprüften Hostbibliotheken und ihr Manifest bleiben unverändert.
 
 ## Aufgezeichneter Fehler
 

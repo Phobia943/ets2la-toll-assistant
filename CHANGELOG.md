@@ -1,6 +1,6 @@
 # Änderungen
 
-## 0.4.2 – Stillstand, Feststellbremse und tatsächliches Rollen unterscheiden, Kandidat
+## 0.4.2 – Stillstand, Feststellbremse und tatsächliches Rollen unterscheiden, installiert
 
 - Vereinheitlicht die kleine negative Standtoleranz für Kurvenprofil, Szenenzulassung, Fahrüberwachung und eigene Geschwindigkeitsregelung. Ein winziger negativer Messwert verwirft keine vorhandene Kurvenvorschau mehr.
 - Eine frisch gemeldete Feststellbremse bei bestätigtem Stillstand hält Gas und Betriebsbremse neutral. Gewöhnliche alte Halteanforderungen werden aufgehoben; Hindernisse, geschlossene Schranken und Fehler bleiben erhalten und werden beim Lösen neu bewertet.
