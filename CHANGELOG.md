@@ -1,8 +1,8 @@
 # Änderungen
 
-## 0.3.22 – Standrauschen, Befehlszeit und zusätzliche Bremsdiagnose
+## 0.3.22 – Standrauschen, Befehlszeit und zusätzliche Bremsdiagnose, installiert
 
-- 177 Integrations-, 87 Kernlogik-, 146 isolierte Host-/Plugin- und 63 Aufnahmeprüfungen bestanden; kritisches Review abgeschlossen. Noch nicht installiert oder live gefahren. Finaler SHA256 `A8F789D79C9CCE3B49F6B273749C104617AA77140E7641E0148A9D570CD8BC96`.
+- 177 Integrations-, 87 Kernlogik-, 146 isolierte Host-/Plugin- und 63 Aufnahmeprüfungen bestanden; kritisches Review und Code-CI abgeschlossen. Am 17. November um 12:12 Uhr MEZ nach bestätigtem Halt und geschlossenem ETS2LA installiert. Vorversion .21 gesichert, Plugin, Backup und sechs Begleitdateien unabhängig geprüft. Start- und Fahrprüfung auf Nutzerwunsch später; kein automatischer App- oder Assistenzstart. Finaler SHA256 `A8F789D79C9CCE3B49F6B273749C104617AA77140E7641E0148A9D570CD8BC96`.
 - Winzige negative Geschwindigkeitswerte bis −0,01 m/s erzeugen in der Standard-Szenenprüfung keinen falschen Routenverlust mehr. Echte Rückwärtsfahrt, Hindernisse und fehlende Quellen bleiben gesperrt. Der erste Verzögerungsbeginn vor dem offenen Tor bleibt ungeklärt.
 - Lenkbefehle werden mit ihren ursprünglichen monotonen Zeitstempeln bewertet. Speichern und letzte Prüfung vor der Fehlerverriegelung verwenden dieselbe kurze Ausgabesperre; fremde Sitzungsepochen bleiben ausgeschlossen. 150-ms-Lenkfrist, 200-ms-Ausgabezulassung und 350-ms-Anlaufzeit bleiben unverändert.
 - Die Diagnose trennt normale und szenenbedingte Halteausgaben, native Tempomatbegrenzungen und rohe Ausgabe-/Empfangs-/Prüfzeitstempel. Fremdbeobachtung mit Versionsprüfung erfolgt ausschließlich auf dem begrenzten Diagnosearbeiter.
