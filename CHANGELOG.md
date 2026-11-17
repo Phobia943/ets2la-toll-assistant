@@ -1,8 +1,9 @@
 # Änderungen
 
-## 0.3.20 – Standard-Spurführung, Einbau und Fahrprüfung ausstehend
+## 0.3.20 – Standard-Spurführung installiert und bereit, Fahrprüfung ausstehend
 
 - 166 Integrations-, 82 Kernlogik-, 120 isolierte Host-/Plugin- und 63 Aufnahmetests sowie sechs frühe FR-Kartenfälle bestanden; unabhängiges kritisches Review abgeschlossen. Kein Live-Fahrnachweis. Finaler Plugin-SHA256: `87050FC31939A896C83288E76E8C91046818B6D399374E2078D4F6D0F87B12FE`.
+- Am 17. November um 10:35 Uhr MEZ mit bestätigtem ETS2LA-Ende installiert; alte .19-Datei gesichert, neues Plugin und alle sechs unveränderten Begleitdateien unabhängig hashverifiziert. Code-CI für `8f11deb` erfolgreich. Nach Nutzerstart und Einschalten der vier Module sind geladene .20, Standardmodus und Startbereitschaft bestätigt; Assistenz und Fehlerbremsung aus. Aktive Fahrprüfung bleibt offen.
 - Normale Spurwahl und lokale Fahrentscheidung benötigen keine genaue Ladungs-/Achsfreigabe mehr. Benannter Standardkorridor 4,5 m hoch und 3,4 m breit, ausdrücklich kein gemessenes Ladungsmaß. Detaillierter Gespannschutz bleibt optional; bestehende Einstellungen wechseln standardmäßig zur Standardführung.
 - Zahlungs-/Anbauteilmetadaten bleiben unabhängig von einem fehlenden Detailprofil lesbar. Nachgelagerte Geometriefehler werden nicht als freie Spur interpretiert.
 - Lokale Hindernisprüfung bezieht Spielprozess und Fahrzeugpose direkt aus der rohen nativen Messung. Frische/Abdeckung und tatsächliche Hindernisse bleiben erforderlich; eine unbekannte Yacht löst allein keinen Gespannhalt aus.
