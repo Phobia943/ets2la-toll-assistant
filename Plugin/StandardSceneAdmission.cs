@@ -28,7 +28,8 @@ internal static class StandardSceneAdmission
         if(first>horizon)return Clear("Entfernte Maut außerhalb des aktuellen Standardkorridors");
         double waitDistance=Math.Max(0,first-ApproachStop.BufferMetres);
         double end=Math.Min(road.Length,current.Along+horizon);
-        if(!road.TryStandardSlice(current.Along,end,.5,out var points,out _))return Wait("Begrenzter Standard-Routenverlauf fehlt",waitDistance);
+        if(!road.TryStandardSlice(current.Along,end,.5,out var points,out var sliceIssue))
+            return Wait("Begrenzter Standard-Routenverlauf fehlt: "+sliceIssue,waitDistance);
         var segments=new Segment[points.Count-1];
         var low=new Vector3(float.PositiveInfinity);var high=new Vector3(float.NegativeInfinity);
         for(int i=1;i<points.Count;i++) {

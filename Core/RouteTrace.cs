@@ -188,15 +188,60 @@ public sealed class RouteTrace
         if(!IdentityKnown||segmentKeys==null||!double.IsFinite(from)||!double.IsFinite(to)||
             !double.IsFinite(maxStep)||from<0||to<=from||to>Length||to-from>300||maxStep is <.05 or >.5)
             {issue="Bounded identified standard trace is missing";return false;}
+        var numericalSeams=new HashSet<int>();
+        bool NumericalSeam(int i) {
+            if(!connectorEnds.Contains(i)||i<2||i>=points.Length-1||connectorEnds.Contains(i-1)||connectorEnds.Contains(i+1))return false;
+            var a=points[i-1]-points[i-2];var b=points[i+1]-points[i];
+            return a.LengthSquared()>=1e-8&&b.LengthSquared()>=1e-8&&
+                Vector3.Dot(Vector3.Normalize(a),Vector3.Normalize(b))>=.95f&&
+                Vector3.Distance(points[i-1],points[i])<=StandardSeamPrecision(points[i-1],points[i]);
+        }
         for(int i=1;i<points.Length;i++) {
             if(distances[i]<=from||distances[i-1]>=to)continue;
-            var delta=points[i]-points[i-1];if(delta.LengthSquared()<1e-8){issue="Degenerate standard segment";return false;}
-            if(!connectorEnds.Contains(i))continue;
+            var delta=points[i]-points[i-1];
+            if(!connectorEnds.Contains(i)) {
+                if(delta.LengthSquared()<1e-8){issue="Degenerate standard segment";return false;}
+                continue;
+            }
             if(i<2||i>=points.Length-1||connectorEnds.Contains(i-1)||connectorEnds.Contains(i+1))
                 {issue="Standard seam lacks directed neighbours";return false;}
             var a=points[i-1]-points[i-2];var b=points[i+1]-points[i];
-            if(a.LengthSquared()<1e-8||b.LengthSquared()<1e-8||Vector3.Dot(delta,a)<=0||Vector3.Dot(delta,b)<=0)
-                {issue="Standard seam reverses its directed trace";return false;}
+            if(a.LengthSquared()<1e-8||b.LengthSquared()<1e-8)
+                {issue="Standard seam lacks nondegenerate directed neighbours";return false;}
+            bool forward=delta.LengthSquared()>=1e-8&&Vector3.Dot(delta,a)>0&&Vector3.Dot(delta,b)>0;
+            // RouteMatcher retains both independently interpolated item ends.
+            // At large world coordinates they can coincide or differ by a few
+            // representable float steps, including a small negative projection.
+            // Only a marked seam with agreeing real neighbours gets this bound;
+            // no road is extended and the original identities remain untouched.
+            bool numerical=NumericalSeam(i);
+            if(!forward&&!numerical){issue="Standard seam reverses its directed trace";return false;}
+            if(numerical)numericalSeams.Add(i);
+        }
+        // Endpoint tangent interpolation also reads the immediately adjacent
+        // segment outside the requested window. Classify ONLY those numerical
+        // supports; do not sample/authorize extra geometry or reject distant
+        // seams outside the actual corridor.
+        foreach(int i in connectorEnds)
+            if(i>=2&&i<points.Length-1&&distances[i+1]>=from&&distances[i-2]<=to&&NumericalSeam(i))numericalSeams.Add(i);
+        bool StandardPoint(double along,out TraceSlicePoint sample) {
+            sample=default;int end=1;while(end<points.Length-1&&distances[end]<along)end++;
+            while(end<points.Length-1&&distances[end]-distances[end-1]<1e-6)end++;
+            double length=distances[end]-distances[end-1];if(length<1e-6)return false;
+            float factor=(float)Math.Clamp((along-distances[end-1])/length,0,1);
+            Vector3 Tangent(int vertex) {
+                // Geometry/progress is never altered. Only exclude the proven
+                // rounding connector from orientation averaging: its tiny
+                // backward vector is not a real opposite driving direction.
+                var before=vertex>0&&!numericalSeams.Contains(vertex)?points[vertex]-points[vertex-1]:Vector3.Zero;
+                var after=vertex<points.Length-1&&!numericalSeams.Contains(vertex+1)?points[vertex+1]-points[vertex]:Vector3.Zero;
+                if(before.LengthSquared()>1e-8)before=Vector3.Normalize(before);
+                if(after.LengthSquared()>1e-8)after=Vector3.Normalize(after);
+                var sum=before+after;return sum.LengthSquared()>1e-8?Vector3.Normalize(sum):Vector3.Zero;
+            }
+            var direction=Vector3.Lerp(Tangent(end-1),Tangent(end),factor);if(direction.LengthSquared()<.1)return false;
+            sample=new(Vector3.Lerp(points[end-1],points[end],factor),Vector3.Normalize(direction),along,
+                segmentKeys[end-1],connectorEnds.Contains(end));return true;
         }
         var cuts=new[]{from}.Concat(distances.Where(d=>d>from+.0001&&d<to-.0001)).Append(to).Distinct().Order().ToArray();
         var result=new List<TraceSlicePoint>();
@@ -205,11 +250,20 @@ public sealed class RouteTrace
             if(count>4095-result.Count){issue="Standard trace sampling budget exhausted";return false;}
             for(int n=i==1?0:1;n<=count;n++) {
                 double along=cuts[i-1]+(cuts[i]-cuts[i-1])*n/count;
-                if(!TryAtAlong(along,out var point)){issue="Standard tangent is ambiguous";return false;}
+                if(!StandardPoint(along,out var point)){issue="Standard tangent is ambiguous";return false;}
                 result.Add(point);
             }
         }
         slice=result.AsReadOnly();return true;
+    }
+    static double StandardSeamPrecision(Vector3 a,Vector3 b)
+    {
+        static double Ulp(float value)=>Math.Max(Math.Abs((double)MathF.BitIncrement(value)-value),Math.Abs((double)value-MathF.BitDecrement(value)));
+        double x=Math.Max(Ulp(a.X),Ulp(b.X)),y=Math.Max(Ulp(a.Y),Ulp(b.Y)),z=Math.Max(Ulp(a.Z),Ulp(b.Z));
+        // Four float rounding steps cover the two endpoint interpolations and
+        // transforms, per coordinate. Never turn coarse coordinates into a
+        // physical lane-change allowance: the absolute ceiling is 25mm.
+        return Math.Min(.025,4*Math.Sqrt(x*x+y*y+z*z));
     }
     public bool TrySlice(double from,double to,double maxStep,out IReadOnlyList<TraceSlicePoint> slice,out string? issue)
     {

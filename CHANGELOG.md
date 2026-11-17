@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.3.21 – Korrektur der numerischen Mautausfahrt-Übergänge
+
+- 170 Integrations-, 84 Kernlogik-, 120 Host-/Plugin- und 63 Aufnahmeprüfungen bestanden; unabhängiges kritisches Review mit 26 gezielten Assertions abgeschlossen. Finaler Build besteht alle 480 gespeicherten Bewegungsproben und acht zusätzliche Nahtfenster. SHA256 `B6657F0639F59FC1F1F2FB215AA048406042D1C4DAA5DB7C414028C071165CB3`.
+- Aufgezeichneten Halt nach der Durchfahrt auf einen identischen Prefab-/Straßen-Endpunkt zurückgeführt: erster Korridorfehler und erster ACC-Bremsbefehl liegen im selben Bewegungsframe. Gerichtete Übergänge erhalten eine begrenzte, koordinatenabhängige Float-Toleranz; echte Lücken und Gegenrichtung bleiben ausgeschlossen.
+- Die Standard-Abtastung behandelt numerische Übergänge auch bei der Tangentenbildung. Originalgeometrie und Itemidentitäten bleiben erhalten; der optionale strenge Gespannnachweis wird nicht gelockert.
+- Getrennter früher Planer-Pausefehler erhält nur bei soeben bestätigter, weiterhin passender Route und frischen Lenksignalen eine höchstens 200 ms alte Übergangsgrundlage ohne Beschleunigung. Bestätigte SDK-Pause verwirft alte kurze Wiederherstellungstimer. Keine allgemeine Toleranz für verlorene Routen oder lange Pause ohne neue Route.
+- Szenendiagnose erhält den konkreten Abtastfehler und zeigt ohne aktuelle Begrenzung keinen alten Haltegrund mehr. Laufende Nutzerfahrt bleibt unverändert; Einbau und Live-Fahrt mit .21 stehen aus. [Prüfbericht](REVIEW-0.3.21.md).
+
 ## 0.3.20 – Standard-Spurführung installiert und bereit, Fahrprüfung ausstehend
 
 - 166 Integrations-, 82 Kernlogik-, 120 isolierte Host-/Plugin- und 63 Aufnahmetests sowie sechs frühe FR-Kartenfälle bestanden; unabhängiges kritisches Review abgeschlossen. Kein Live-Fahrnachweis. Finaler Plugin-SHA256: `87050FC31939A896C83288E76E8C91046818B6D399374E2078D4F6D0F87B12FE`.

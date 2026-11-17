@@ -49,6 +49,7 @@ void Run()
     var results=new List<string>();
     void Check(string name, Action test) { if(args is ["--filter",var filter]&&!name.Contains(filter,StringComparison.OrdinalIgnoreCase))return;try {test(); results.Add("PASS "+name);} catch(Exception ex) {results.Add("FAIL "+name+": "+ex); } }
     void Assert(bool v,string message="Assertion failed") {if(!v)throw new Exception(message);}
+    Check("Standard exit slicing accepts numerical item handoffs but rejects physical gaps and reversals",()=>StandardSliceHandoffIntegration.NumericalItemBoundaries(Assert));
     Check("Curve geometry excludes grades, item seams and isolated interpolation spikes",()=>CurveSpeedTests.Geometry(Assert));
     Check("Curve speed preview slows ahead without increasing native bounds or stopping a slow truck",()=>CurveSpeedTests.Limits(Assert));
     Check("Delayed 90 km/h approach simulation slows before the curve without hard braking",()=>CurveSpeedTests.ApproachSimulation(Assert));
@@ -241,6 +242,8 @@ void Run()
     Check("Valid routes cannot hide missing steering; braking bypasses route locks and manual takeover releases it",()=>SteeringSafetyIntegration.Run(Assert));
     Check("Live steering commands remain visible during busy route work without false dropout braking",()=>SteeringSafetyIntegration.BusyHealthyFeed(Assert));
     Check("A newly delivered game pause is honored even before busy route bookkeeping drains it",()=>SteeringSafetyIntegration.PauseDeliveryWhileBusy(Assert));
+    Check("Planner pause handoff handles both message orders without a false emergency latch",()=>PlannerPauseIntegration.Handoff(Assert));
+    Check("Planner pause handoff cannot renew stale route authority or conceal real failures",()=>PlannerPauseIntegration.Refusals(Assert));
     Check("Manual brake releases even a pending steering fault before route bookkeeping is available",()=>SteeringSafetyIntegration.BusyManualRelease(Assert));
     Check("Slow native diagnostics cannot delay fault braking, brake refresh or manual acknowledgement",()=>SteeringSafetyIntegration.SlowDiagnostics(Assert));
     Check("Blocked diagnostic storage cannot hold the driving tick, ACC or route delivery",()=>DiagnosticDeliveryIntegration.BlockedStorage(Assert));
@@ -578,6 +581,27 @@ void Run()
         var ready = input with { Time = .1, Route = RouteFeed.Valid, DecisionReady = true };
         Assert(control.Step(ready) == DriveAction.Drive);
         Assert(control.Step(input with { Time = .2 }) == DriveAction.EmergencyStop);
+    });
+    Check("Planner pause transition uses accepted-route age, preserves failures and excludes paused wall time",()=>{
+        var ready=new DriveFrame(0,16,true,false,true,RouteFeed.Valid,.01,true,true);
+        var pause=ready with {Time=.1,Route=RouteFeed.PlannerPaused,RouteAge=.1,DecisionReady=false};
+        var control=new DriveSupervisor();Assert(control.Step(ready)==DriveAction.Drive);
+        Assert(control.Step(pause)==DriveAction.Recover);
+        Assert(control.Step(pause with {Time=.15,Paused=true})==DriveAction.Paused);
+        Assert(control.Step(ready with {Time=60})==DriveAction.Drive);
+        foreach(var fault in new[]{pause with {RouteAge=.2},pause with {RouteAge=double.NaN},
+            pause with {RouteAge=-.1},pause with {CanRecover=false},pause with {TelemetryFresh=false},
+            pause with {Route=RouteFeed.Rejected},pause with {Route=RouteFeed.Loading},
+            pause with {Route=RouteFeed.Waiting},pause with {Route=RouteFeed.AssistsOff}}) {
+            var guard=new DriveSupervisor();guard.Step(ready);
+            Assert(guard.Step(fault)==DriveAction.EmergencyStop);
+        }
+        var repeated=new DriveSupervisor();repeated.Step(ready);repeated.Step(pause);
+        Assert(repeated.Step(pause with {Time=.201,RouteAge=.201})==DriveAction.EmergencyStop);
+        var longPause=new DriveSupervisor();longPause.Step(ready);longPause.Step(pause with {Paused=true});
+        Assert(longPause.Step(pause with {Time=60,RouteAge=60})==DriveAction.EmergencyStop);
+        Assert(new DriveSupervisor().Step(pause with {Speed=0})==DriveAction.RejectStart);
+        Assert(control.Step(pause with {Enabled=false})==DriveAction.Idle);
     });
     Check("Brief input loss requires continuous recovery and resets after manual cancellation",()=>{
         var ready = new DriveFrame(0, 16, true, false, true, RouteFeed.Valid, .01, true, true);

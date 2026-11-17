@@ -78,7 +78,7 @@ public sealed partial class TollPlugin
             extra.Add(new(false,decision.Phase,Math.Max(0,gate.Distance-offset))
                 {HoldKey="live-barrier:"+gate.Key,AccelerationLimit=decision.MaxAcceleration});
         }
-        if(prefabs.Length==0&&extra.Count==0){ClearSceneHold();return original;}
+        if(prefabs.Length==0&&extra.Count==0){sceneStatus="Keine aktuelle Maut-Parkfahrzeug-Begrenzung.";ClearSceneHold();return original;}
         var sceneChecks=EvaluateRigChecks(prefabs);
         if(sceneChecks.Any(c=>SceneStopPolicy.NeedsEmergency(speed,c.AcuteDistance))) {
             Disarm("Aktuell gemessenes Fahrzeug im unmittelbaren Fahrkorridor");return -5f;

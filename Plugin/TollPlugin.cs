@@ -356,14 +356,15 @@ public sealed partial class TollPlugin : Plugin
             return DriveAction.Idle;
         }
 
-        double routeAge = now - pathAt;
+        bool plannerPaused = path is { HasError: true, ErrorMessage: "Game is paused." };
+        double routeAge = now - (plannerPaused ? lastAcceptedPlanAt : pathAt);
         var route = path switch
         {
             null => RouteFeed.Waiting,
             { HasError: false } when safetyTrace != null && routeAge < 1 => RouteFeed.Valid,
             { HasError: false } => RouteFeed.Waiting,
             { ErrorMessage: "Assists are disabled." } => RouteFeed.AssistsOff,
-            { ErrorMessage: "Game is paused." } => RouteFeed.Waiting,
+            { ErrorMessage: "Game is paused." } => RouteFeed.PlannerPaused,
             { ErrorMessage: ConnectorStart.MissingRoad } when connectorPending => RouteFeed.Loading,
             { ErrorMessage: "Waiting for map data..." } when routeAge < 1 => RouteFeed.Loading,
             _ => RouteFeed.Rejected
@@ -371,7 +372,7 @@ public sealed partial class TollPlugin : Plugin
         bool telemetryFresh = sdk && now - telemetryAt < .5;
         bool laneOnly = State.DrivingMode == DrivingMode.LaneAssistOnly;
         bool mayRecover = false;
-        if (telemetryFresh && !paused && route == RouteFeed.Valid && safetyTrace is { } trace)
+        if (telemetryFresh && !paused && (route is RouteFeed.Valid or RouteFeed.PlannerPaused) && safetyTrace is { } trace)
         {
             var fault = trackingGuard.Check(trace, position, headingTurns, speed,
                 State.DrivingMode != DrivingMode.AdaptiveCruiseControlOnly);
@@ -387,6 +388,7 @@ public sealed partial class TollPlugin : Plugin
         }
 
         bool steeringReady=!monitorSteering || State.DrivingMode==DrivingMode.AdaptiveCruiseControlOnly || steeringFeedState==SteeringFeedState.Healthy;
+        if (plannerPaused) mayRecover &= steeringReady;
         bool decisionReady = steeringReady && (laneOnly || (Fresh(now) && decisionArmed && now - evaluatedAt <= .3));
         var frame = new DriveFrame(now, speed, true, paused, telemetryFresh, route, routeAge, decisionReady, mayRecover);
         var before = supervisor.Checkpoint;

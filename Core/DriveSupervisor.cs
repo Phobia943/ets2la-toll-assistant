@@ -1,6 +1,6 @@
 namespace MautAssistent;
 
-public enum RouteFeed { Waiting, Loading, Valid, Rejected, AssistsOff }
+public enum RouteFeed { Waiting, Loading, Valid, Rejected, AssistsOff, PlannerPaused }
 public enum DriveAction { Idle, Paused, AwaitRoute, Drive, Recover, RejectStart, EmergencyStop }
 
 public readonly record struct DriveFrame(
@@ -38,11 +38,28 @@ public sealed class DriveSupervisor(DriveCheckpoint initialState = default)
         if (frame.Paused)
         {
             if (!drove) started = null;
+            // No simulated driving time elapses during a confirmed SDK pause.
+            // Resume still requires a fresh valid route; it must not inherit an
+            // already expired pre-pause recovery timer once that route arrives.
+            interrupted = stableSince = null;
             return DriveAction.Paused;
         }
 
         started ??= frame.Time;
         bool stationary = Math.Abs(frame.Speed) <= .1;
+        // Planner and SDK pause messages can arrive in either order. A pause
+        // error is not a fresh route: the caller supplies the age of the LAST
+        // accepted geometry and rechecks it at the current pose. This bounded
+        // transition never authorizes acceleration or renews route freshness.
+        if (frame.Route == RouteFeed.PlannerPaused)
+        {
+            if (!drove || !frame.CanRecover || !double.IsFinite(frame.RouteAge) ||
+                frame.RouteAge < 0 || frame.RouteAge >= .2)
+                return !drove && stationary ? DriveAction.RejectStart : DriveAction.EmergencyStop;
+            interrupted ??= frame.Time;
+            stableSince = null;
+            return frame.Time - interrupted.Value < .5 ? DriveAction.Recover : DriveAction.EmergencyStop;
+        }
         // The planner can still report its last disabled frame after F8.
         if (!drove && !stationary && frame.Route == RouteFeed.AssistsOff)
             return DriveAction.RejectStart;
