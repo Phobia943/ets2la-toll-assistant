@@ -43,6 +43,23 @@ try {
         $roundtrip.status.longitudinal.TrafficEvidence.limitingBody.z -eq 80 -and
         $roundtrip.status.pedalFault.Age -eq .19 -and $roundtrip.status.pedalSourceCurrent -eq $false -and $roundtrip.status.preparingAutomaticEntry -and
         $roundtrip.status.planningStopDistance -eq 70 -and $roundtrip.status.planningStopKey -eq 'auto-prepare:plaza:12') 'The actual recorder status selector must retain own pedal decisions, observation evidence, automatic-entry preparation and deadman faults through JSON capture.';$checks++
+    $driveBytes=[byte[]]::new(2300);[BitConverter]::GetBytes([uint32]12).CopyTo($driveBytes,40)
+    [BitConverter]::GetBytes([int]-2).CopyTo($driveBytes,504);[BitConverter]::GetBytes([int]-1).CopyTo($driveBytes,508)
+    [BitConverter]::GetBytes([single]0.24).CopyTo($driveBytes,968);[BitConverter]::GetBytes([single]0.87).CopyTo($driveBytes,984)
+    # Neighboring gas/brake channels deliberately differ from both clutch values.
+    [BitConverter]::GetBytes([single]0.31).CopyTo($driveBytes,960);[BitConverter]::GetBytes([single]0.62).CopyTo($driveBytes,976)
+    $drive=Read-TruckPowertrainBuffer $driveBytes
+    Assert ($drive.gear -eq -2 -and $drive.gearDashboard -eq -1 -and [Math]::Abs($drive.userClutch-.24) -lt .00001 -and
+        [Math]::Abs($drive.gameClutch-.87) -lt .00001 -and $drive.issues.Count -eq 0) 'Signed engine/dashboard gears and distinct input/effective clutch decode from the pinned revision-12 offsets.';$checks++
+    [BitConverter]::GetBytes([int]0).CopyTo($driveBytes,504);[BitConverter]::GetBytes([int]12).CopyTo($driveBytes,508)
+    $drive=Read-TruckPowertrainBuffer $driveBytes
+    Assert ($drive.gear -eq 0 -and $drive.gearDashboard -eq 12) 'A neutral engine gear does not overwrite a separately reported dashboard gear or prove a shift by itself.';$checks++
+    [BitConverter]::GetBytes([single]::NaN).CopyTo($driveBytes,968);[BitConverter]::GetBytes([single]2).CopyTo($driveBytes,984)
+    $drive=Read-TruckPowertrainBuffer $driveBytes
+    Assert ($null -eq $drive.userClutch -and $null -eq $drive.gameClutch -and $drive.issues.Count -eq 2) 'Unknown or invalid clutch evidence remains unknown and cannot be labeled a normal shift.';$checks++
+    $driveBytes[40]=13;$rejected=$false
+    try{Read-TruckPowertrainBuffer $driveBytes|Out-Null}catch{$rejected=$true}
+    Assert $rejected 'A different telemetry revision cannot silently use the pinned powertrain layout.';$checks++
     $airBytes=[byte[]]::new(2300);[BitConverter]::GetBytes([uint32]12).CopyTo($airBytes,40)
     [BitConverter]::GetBytes([single]4.5).CopyTo($airBytes,992)
     [BitConverter]::GetBytes([single]5).CopyTo($airBytes,720)

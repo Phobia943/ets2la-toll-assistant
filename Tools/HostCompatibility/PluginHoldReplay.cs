@@ -72,7 +72,7 @@ internal static class PluginHoldReplay
 
     internal static void Run(string candidate,string root,string prepared,string sandbox,AssemblyLoadContext context,
         Assembly gameAssembly,Assembly stateAssembly,object host,object state,Action<bool> frame,Func<float> gas,Func<float> brake,
-        Action<bool> enable,Func<long> epoch,Action<bool,string> assert,Func<float> modernPedal)
+        Action<bool> enable,Func<long> epoch,Action<bool,string> assert,Func<float> modernPedal,Func<float> steering)
     {
         candidate=Path.GetFullPath(candidate);
         var copy=Path.Combine(sandbox,"MautAssistent.dll");File.Copy(candidate,copy,false);
@@ -372,7 +372,7 @@ internal static class PluginHoldReplay
             "SDK pause delivered during the FINAL epoch wait cancels the stale decision without faulting or disabling assists");
         Set(plugin,"latestDeliveredTelemetry",null);
         Reset();enable(false);frame(false);
-        int longitudinalTickChecks=LongitudinalPluginReplay.Run(copy,root,assembly,gameAssembly,stateAssembly,context,host,state,frame,gas,brake,modernPedal,enable,epoch,assert);
+        int longitudinalTickChecks=LongitudinalPluginReplay.Run(copy,root,assembly,gameAssembly,stateAssembly,context,host,state,frame,gas,brake,modernPedal,steering,enable,epoch,assert);
         File.WriteAllText(Path.Combine(prepared,"plugin-hold-replay.json"),System.Text.Json.JsonSerializer.Serialize(new{
             checks,steeringOriginChecks,longitudinalTickChecks,epochWaitProbe,finalPauseProbe,passed=true,pluginSha256=sealedHash,
             pluginMvid=assembly.ManifestModule.ModuleVersionId,hostMvid=gameAssembly.ManifestModule.ModuleVersionId,

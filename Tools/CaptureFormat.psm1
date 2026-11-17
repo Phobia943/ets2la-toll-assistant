@@ -1,3 +1,20 @@
+function Read-TruckPowertrainBuffer {
+    param([Parameter(Mandatory)][byte[]]$Bytes)
+    if($Bytes.Length -lt 988 -or [BitConverter]::ToUInt32($Bytes,40) -ne 12){throw 'Nicht unterstütztes Telemetrieformat für den Antriebsstrang.'}
+    # Pinned revision-12 GameTelemetry reader: signed TruckInt gear504/508;
+    # TruckFloat starts948, userClutch968 and simulation gameClutch984.
+    # These inputs include virtual controls; neither is a physical SDL axis.
+    $issues=[Collections.Generic.List[string]]::new()
+    $received=[BitConverter]::ToSingle($Bytes,968);$effective=[BitConverter]::ToSingle($Bytes,984)
+    $userClutch=if([single]::IsFinite($received) -and $received -ge 0 -and $received -le 1){$received}else{
+        $issues.Add('InvalidClutch:userClutch');$null
+    }
+    $gameClutch=if([single]::IsFinite($effective) -and $effective -ge 0 -and $effective -le 1){$effective}else{
+        $issues.Add('InvalidClutch:gameClutch');$null
+    }
+    [pscustomobject]@{gear=[BitConverter]::ToInt32($Bytes,504);gearDashboard=[BitConverter]::ToInt32($Bytes,508);
+        userClutch=$userClutch;gameClutch=$gameClutch;issues=$issues.ToArray()}
+}
 function Read-TollGateBuffer {
     param([Parameter(Mandatory)][byte[]]$Bytes)
     if($Bytes.Length -ne 1920){throw 'Die Schrankendaten müssen exakt 1920 Byte enthalten.'}
@@ -208,4 +225,4 @@ function Select-TollCaptureStatus($Status) {
         laneAttempts,laneAttemptContext,laneDecisionContext,laneProtection,detailedRigProtection,planningProfile,rigPrediction,
         sceneStopping,sceneStatus,scenePedalFloor,sceneHoldOwner,sceneHolding,holdPedalFloor,tollAccelerationLimit,nativeAcc,longitudinal,pedalFault,pedalSourceCurrent
 }
-Export-ModuleMember -Function Read-TollGateBuffer,Resolve-TollGateObservation,Read-ModernPedalBuffer,Read-TruckDamageBuffer,Read-TruckAirBuffer,Measure-TollDeparture,Select-TollCaptureStatus
+Export-ModuleMember -Function Read-TruckPowertrainBuffer,Read-TollGateBuffer,Resolve-TollGateObservation,Read-ModernPedalBuffer,Read-TruckDamageBuffer,Read-TruckAirBuffer,Measure-TollDeparture,Select-TollCaptureStatus

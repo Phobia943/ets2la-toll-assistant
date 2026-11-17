@@ -2,6 +2,7 @@
  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><DefineConstants>$(DefineConstants);INTEGRATION</DefineConstants></PropertyGroup>
  <ItemGroup><ProjectReference Include="..\Plugin\MautAssistent.csproj" /></ItemGroup>
  <ItemGroup>
+  <EmbeddedResource Include="Fixtures/ThrottleEffectDrop.json" LogicalName="MautAssistent.Tests.Fixtures.ThrottleEffectDrop.json" />
   <Compile Include="../Tools/Research/PmcEnvelope.cs" Link="Research/PmcEnvelope.cs" />
   <Compile Include="../Tools/Research/ParkedSpawnCatalog.cs" Link="Research/ParkedSpawnCatalog.cs" />
  </ItemGroup>

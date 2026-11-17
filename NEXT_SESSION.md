@@ -1,6 +1,6 @@
 # Nächste Sitzung
 
-**0.4.0 ist installiert, alle vier Dateien und die Sicherung sind geprüft. Die Stand- und Fahrprüfung steht noch aus.** Die neue Fassung ersetzt die native ACC-Regelung durch eine eigene Pedalregelung und benötigt Pathfinding, Lane Assist, Mautassistent sowie die passenden Bibliotheken. Der alte ACC-Pedalkanal bleibt im neuen Host gesperrt; die ACC-Datei muss dafür nicht ausgetauscht werden. [Umfang und Nachweise](REVIEW-0.4.0.md).
+**0.4.0 ist installiert; der erste Fahrtest meldete einen Fehlerhalt durch die Gasüberwachung. 0.4.1 korrigiert diesen Fall, ist offline geprüft und noch nicht installiert.** Der Nutzer bestätigte das Spiel im Vordergrund und sicheren Stillstand mit manueller Übernahme. Vor einem Dateiaustausch muss der aktuelle App-/Fahrzustand erneut bestätigt sein. [Befund und Korrektur](REVIEW-0.4.1.md).
 
 ## Abschluss und nächste reale Prüfung
 

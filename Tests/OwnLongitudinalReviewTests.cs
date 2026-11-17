@@ -46,4 +46,63 @@ public static class OwnLongitudinalReviewTests
                     "Unapplied unchanged hold braking must not reset or bypass delivery monitoring forever");
         }
     }
+
+    public static void ThrottleReceiptAndEffect(Action<bool,string> check)
+    {
+        var controller=new LongitudinalController();double time=1;LongitudinalOutput prior=new(0,0,0,"initial");
+        LongitudinalOutput Step(float? received,float effective,double? limit=null,bool emergency=false,bool enabled=true,bool route=true,long epoch=1,bool paused=false)
+        {
+            time+=.02;
+            return controller.Step(new(time,epoch,enabled,paused,route,15,.2,25,
+                AccelerationSafetyLimit:limit,Emergency:emergency,ActualThrottle:effective,ActualBrake:prior.Brake,
+                ReceivedThrottle:received,ReceivedBrake:prior.Brake));
+        }
+        for(int i=0;i<80;i++)prior=Step(prior.Throttle,prior.Throttle);
+        float confirmed=prior.Throttle;bool cutSafe=true;float cutMaximum=0;
+        for(int i=0;i<60;i++) {
+            prior=Step(prior.Throttle,0);cutMaximum=Math.Max(cutMaximum,prior.Throttle);
+            cutSafe&=!prior.Fault&&!prior.ThrottleDeliveryMissing&&prior.Brake==0;
+        }
+        check(confirmed>.15f&&confirmed<.95f&&cutSafe&&prior.ThrottleEffectLimited,
+            "A1.2s effective gas cut with continuing input receipts cannot become a transport fault or unsolicited service brake");
+        check(cutMaximum<=confirmed+.00001f,
+            "A suppressed effective gas pedal cannot train or slew a higher pending throttle request");
+        float beforeRecovery=prior.Throttle;prior=Step(prior.Throttle,prior.Throttle);
+        check(!prior.Fault&&!prior.ThrottleDeliveryMissing&&prior.Throttle<=beforeRecovery+.0091f,
+            "Effective-gas recovery resumes only the bounded normal slew, without an accumulated full-throttle jump");
+        bool noForcedBrake=true;
+        for(int i=0;i<30;i++) {prior=Step(0,0);noForcedBrake&=!prior.Fault&&prior.Brake==0;}
+        check(prior.ThrottleDeliveryMissing&&prior.Throttle==0&&noForcedBrake,
+            "Actually missing received throttle suspends propulsion without fabricating a collision or global emergency");
+        prior=Step(0,0,paused:true);
+        check(prior.Throttle==0&&prior.Brake==0&&prior.ThrottleDeliveryMissing,
+            "A genuine game pause releases pedals but does not acknowledge the suspended-propulsion latch");
+        time+=2;prior=Step(.6f,.6f);
+        check(prior.Throttle==0&&prior.Brake==0&&!prior.Fault&&prior.ThrottleDeliveryMissing,
+            "Resuming after a long pause cannot silently restart propulsion even if input receipt has returned");
+        controller.Pause();time+=1;prior=Step(.6f,.6f);
+        check(prior.Throttle==0&&prior.Brake==0&&prior.ThrottleDeliveryMissing,
+            "The plugin's direct Pause API also preserves the propulsion latch until explicit acknowledgement");
+        prior=Step(0,0,-2);
+        check(prior.Throttle==0&&prior.Brake>0&&prior.TargetAcceleration<=-2,
+            "A genuine negative safety bound remains effective after propulsion suspension");
+        prior=Step(0,0,emergency:true);
+        check(prior.Throttle==0&&prior.Brake==1,
+            "Explicit emergency braking has priority over the throttle-delivery warning state");
+        prior=Step(0,0,route:false);
+        check(prior.Throttle==0&&prior.Brake>0,
+            "Losing the tracked route still receives the normal protective deceleration during throttle suspension");
+        prior=Step(0,0,enabled:false);
+        check(prior.Throttle==0&&prior.Brake==0&&!prior.ThrottleDeliveryMissing,
+            "Explicit manual cancellation clears the propulsion latch without retaining a brake");
+
+        foreach(float? unavailable in new float?[]{null,float.NaN}) {
+            controller.Reset();prior=new(0,0,0,"initial");
+            for(int i=0;i<80;i++)prior=Step(prior.Throttle,prior.Throttle);
+            bool unknownSafe=true;
+            for(int i=0;i<50;i++) {prior=Step(unavailable,0);unknownSafe&=!prior.Fault&&!prior.ThrottleDeliveryMissing&&prior.Brake==0;}
+            check(unknownSafe&&prior.ThrottleEffectLimited,
+                "An unavailable input acknowledgement is unknown evidence, not a measured zero-throttle transport failure");
+        }
+    }
 }

@@ -55,6 +55,7 @@ void Run()
     Check("Own traffic controller separates lanes, levels, stopped traffic and closing vehicles",()=>TrafficSpeedTests.Run(Assert));
     Check("Independent longitudinal review rejects oncoming and repeated-route geometry errors",()=>OwnLongitudinalReviewTests.TrafficGeometry(Assert));
     Check("Independent longitudinal review detects unapplied holding and full braking",()=>OwnLongitudinalReviewTests.DeliveryDuringHold(Assert));
+    Check("Independent throttle receipt review separates simulation cuts, transport loss and pause acknowledgement",()=>OwnLongitudinalReviewTests.ThrottleReceiptAndEffect(Assert));
     Check("Native command ages keep producer and observer clock domains separate",()=>NativeCommandTimingTests.ClockDomains(Assert));
     Check("Native command timestamp bounds retain admission and full diagnostic ages",()=>NativeCommandTimingTests.Bounds(Assert));
     Check("Native age watchdog preserves real failure and startup deadlines",()=>NativeCommandTimingTests.GuardContract(Assert));
@@ -284,6 +285,7 @@ void Run()
     Check("Unsafe rolling starts leave manual control without emergency braking",()=>RollingStartIntegration.Refusals(Assert));
     Check("Pending rolling starts are cancelled by F9 and cannot commit from foreign threads",()=>RollingStartIntegration.CancelDuringProbe(Assert));
     Check("Physical brake cancels active and pending assists without automatic restart",()=>RollingStartIntegration.BrakeOverride(Assert));
+    Check("Telemetry keeps received and effective pedals, clutch and driveline fields distinct",()=>TelemetryPedalMappingIntegration.Run(Assert));
     Check("SDK delivery remains live through slow toll work without weakening actual telemetry-loss braking",()=>InputDeliveryIntegration.Run(Assert));
     Check("Physical brake releases assist outputs immediately even during route computation",()=>InputDeliveryIntegration.BrakeWhileBusy(Assert));
     Check("Duplicate signal objects preserve physical booth identity, payment and conservative clearance",()=>SignalIdentityIntegration.Run(Assert));

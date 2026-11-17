@@ -61,6 +61,8 @@ try {
         }
         $age=if($null -ne $statusUtc){([DateTimeOffset]::UtcNow-$statusUtc).TotalSeconds}else{$null}
         if($null -eq $age -or $age -lt -.5 -or $age -gt 1.5){$issues.Add('StatusNotCurrent')}
+        $powertrain=Read-TruckPowertrainBuffer $telemetry
+        foreach($issue in $powertrain.issues){$issues.Add($issue)}
         $speed=[double][BitConverter]::ToSingle($telemetry,948)
         $x=[BitConverter]::ToDouble($telemetry,2200);$y=[BitConverter]::ToDouble($telemetry,2208);$z=[BitConverter]::ToDouble($telemetry,2216)
         $heading=[BitConverter]::ToDouble($telemetry,2224)
@@ -72,6 +74,8 @@ try {
             airBrakes=(Read-TruckAirBuffer $telemetry)
             active=($telemetry[0] -ne 0);paused=($telemetry[4] -ne 0)
             speedMps=$speed;engineRpm=[BitConverter]::ToSingle($telemetry,952)
+            gear=$powertrain.gear;gearDashboard=$powertrain.gearDashboard
+            userClutch=$powertrain.userClutch;gameClutch=$powertrain.gameClutch
             cruiseSpeedMps=[BitConverter]::ToSingle($telemetry,988)
             x=$x;y=$y;z=$z;heading=$heading;parkingBrake=($telemetry[1566] -ne 0)
             # Raw game input channels can include SDK overrides. They are not

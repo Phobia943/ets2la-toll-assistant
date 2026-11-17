@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="../Tests/Fixtures/ThrottleEffectDrop.json" LogicalName="MautAssistent.Tests.Fixtures.ThrottleEffectDrop.json" />
     <Compile Include="../Tests/LongitudinalControllerTests.cs" Link="LongitudinalControllerTests.cs" />
     <Compile Include="../Tests/TrafficSpeedTests.cs" Link="TrafficSpeedTests.cs" />
     <Compile Include="../Tests/OwnLongitudinalReviewTests.cs" Link="OwnLongitudinalReviewTests.cs" />

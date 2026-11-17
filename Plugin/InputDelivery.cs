@@ -11,7 +11,15 @@ public sealed partial class TollPlugin
     // that would also prevent telemetry delivery to the host's other consumers.
     sealed record PhysicsObservation(ulong SimulatedTime,ulong RenderTime,float EngineDamage,float TransmissionDamage,
         float CabinDamage,float ChassisDamage,float WheelDamage,float GameThrottle,float GameBrake)
-    { public float SpeedLimitMps {get;init;} public bool GameCruise {get;init;} }
+    {
+        public float SpeedLimitMps {get;init;} public bool GameCruise {get;init;}
+        // Received input includes virtual game controls; this is not the
+        // independently sampled physical controller brake/accelerator axis.
+        public float ReceivedThrottle {get;init;} public float ReceivedBrake {get;init;}
+        // Effective clutch is simulation output (including automatic shifts).
+        public float EffectiveClutch {get;init;}
+        public int Gear {get;init;} public int DashboardGear {get;init;} public float EngineRpm {get;init;}
+    }
     sealed record TelemetryFrame(double Arrived,ulong Time,bool Active,bool Paused,double Speed,Vector3 Position,double Heading,
         PhysicsObservation Physics) {public EnvelopeContext? Envelope {get;init;}}
     sealed record GateFrame(double Arrived,Semaphore[] Gates) {public long Origin {get;init;} public long Epoch {get;init;}}
@@ -31,7 +39,10 @@ public sealed partial class TollPlugin
             data.truckFloat.speed,data.truckPlacement.coordinate.ToVector3(),data.truckPlacement.rotation.X,
             new(data.simulatedTime,data.renderTime,data.truckFloat.wearEngine,data.truckFloat.wearTransmission,
                 data.truckFloat.wearCabin,data.truckFloat.wearChassis,data.truckFloat.wearWheels,
-                data.truckFloat.gameThrottle,data.truckFloat.gameBrake){SpeedLimitMps=data.truckFloat.speedLimit,GameCruise=data.truckBool.cruiseControl}) {Envelope=EnvelopeContext.Capture(data)};
+                data.truckFloat.gameThrottle,data.truckFloat.gameBrake){SpeedLimitMps=data.truckFloat.speedLimit,GameCruise=data.truckBool.cruiseControl,
+                    ReceivedThrottle=data.truckFloat.userThrottle,ReceivedBrake=data.truckFloat.userBrake,
+                    EffectiveClutch=data.truckFloat.gameClutch,Gear=data.truckInt.gear,
+                    DashboardGear=data.truckInt.gearDashboard,EngineRpm=data.truckFloat.engineRpm}) {Envelope=EnvelopeContext.Capture(data)};
         Interlocked.Exchange(ref incomingTelemetry,frame);
         Interlocked.Exchange(ref latestDeliveredTelemetry,frame);
         var ground=Volatile.Read(ref stationaryGround);

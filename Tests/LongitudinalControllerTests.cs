@@ -1,9 +1,10 @@
 using MautAssistent;
+using System.Text.Json;
 
 public static class LongitudinalControllerTests
 {
     static LongitudinalInput Input(double time,double speed=20,double target=100/3.6)=>
-        new(time,1,true,false,true,speed,0,target,ActualThrottle:0,ActualBrake:0);
+        new(time,1,true,false,true,speed,0,target,ActualThrottle:0,ActualBrake:0,ReceivedThrottle:0,ReceivedBrake:0);
     static void Pedals(Action<bool,string> check,LongitudinalOutput output,string reason)=>
         check(float.IsFinite(output.Throttle)&&float.IsFinite(output.Brake)&&output.Throttle is >=0 and <=1&&
             output.Brake is >=0 and <=1&&(output.Throttle==0||output.Brake==0),reason);
@@ -63,11 +64,14 @@ public static class LongitudinalControllerTests
         check(!released.Holding&&released.Brake==0&&released.Throttle<=.03,"Current gate release removes hold immediately with a fresh small throttle ramp");
         c.Reset();LongitudinalOutput? last=null;
         for(int i=0;i<100;i++)last=c.Step(Input(5+i*.05,10,100/3.6));
-        check(last!.DeliveryMissing&&last.Throttle==0,"Persistent absent applied-throttle feedback latches a diagnostic instead of winding up");
+        check(last!.DeliveryMissing&&last.ThrottleDeliveryMissing&&!last.Fault&&last.Throttle==0&&last.Brake==0,
+            "Missing received throttle suspends propulsion without an emergency stop or steering fault");
         var noResume=c.Step(Input(10.05,10,100/3.6) with{ActualThrottle=1});
         check(noResume.DeliveryMissing&&noResume.Throttle==0,"A pedal feedback mismatch requires explicit reset rather than spontaneous full-throttle retry");
         c.Reset();var reset=c.Step(Input(11,0,100/3.6));
         check(reset.Throttle<=.01&&reset.Brake==0,"Explicit reset discards all learned pedal state");
+        ThrottleReceptionAndEffect(check);
+        RecordedThrottleDrop(check);
         foreach(int branch in new[]{0,1,2}) {
             c.Reset();LongitudinalOutput? failed=null;
             for(int i=0;i<30;i++) {
@@ -78,6 +82,67 @@ public static class LongitudinalControllerTests
             check(failed!.DeliveryMissing&&failed.Fault&&failed.Throttle==0&&failed.Brake>0,
                 "Unapplied brake feedback is diagnosed in every hold/full-brake branch: "+branch);
         }
+    }
+
+    public static void RecordedThrottleDrop(Action<bool,string> check)
+    {
+        using var stream=typeof(LongitudinalControllerTests).Assembly.GetManifestResourceStream("MautAssistent.Tests.Fixtures.ThrottleEffectDrop.json")
+            ??throw new InvalidOperationException("Recorded effective-throttle fixture is missing");
+        using var fixture=JsonDocument.Parse(stream);
+        var inputs=JsonSerializer.Deserialize<LongitudinalInput[]>(fixture.RootElement.GetProperty("inputs").GetRawText())!;
+        check(inputs.Length==27&&inputs[0].Time==0&&inputs.All(x=>x.Epoch==1&&x.ReceivedThrottle==null&&x.ReceivedBrake==null),
+            "Recorded sampled replay isolates one relative epoch and never invents missing input-pedal acknowledgements");
+        var controller=new LongitudinalController();LongitudinalOutput? previous=null;
+        bool noFault=true,noBrake=true,sawLimited=false,noEscalation=true;
+        foreach(var input in inputs) {
+            var output=controller.Step(input);
+            noFault&=!output.Fault&&!output.DeliveryMissing&&!output.ThrottleDeliveryMissing;
+            noBrake&=output.Brake==0;
+            if(output.ThrottleEffectLimited) {
+                sawLimited=true;
+                noEscalation&=previous!=null&&output.Throttle<=previous.Throttle+.000001f;
+            }
+            previous=output;
+        }
+        // Private replay of the installed 2DCE product reproduces DeliveryMissing
+        // at 1.702585s; saved fault is 1.764581s. Missing intermediate snapshots
+        // prevent claiming an exact complete historical Tick replay.
+        check(noFault&&noBrake&&sawLimited,
+            "Recorded effective-throttle drop diagnoses limited effect without a false delivery fault or emergency brake");
+        check(noEscalation,
+            "Recorded simulation-side throttle suppression never trains a higher requested pedal during the limited-effect interval");
+    }
+
+    static void ThrottleReceptionAndEffect(Action<bool,string> check)
+    {
+        var controller=new LongitudinalController();LongitudinalOutput output=new(0,0,0,"");
+        double t=1;
+        for(int i=0;i<35;i++,t+=.05)output=controller.Step(Input(t,15) with{ReceivedThrottle=output.Throttle,ActualThrottle=output.Throttle});
+        float beforeCut=output.Throttle;bool keptSteering=true;float maxDuringCut=0;
+        for(int i=0;i<24;i++,t+=.05) {
+            output=controller.Step(Input(t,15) with{ReceivedThrottle=output.Throttle,ActualThrottle=0,Acceleration=.3});
+            keptSteering&=!output.Fault&&!output.DeliveryMissing&&output.Brake==0;
+            maxDuringCut=Math.Max(maxDuringCut,output.Throttle);
+        }
+        check(keptSteering&&maxDuringCut<=beforeCut+1e-6&&output.Throttle>0,
+            "Received gas with a 1.2-second simulated effective cut keeps steering and never learns a higher pedal or invents an emergency");
+        var resumed=controller.Step(Input(t,15) with{ReceivedThrottle=output.Throttle,ActualThrottle=output.Throttle});t+=.05;
+        check(!resumed.Fault&&resumed.Throttle<=beforeCut+.023,
+            "Effective pedal recovery uses the normal fresh ramp, not an accumulated full-throttle jump");
+        for(int i=0;i<15;i++,t+=.05)output=controller.Step(Input(t,15) with{ReceivedThrottle=0,ActualThrottle=0});
+        check(output.ThrottleDeliveryMissing&&!output.Fault&&output.Throttle==0&&output.Brake==0,
+            "Actual absent input becomes a latched propulsion-only warning even after a successful drive phase");
+        var constrained=controller.Step(Input(t,15) with{ReceivedThrottle=0,ActualThrottle=0,AccelerationSafetyLimit=-1.2});t+=.05;
+        check(constrained.ThrottleDeliveryMissing&&constrained.Throttle==0&&constrained.Brake>0&&constrained.TargetAcceleration<=-1.2,
+            "Missing propulsion never suppresses a new traffic, curve or gate deceleration bound");
+        var emergency=controller.Step(Input(t,15) with{Emergency=true,ReceivedThrottle=0,ActualThrottle=0});t+=.05;
+        check(emergency.Brake==1&&emergency.Throttle==0,"An explicit emergency still overrides the propulsion-only warning");
+        controller.Step(Input(t,15) with{Enabled=false});t+=.05;
+        check(!controller.Step(Input(t,15)).ThrottleDeliveryMissing,"Manual cancellation clears the propulsion latch before a fresh start");
+        controller.Reset();output=new(0,0,0,"");
+        for(int i=0;i<30;i++)output=controller.Step(Input(20+i*.05,15) with{ReceivedThrottle=null,ActualThrottle=0});
+        check(!output.Fault&&!output.DeliveryMissing&&output.Throttle<.2,
+            "An unavailable input field cannot prove failed transport; ineffective gas still prevents upward adaptation");
     }
 
     // Independent longitudinal plant: bounded engine traction falls with speed,
@@ -98,7 +163,7 @@ public static class LongitudinalControllerTests
             Distance+=(Speed+next)*.5*dt;Speed=next;
         }
         public LongitudinalInput Input(double time,double target)=>new(time,1,true,false,true,Speed,Acceleration,target,
-            Pitch:pitch,ActualThrottle:Throttle,ActualBrake:Brake);
+            Pitch:pitch,ActualThrottle:Throttle,ActualBrake:Brake,ReceivedThrottle:Throttle,ReceivedBrake:Brake);
     }
     public static void Dynamics(Action<bool,string> check)
     {

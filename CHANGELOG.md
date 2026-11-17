@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.4.1 – Gasempfang von simulierter Gaswirkung trennen, offline geprüft
+
+- Fehlendes effektives Gas allein löst keine verriegelte Vollbremsung mehr aus. Der Regler unterscheidet den vom Spiel gemeldeten Eingang von der anschließend verarbeiteten Gasstellung. Während einer Wirkungsabweichung steigen weder Gasintegrator noch Pedalanforderung weiter an.
+- Ein tatsächlich fehlender Gaseingang sperrt die Beschleunigung mit Übernahmehinweis, erhält jedoch gültige Lenkführung und bestehende Bremsgrenzen. Die Gassperre bleibt auch über Pause/Fortsetzen bestehen und erfordert manuelle Übernahme beziehungsweise einen neuen Start. Kurven-, Verkehrs-, Maut- und explizite Notbremsgrenzen bleiben vorrangig.
+- Diagnose und Aufnahmen ergänzen Eingangsgas/-bremse, effektive Kupplung, Motor-/Anzeigegang und Drehzahl. Der letzte historische Auslöser ist reproduzierbar; eine Schaltung oder ein Fensterwechsel als dessen Ursache ist mangels damaliger Zusatzdaten nicht bewiesen. [Prüfung und Grenzen](REVIEW-0.4.1.md).
+
 ## 0.4.0 – Eigene Geschwindigkeitsregelung und gerichteter Routenanschluss, installiert
 
 - Eigene Gas-/Bremsregelung statt des nativen ACC-Reglers. Das neue Hostpaket lässt ausschließlich den normalen Plugin-Längskanal zu; alte ACC- und fremde Pedalbefehle werden nicht beigemischt. Fehlerbremsung, Sitzung/Ursprungszeit, manuelle Bremse und F9 bleiben wirksam. Pathfinding und Lane Assist bleiben erforderlich; ACC ist für den Betrieb nicht mehr nötig.

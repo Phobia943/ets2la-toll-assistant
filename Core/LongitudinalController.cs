@@ -5,13 +5,16 @@ namespace MautAssistent;
 public sealed record LongitudinalInput(double Time,long Epoch,bool Enabled,bool Paused,bool RouteKnown,
     double Speed,double Acceleration,double TargetSpeed,double? AccelerationSafetyLimit=null,
     double? StopDistance=null,bool PlannedHold=false,bool Emergency=false,bool OutputAvailable=true,
-    double Pitch=0,float? ActualThrottle=null,float? ActualBrake=null,bool CoastEligible=false,string? StopIdentity=null);
+    double Pitch=0,float? ActualThrottle=null,float? ActualBrake=null,bool CoastEligible=false,string? StopIdentity=null,
+    float? ReceivedThrottle=null,float? ReceivedBrake=null);
 
 public sealed record LongitudinalOutput(float Throttle,float Brake,double TargetAcceleration,string Reason,
     bool Holding=false,bool Fault=false)
 {
     public bool Coasting {get;init;}
     public bool DeliveryMissing {get;init;}
+    public bool ThrottleDeliveryMissing {get;init;}
+    public bool ThrottleEffectLimited {get;init;}
 }
 
 // Own speed/acceleration-to-pedal controller. No game objects, native ACC/PID,
@@ -23,9 +26,9 @@ public sealed class LongitudinalController
     public const double StandstillTolerance=.01,MaximumStep=.25,CoastOverspeed=6/3.6;
     double? at;
     long epoch;
-    double filteredAcceleration,accelerationCommand,driveIntegral,brakeIntegral,deliveryMismatch;
+    double filteredAcceleration,accelerationCommand,driveIntegral,brakeIntegral,deliveryMismatch,throttleMismatch;
     float throttle,brake;
-    bool holding,deliveryFault,wasStopping;
+    bool holding,deliveryFault,throttleDeliveryFault,throttleEffectLimited,wasStopping;
     double? coastSince;
     double coastTarget;
     bool coastBlocked;
@@ -34,15 +37,27 @@ public sealed class LongitudinalController
 
     public void Reset()
     {
-        at=null;epoch=0;filteredAcceleration=accelerationCommand=driveIntegral=brakeIntegral=deliveryMismatch=0;
-        throttle=brake=0;holding=deliveryFault=wasStopping=false;stopOwner=null;pedalMode=0;
+        at=null;epoch=0;filteredAcceleration=accelerationCommand=driveIntegral=brakeIntegral=deliveryMismatch=throttleMismatch=0;
+        throttle=brake=0;holding=deliveryFault=throttleDeliveryFault=throttleEffectLimited=wasStopping=false;stopOwner=null;pedalMode=0;
         coastSince=null;coastTarget=0;coastBlocked=false;
+    }
+    public void Pause()
+    {
+        bool suspended=throttleDeliveryFault;
+        Reset();throttleDeliveryFault=suspended;
     }
     LongitudinalOutput Neutral(string reason,bool fault=false)
     {Reset();return new(0,0,0,reason,Fault:fault);}
     public LongitudinalOutput Step(LongitudinalInput input)
     {
-        if(!input.Enabled||input.Paused)return Neutral(input.Paused?"Paused":"Manual control");
+        var result=StepCore(input);
+        return result with {DeliveryMissing=result.DeliveryMissing||throttleDeliveryFault,
+            ThrottleDeliveryMissing=throttleDeliveryFault,ThrottleEffectLimited=throttleEffectLimited};
+    }
+    LongitudinalOutput StepCore(LongitudinalInput input)
+    {
+        if(!input.Enabled)return Neutral("Manual control");
+        if(input.Paused){Pause();return new(0,0,0,"Paused");}
         if(!double.IsFinite(input.Time)||input.Time<0||input.Epoch<=0) {
             if(input.Emergency){Reset();return new(0,1,-MaximumBrakeDeceleration,"Emergency brake requested without a valid control clock",Fault:true);}
             return Neutral("Invalid control clock",true);
@@ -153,23 +168,39 @@ public sealed class LongitudinalController
             return new(0,brake,accelerationCommand,known?"Bounded deceleration":"Route unknown: planned deceleration");
         }
         if(pedalMode!=1){driveIntegral=0;brakeIntegral=0;}pedalMode=1;
+        // Missing gas is not an obstacle or a reason to remove healthy steering.
+        // Suspend only propulsion until explicit reset. Current stopping and
+        // deceleration bounds above remain authoritative, including full brake.
+        if(throttleDeliveryFault) {
+            driveIntegral=0;throttle=brake=0;
+            return new(0,0,Math.Min(0,accelerationCommand),"Throttle input not received: propulsion suspended until explicit reset");
+        }
         double accelerationError=accelerationCommand-filteredAcceleration;
         double drive=.08+.006*speed+force/1.6+accelerationError*.18+driveIntegral;
         if(actualKnown&&!mismatched&&speed>.2&&drive is >0 and <.98)
             driveIntegral=Math.Clamp(driveIntegral+accelerationError*.18*dt,-.25,.65);
         if(speed<=.2) {driveIntegral=0;drive=Math.Min(drive,.55);} // never relearn full throttle while stalled
         float wantedThrottle=(float)Math.Clamp(drive,0,1);
+        // A temporary simulation-side cut must not train a higher pedal while
+        // the drivetrain is disconnected. Reductions remain immediate.
+        if(mismatched)wantedThrottle=Math.Min(wantedThrottle,throttle);
         brake=0;throttle=(float)Move(throttle,wantedThrottle,wantedThrottle<throttle?1:.45*dt);
         return new(throttle,0,accelerationCommand,"Tracking bounded cruise speed");
     }
     bool ObserveDelivery(LongitudinalInput input,double dt)
     {
-        bool known=Pedal(input.ActualThrottle)&&Pedal(input.ActualBrake);
-        bool mismatch=known&&((throttle>.15f&&input.ActualThrottle!.Value<throttle-.15f)||
-            (brake>.15f&&input.ActualBrake!.Value<brake-.15f));
-        deliveryMismatch=mismatch?deliveryMismatch+dt:0;
+        // SCS input.throttle acknowledges an input; effective.throttle is the
+        // simulation's processed pedal (attack/drive-train/cruise effects).
+        // Do not infer transport loss from effective throttle alone.
+        throttleEffectLimited=Pedal(input.ActualThrottle)&&throttle>.15f&&input.ActualThrottle!.Value<throttle-.15f;
+        bool missingThrottle=Pedal(input.ReceivedThrottle)&&throttle>.15f&&input.ReceivedThrottle!.Value<throttle-.15f;
+        throttleMismatch=missingThrottle?throttleMismatch+dt:0;
+        if(throttleMismatch>=.35)throttleDeliveryFault=true;
+        bool missingBrake=Pedal(input.ActualBrake)&&brake>.15f&&input.ActualBrake!.Value<brake-.15f;
+        deliveryMismatch=missingBrake?deliveryMismatch+dt:0;
         if(deliveryMismatch>=.35)deliveryFault=true;
-        return mismatch;
+        // Freeze adaptation on either missing input or suppressed effective gas.
+        return missingThrottle||throttleEffectLimited||missingBrake;
     }
     static bool Pedal(float? value)=>value is >=0 and <=1&&float.IsFinite(value.Value);
     static double Move(double value,double target,double amount)=>target>value?Math.Min(target,value+amount):Math.Max(target,value-amount);

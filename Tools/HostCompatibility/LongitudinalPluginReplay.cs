@@ -67,7 +67,7 @@ internal static class LongitudinalPluginReplay
 
     internal static int Run(string sealedCandidate,string root,Assembly pluginAssembly,Assembly gameAssembly,Assembly stateAssembly,
         AssemblyLoadContext context,object host,object state,Action<bool> frame,Func<float> gas,Func<float> brake,
-        Func<float> modernPedal,Action<bool> enable,Func<long> epoch,Action<bool,string> assert)
+        Func<float> modernPedal,Func<float> steering,Action<bool> enable,Func<long> epoch,Action<bool,string> assert)
     {
         int count=0;void Check(bool okay,string reason){assert(okay,reason);count++;}
         AuditConstruction(sealedCandidate,root);
@@ -110,7 +110,7 @@ internal static class LongitudinalPluginReplay
         Set(plugin,"vehicleGeometry",null); // Unexpected fault diagnostics must not open a live geometry map.
         var injectedTraffic=Get(plugin,"readLongitudinalTraffic");Set(plugin,"readLongitudinalTraffic",null);
         Set(plugin,"BeforeLongitudinalCommit",(Action)(()=>duringTraffic?.Invoke()));
-        bool autoSources=true;
+        bool autoSources=true;object? testSignals=null;
         var clock=(Stopwatch)Get(plugin,"clock")!;
         var options=Pure("TollOptions");Member(options,"CurvePreviewEnabled",false);Member(options,"BriskOpenRoads",false);
         Set(plugin,"options",options);Set(plugin,"controller",Pure("TollController",options));
@@ -213,7 +213,7 @@ internal static class LongitudinalPluginReplay
         autoSources=false;Set(plugin,"readLongitudinalTraffic",null);
         void Sources(object trafficData) {
             SourceFrameReplay.Capture(output,"Traffic",trafficData);SourceFrameReplay.Capture(output,"Parked",SourceFrameReplay.EmptyParked(gameAssembly));
-            var signals=SourceFrameReplay.EmptySignals(gameAssembly);SourceFrameReplay.Capture(output,"Semaphore",signals);
+            var signals=testSignals??SourceFrameReplay.EmptySignals(gameAssembly);SourceFrameReplay.Capture(output,"Semaphore",signals);
             // File/ALC pins were audited before all calls. Here the real gate
             // callback consumes the actual isolated owned tuple+origin; the DI
             // Tick still bypasses production warmup/file checks afterward.
@@ -358,6 +358,75 @@ internal static class LongitudinalPluginReplay
         type.GetMethod("OnCancel",All)!.Invoke(plugin,[null,cancellation]);frame(false);
         Check(gas()==0&&brake()==0&&!(bool)Get(plugin,"faultBrake")!.GetType().GetProperty("Latched")!.GetValue(Get(plugin,"faultBrake"))!,
             "Actual F9 handler releases the blocked-tick fault and both physical pedals without rearming");
+        // Input receipt and simulation-effective pedal are independent. This
+        // actual Tick series reaches both physical sinks with no native ACC.
+        Restore();autoSources=true;Set(plugin,"readLongitudinalTraffic",null);
+        Set(plugin,"monitorSteering",false);Set(plugin,"steeringMonitoringLive",false);
+        var physicsType=type.GetNestedType("PhysicsObservation",All)!;
+        void PedalPhysics(float received,float effective) {
+            var physical=Activator.CreateInstance(physicsType,[1UL,1UL,0f,0f,0f,0f,0f,effective,0f])!;
+            Member(physical,"ReceivedThrottle",received);Member(physical,"ReceivedBrake",0f);Member(physical,"EffectiveClutch",effective==0?1f:0f);
+            Member(physical,"Gear",12);Member(physical,"DashboardGear",11);Member(physical,"EngineRpm",1400f);Set(plugin,"physicsObservation",physical);
+        }
+        object OutputNow(){var sample=Get(plugin,"longitudinalSnapshot")!;return sample.GetType().GetProperty("Output")!.GetValue(sample)!;}
+        void PedalTick(float received,float effective){PedalPhysics(received,effective);Send("LaneAssist.SteeringCorrection",0,.2f);Tick();frame(false);}
+        var warming=Stopwatch.StartNew();
+        while(warming.Elapsed.TotalSeconds<2.2) {
+            PedalTick(.6f,.6f);
+            if(gas()>=.6f)break;Thread.Sleep(50);
+        }
+        float beforeCut=gas();Check(beforeCut>=.6f&&brake()==0,"Real own Tick builds an accepted throttle above0.6 with separate received/effective feedback");
+        var cut=Stopwatch.StartNew();
+        while(cut.Elapsed.TotalSeconds<.55){PedalTick(.6f,0);Thread.Sleep(50);}
+        var limited=OutputNow();
+        Check(gas()>0&&gas()<=beforeCut+.001&&brake()==0&&!(bool)limited.GetType().GetProperty("Fault")!.GetValue(limited)!&&
+            (bool)limited.GetType().GetProperty("ThrottleEffectLimited")!.GetValue(limited)!&&
+            !(bool)Get(plugin,"faultBrake")!.GetType().GetProperty("Latched")!.GetValue(Get(plugin,"faultBrake"))!,
+            "Received throttle0.6 with temporarily effective0 freezes gas adaptation without fault braking through real Tick and legacy sink");
+        frame(true);Check(modernPedal()>0&&steering()>.19&&brake()==0&&gas()==0,
+            "Simulation-side throttle suppression preserves the actual modern pedal and original lane sink");
+        var missing=Stopwatch.StartNew();while(missing.Elapsed.TotalSeconds<.55){PedalTick(0,0);Thread.Sleep(50);}
+        var suspended=OutputNow();
+        Check(gas()==0&&brake()==0&&(bool)suspended.GetType().GetProperty("ThrottleDeliveryMissing")!.GetValue(suspended)!&&
+            !(bool)suspended.GetType().GetProperty("Fault")!.GetValue(suspended)!&&
+            !(bool)Get(plugin,"faultBrake")!.GetType().GetProperty("Latched")!.GetValue(Get(plugin,"faultBrake"))!,
+            "Actually missing received throttle suspends propulsion through real Tick without latching a fault brake");
+        frame(true);Check(modernPedal()==0&&steering()>.19&&state.GetType().GetProperty("EnableAssists")!.GetValue(state) is true,
+            "Missing received throttle leaves the actual lane sink and assist session available for manual takeover");
+        Fresh();Set(plugin,"paused",true);type.GetMethod("Tick")!.Invoke(plugin,null);Thread.Sleep(300);frame(false);
+        Check(gas()==0&&brake()==0&&!(bool)Get(plugin,"faultBrake")!.GetType().GetProperty("Latched")!.GetValue(Get(plugin,"faultBrake"))!,
+            "Actual paused plugin Tick remains neutral without turning a propulsion-only suspension into fault braking");
+        PedalTick(.6f,.6f);var resumed=OutputNow();
+        Check(gas()==0&&brake()==0&&(bool)resumed.GetType().GetProperty("ThrottleDeliveryMissing")!.GetValue(resumed)!&&
+            !(bool)resumed.GetType().GetProperty("Fault")!.GetValue(resumed)!,
+            "Actual plugin pause/resume cannot silently clear the existing propulsion suspension even when received/effective gas recovers");
+        // The same controller still has its propulsion-suspended state. Add a
+        // genuine directed closed-gate path, not a precomputed TollDecision.
+        Member(curve,"EndPosition",new Vector3(0,0,-70));Member(curve,"Length",70f);Member(curve,"SemaphoreId",10);
+        var tailCurve=RuntimeHelpers.GetUninitializedObject(curveType);
+        foreach(var pair in new (string,object)[]{("StartPosition",new Vector3(0,0,-70)),("EndPosition",new Vector3(0,0,-500)),
+            ("StartRotation",Quaternion.Identity),("EndRotation",Quaternion.Identity),("Length",430f),("SemaphoreId",-1)})Member(tailCurve,pair.Item1,pair.Item2);
+        curves.Add(tailCurve);
+        var semaphoresMember=descriptorType.GetProperty("Semaphores")?.PropertyType??Field(descriptorType,"Semaphores").FieldType;
+        var definitions=(System.Collections.IList)Activator.CreateInstance(semaphoresMember)!;var gateDefinition=Activator.CreateInstance(semaphoresMember.GenericTypeArguments[0])!;
+        Member(gateDefinition,"SemaphoreId",10u);Member(gateDefinition,"Position",new Vector3(2.5f,0,-69.6f));
+        var modelType=gateDefinition.GetType().GetProperty("Type")!.PropertyType;Member(gateDefinition,"Type",Enum.Parse(modelType,"BarrierAutomatic"));definitions.Add(gateDefinition);Member(descriptor,"Semaphores",definitions);
+        var live=SourceFrameReplay.EmptySignals(gameAssembly);var signalType=live.GetType().GetField("semaphores")!.FieldType.GetElementType()!;
+        var gateSignal=Activator.CreateInstance(signalType)!;Member(gateSignal,"id",10);Member(gateSignal,"position",new Vector3(2.5f,0,-69.6f));Member(gateSignal,"state",1);
+        var sdkType=signalType.GetField("type")!.FieldType;Member(gateSignal,"type",Enum.ToObject(sdkType,2));
+        var signalList=Array.CreateInstance(signalType,1);signalList.SetValue(gateSignal,0);Set(live,"semaphores",signalList);testSignals=live;
+        // Read-only path DTO references keep the actual route position and
+        // direction; only the real gate metadata and segmentation changed.
+        Set(plugin,"safetyTrace",matcher.GetMethod("Sample",[dataType])!.Invoke(null,[data]));
+        PedalTick(0,0);var gateSnapshot=Get(plugin,"longitudinalSnapshot")!;
+        var bounds=(System.Collections.IEnumerable)gateSnapshot.GetType().GetProperty("Bounds")!.GetValue(gateSnapshot)!;
+        bool gateLimit=false;foreach(var bound in bounds)if((string)bound!.GetType().GetProperty("Source")!.GetValue(bound)! =="Toll"&&
+            bound.GetType().GetProperty("Acceleration")!.GetValue(bound) is double boundValue&&boundValue<0)gateLimit=true;
+        Check(gateLimit&&gas()==0&&brake()>0&&!(bool)Get(plugin,"faultBrake")!.GetType().GetProperty("Latched")!.GetValue(Get(plugin,"faultBrake"))!,
+            "A later actual closed-gate negative bound still applies service braking after missing gas suspended propulsion");
+        frame(true);Check(modernPedal()<0&&steering()>.19&&gas()==0&&brake()==0,
+            "The post-suspension real gate brake reaches modern output without losing the lane sink");
+        testSignals=null;Set(plugin,"physicsObservation",null);
         enable(false);type.GetMethod("StopDiagnostics",All)!.Invoke(plugin,null);
         if(Environment.GetEnvironmentVariable("MAUT_CANONICAL_FIXTURE") is {Length:>0} canonical)
             count+=CanonicalGateHostReplay.Run(canonical,Path.GetDirectoryName(sealedCandidate)!,context,pluginAssembly,gameAssembly,host,frame,gas,brake,modernPedal,assert);

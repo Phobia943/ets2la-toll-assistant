@@ -15,8 +15,10 @@ public sealed partial class TollPlugin
     internal sealed record LongitudinalSnapshot(DateTimeOffset Utc,long IssuedAt,long Epoch,double TelemetryAt,
         LongitudinalInput Input,LongitudinalOutput Output,SpeedBound[] Bounds,bool Published) {public object? TrafficEvidence{get;init;}}
     LongitudinalSnapshot? longitudinalSnapshot;
+    bool throttleDeliveryWarningShown;
     public string SpeedControlStatus {get {lock(sync) {
         if(!State.EnableAssists||longitudinalSnapshot is not { } sample)return "Eigene Geschwindigkeitsregelung ausgeschaltet. Start mit F8; Spieltempomat ausgeschaltet lassen.";
+        if(sample.Output.ThrottleDeliveryMissing)return "Gaseingang fehlt: Beschleunigung ausgesetzt. Ins Spiel wechseln, manuell übernehmen und erst danach neu mit F8 starten.";
         string action=sample.Output.Holding?"Halten":sample.Output.Brake>0?"Bremsen":sample.Output.Throttle>0?"Beschleunigen":"Rollen";
         return $"Eigene Regelung: Ziel {sample.Input.TargetSpeed*3.6:F0} km/h · angefordert: {action}.";
     }}}
@@ -36,7 +38,8 @@ public sealed partial class TollPlugin
     void RunLongitudinal(long epoch,long issuedAt)
     {
         if(!_IsRunning||!active||preview||!State.EnableAssists||State.DrivingMode==DrivingMode.LaneAssistOnly||
-            faultBrake.Latched||brakeHeld||paused) {longitudinal.Reset();return;}
+            faultBrake.Latched||brakeHeld) {longitudinal.Reset();throttleDeliveryWarningShown=false;return;}
+        if(paused){longitudinal.Pause();return;}
         speedBounds.Clear();
         float safetyLimit=EvaluateAt(issuedAt,epoch);
         double now=clock.Elapsed.TotalSeconds;
@@ -85,7 +88,8 @@ public sealed partial class TollPlugin
             Emergency:faultBrake.Latched,Pitch:pitch,ActualThrottle:physicsObservation?.GameThrottle,ActualBrake:physicsObservation?.GameBrake,
             CoastEligible:surroundings.Clear&&CanCoast()&&
                 (!cruise.HonorRoadLimit||physicsObservation?.SpeedLimitMps is float cap&&speed<=cap)&&
-                (cruise.MaximumSpeed==0||speed<=cruise.MaximumSpeed),StopIdentity:stopIdentity??sceneHold.OwnerKey??tracked);
+                (cruise.MaximumSpeed==0||speed<=cruise.MaximumSpeed),StopIdentity:stopIdentity??sceneHold.OwnerKey??tracked,
+            ReceivedThrottle:physicsObservation?.ReceivedThrottle,ReceivedBrake:physicsObservation?.ReceivedBrake);
         var result=longitudinal.Step(input);
         bool published=false;
         BeforeLongitudinalCommit?.Invoke(); // Isolated scheduling tests; unset in production.
@@ -120,6 +124,15 @@ public sealed partial class TollPlugin
                 OnControlOutput(command);
             });
         longitudinalSnapshot=new(DateTimeOffset.UtcNow,issuedAt,epoch,telemetryAt,input,result,speedBounds.ToArray(),published){TrafficEvidence=longitudinalTrafficEvidence};
+        if(!result.ThrottleDeliveryMissing)throttleDeliveryWarningShown=false;
+        else if(published&&!throttleDeliveryWarningShown) {
+            throttleDeliveryWarningShown=true;
+            _=Task.Run(()=> {
+                if(!State.EnableAssists||CaptureLongitudinalEpoch()!=epoch)return;
+                try {notify("Gaseingang fehlt", "Das Spiel meldet den angeforderten Gaseingang nicht. Beschleunigung ist ausgesetzt; bitte ins Spiel wechseln und manuell übernehmen. Daraus allein wird keine Notbremsung ausgelöst.");}
+                catch { /* A failed notification cannot alter driving output. */ }
+            });
+        }
     }
     static float Minimum(float first,float second)=>float.IsFinite(first)?float.IsFinite(second)?Math.Min(first,second):first:second;
 }
