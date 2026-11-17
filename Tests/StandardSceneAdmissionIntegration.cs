@@ -76,4 +76,31 @@ public static class StandardSceneAdmissionIntegration
         var corner=new RouteTrace([Vector3.Zero,new(0,0,-5),new(5,0,-5)],null,["a","a"]);
         assert(corner.TryStandardSlice(0,10,.5,out var bend,out _)&&bend.Any(p=>p.Position==new Vector3(0,0,-5)),"Every actual corner vertex remains in nominal standard corridor");
     }
+    public static void StationarySignedSpeed(Action<bool,string> assert)
+    {
+        var path=Path();var road=Road();
+        ParkedSceneAdmission.Result Check(double speed,SceneSnapshot? scene,VehicleGeometry? raw,string identity="plaza")=>
+            StandardSceneAdmission.Check(path,scene,Vector3.Zero,road,speed,1000000,1000000,identity,true,raw);
+        Check(0,Scene(Body()),Raw());
+        foreach(double speed in new[]{-6.240893344511278E-05/3.6,-0.0009240548475645483/3.6,
+            -StandardSceneAdmission.StationarySignedSpeedTolerance,0d,.000001}) {
+            assert(Check(speed,Scene(),Raw()).Clear,"Signed standstill telemetry retains valid empty scoped corridor at "+speed+"m/s");
+            assert(!Check(speed,Scene(Body()),Raw()).Clear,"Standstill normalization cannot erase a present corridor blocker at "+speed+"m/s");
+            assert(!Check(speed,null,Raw()).Clear,"Standstill normalization cannot invent required missing scene evidence at "+speed+"m/s");
+        }
+        foreach(double speed in new[]{-StandardSceneAdmission.StationarySignedSpeedTolerance-.000001,-1d}) {
+            var reverse=Check(speed,Scene(),Raw());
+            assert(!reverse.Clear&&reverse.Reason.Contains("Rückwärtsfahrt")&&!reverse.UsesLiveSource,
+                "Meaningful reverse travel is explicitly unsupported, never made into forward clearance by Abs");
+        }
+        foreach(double speed in new[]{double.NaN,double.PositiveInfinity,double.NegativeInfinity}) {
+            var invalid=Check(speed,Scene(),Raw());
+            assert(!invalid.Clear&&invalid.Reason.Contains("Geschwindigkeitsmessung"),"Nonfinite speed has an independent measurement diagnostic");
+        }
+        var missing=Check(-.0001,Scene(),Raw(),"unrelated-route");
+        assert(!missing.Clear&&missing.Reason.Contains("Mautabschnitt fehlt"),"Actual missing directed identity remains a separate blocked condition");
+        assert(!Check(-.0001,Scene() with{UtcMs=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()-201},Raw()).Clear,
+            "Standstill normalization does not renew original stale producer evidence");
+        assert(!Check(-.0001,Scene(),null).Clear,"Standstill normalization never substitutes missing raw truck identity");
+    }
 }

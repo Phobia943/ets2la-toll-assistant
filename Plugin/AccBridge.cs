@@ -15,6 +15,7 @@ public sealed class AccBridge
     public const string ConstraintName = "Mautassistent (experimentell)";
     public object? Constraint { get; private set; }
     object? owner;
+    internal object? DiagnosticOwner => Volatile.Read(ref owner);
     FieldInfo? listField;
     volatile bool live;
 

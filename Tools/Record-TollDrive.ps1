@@ -59,7 +59,8 @@ try {
                         selectedLane,selectedPayment,plaza,faultBraking,pathError,driveAction,connectedMetresAhead,
                         requiredLookahead,telemetryAge,gatesAge,pathAge,options,routing,routeFault,plannedStop,stopDistance,
                         steeringFeed,steeringAge,steeringFault,brakeHeld,brakeInputValue,
-                        laneAttempts,laneAttemptContext,laneDecisionContext,laneProtection,detailedRigProtection,planningProfile,rigPrediction
+                        laneAttempts,laneAttemptContext,laneDecisionContext,laneProtection,detailedRigProtection,planningProfile,rigPrediction,
+                        sceneStopping,sceneStatus,scenePedalFloor,sceneHoldOwner,sceneHolding,holdPedalFloor,tollAccelerationLimit,nativeAcc
                 }
             } catch {$issues.Add('StatusUnreadable')}
         }

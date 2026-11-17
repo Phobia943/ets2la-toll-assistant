@@ -49,6 +49,9 @@ void Run()
     var results=new List<string>();
     void Check(string name, Action test) { if(args is ["--filter",var filter]&&!name.Contains(filter,StringComparison.OrdinalIgnoreCase))return;try {test(); results.Add("PASS "+name);} catch(Exception ex) {results.Add("FAIL "+name+": "+ex); } }
     void Assert(bool v,string message="Assertion failed") {if(!v)throw new Exception(message);}
+    Check("Native command ages keep producer and observer clock domains separate",()=>NativeCommandTimingTests.ClockDomains(Assert));
+    Check("Native command timestamp bounds retain admission and full diagnostic ages",()=>NativeCommandTimingTests.Bounds(Assert));
+    Check("Native age watchdog preserves real failure and startup deadlines",()=>NativeCommandTimingTests.GuardContract(Assert));
     Check("Standard exit slicing accepts numerical item handoffs but rejects physical gaps and reversals",()=>StandardSliceHandoffIntegration.NumericalItemBoundaries(Assert));
     Check("Curve geometry excludes grades, item seams and isolated interpolation spikes",()=>CurveSpeedTests.Geometry(Assert));
     Check("Curve speed preview slows ahead without increasing native bounds or stopping a slow truck",()=>CurveSpeedTests.Limits(Assert));
@@ -242,6 +245,10 @@ void Run()
     Check("Valid routes cannot hide missing steering; braking bypasses route locks and manual takeover releases it",()=>SteeringSafetyIntegration.Run(Assert));
     Check("Live steering commands remain visible during busy route work without false dropout braking",()=>SteeringSafetyIntegration.BusyHealthyFeed(Assert));
     Check("A newly delivered game pause is honored even before busy route bookkeeping drains it",()=>SteeringSafetyIntegration.PauseDeliveryWhileBusy(Assert));
+    Check("Native steering watchdog uses raw producer authority and rejects stale or future origins",()=>SteeringCommandClockIntegration.RawAuthority(Assert));
+    Check("Fresh steering received before trip commit invalidates a stale watchdog snapshot",()=>SteeringCommandClockIntegration.RecheckBeforeTrip(Assert));
+    Check("Native acceleration diagnostics are bounded read-only observations off the watchdog",()=>NativeAccDiagnosticsIntegration.BoundedReadOnly(Assert));
+    Check("Standard scene tolerates measured stationary signed-speed noise without waiving obstacles",()=>StandardSceneAdmissionIntegration.StationarySignedSpeed(Assert));
     Check("Planner pause handoff handles both message orders without a false emergency latch",()=>PlannerPauseIntegration.Handoff(Assert));
     Check("Planner pause handoff cannot renew stale route authority or conceal real failures",()=>PlannerPauseIntegration.Refusals(Assert));
     Check("Manual brake releases even a pending steering fault before route bookkeeping is available",()=>SteeringSafetyIntegration.BusyManualRelease(Assert));

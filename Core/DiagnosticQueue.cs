@@ -3,7 +3,7 @@ namespace MautAssistent;
 /// <summary>One storage worker, bounded by fixed diagnostic slots. No caller waits for I/O.</summary>
 internal sealed class DiagnosticQueue(Action<Exception>? reportError = null)
 {
-    internal enum Slot { Status, Map, Preview, RouteError, Fault }
+    internal enum Slot { Status, Map, Preview, RouteError, Fault, AccObservation }
     readonly object sync = new();
     readonly Dictionary<Slot, Action> pending = new();
     readonly Queue<Slot> order = new();

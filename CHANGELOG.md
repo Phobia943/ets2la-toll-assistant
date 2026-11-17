@@ -1,12 +1,20 @@
 # Änderungen
 
+## 0.3.22 – Standrauschen, Befehlszeit und zusätzliche Bremsdiagnose
+
+- 177 Integrations-, 87 Kernlogik-, 146 isolierte Host-/Plugin- und 63 Aufnahmeprüfungen bestanden; kritisches Review abgeschlossen. Noch nicht installiert oder live gefahren. Finaler SHA256 `A8F789D79C9CCE3B49F6B273749C104617AA77140E7641E0148A9D570CD8BC96`.
+- Winzige negative Geschwindigkeitswerte bis −0,01 m/s erzeugen in der Standard-Szenenprüfung keinen falschen Routenverlust mehr. Echte Rückwärtsfahrt, Hindernisse und fehlende Quellen bleiben gesperrt. Der erste Verzögerungsbeginn vor dem offenen Tor bleibt ungeklärt.
+- Lenkbefehle werden mit ihren ursprünglichen monotonen Zeitstempeln bewertet. Speichern und letzte Prüfung vor der Fehlerverriegelung verwenden dieselbe kurze Ausgabesperre; fremde Sitzungsepochen bleiben ausgeschlossen. 150-ms-Lenkfrist, 200-ms-Ausgabezulassung und 350-ms-Anlaufzeit bleiben unverändert.
+- Die Diagnose trennt normale und szenenbedingte Halteausgaben, native Tempomatbegrenzungen und rohe Ausgabe-/Empfangs-/Prüfzeitstempel. Fremdbeobachtung mit Versionsprüfung erfolgt ausschließlich auf dem begrenzten Diagnosearbeiter.
+- Live-Beobachtung mit .21: erste Maut nach Halt manuell übernommen; separater Straßenstopp der Lenküberwachung; zweite automatische Maut und anschließende Spurführung vom Nutzer ohne Eingriff bestätigt. Keine universelle Durchfahrtfreigabe. [.22-Prüfbericht und Grenzen](REVIEW-0.3.22.md).
+
 ## 0.3.21 – Korrektur der numerischen Mautausfahrt-Übergänge, installiert
 
 - 170 Integrations-, 84 Kernlogik-, 120 Host-/Plugin- und 63 Aufnahmeprüfungen bestanden; unabhängiges kritisches Review mit 26 gezielten Assertions abgeschlossen. Finaler Build besteht alle 480 gespeicherten Bewegungsproben und acht zusätzliche Nahtfenster. SHA256 `B6657F0639F59FC1F1F2FB215AA048406042D1C4DAA5DB7C414028C071165CB3`.
 - Aufgezeichneten Halt nach der Durchfahrt auf einen identischen Prefab-/Straßen-Endpunkt zurückgeführt: erster Korridorfehler und erster ACC-Bremsbefehl liegen im selben Bewegungsframe. Gerichtete Übergänge erhalten eine begrenzte, koordinatenabhängige Float-Toleranz; echte Lücken und Gegenrichtung bleiben ausgeschlossen.
 - Die Standard-Abtastung behandelt numerische Übergänge auch bei der Tangentenbildung. Originalgeometrie und Itemidentitäten bleiben erhalten; der optionale strenge Gespannnachweis wird nicht gelockert.
 - Getrennter früher Planer-Pausefehler erhält nur bei soeben bestätigter, weiterhin passender Route und frischen Lenksignalen eine höchstens 200 ms alte Übergangsgrundlage ohne Beschleunigung. Bestätigte SDK-Pause verwirft alte kurze Wiederherstellungstimer. Keine allgemeine Toleranz für verlorene Routen oder lange Pause ohne neue Route.
-- Szenendiagnose erhält den konkreten Abtastfehler und zeigt ohne aktuelle Begrenzung keinen alten Haltegrund mehr. Am 17. November um 11:13 Uhr MEZ nach bestätigtem Halt und geschlossenem ETS2LA installiert; Backup der .20, Plugin und sechs Begleitdateien unabhängig geprüft. Kein automatischer Start; Live-Fahrt mit .21 steht aus. [Prüfbericht](REVIEW-0.3.21.md).
+- Szenendiagnose erhält den konkreten Abtastfehler und zeigt ohne aktuelle Begrenzung keinen alten Haltegrund mehr. Am 17. November um 11:13 Uhr MEZ nach bestätigtem Halt und geschlossenem ETS2LA installiert; Backup der .20, Plugin und sechs Begleitdateien unabhängig geprüft. Kein automatischer Start. Die spätere zehnminütige Fahrt enthielt eine bestätigte erfolgreiche Mautpassage und zwei getrennte Stopps; Einzelbefunde stehen im [.22-Prüfbericht](REVIEW-0.3.22.md). [Übergangsprüfung .21](REVIEW-0.3.21.md).
 
 ## 0.3.20 – Standard-Spurführung installiert und bereit, Fahrprüfung ausstehend
 

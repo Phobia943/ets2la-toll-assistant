@@ -11,12 +11,17 @@ public sealed class SteeringFeedGuard
     bool received;
     public void Reset(){started=null;received=false;}
     public SteeringFeedState Check(double now,double lastCommandAt,bool required)
+        =>CheckAge(now,double.IsFinite(lastCommandAt)?now-lastCommandAt:null,required);
+
+    // Native commands supply their age directly from their original monotonic
+    // tick domain. 'now' is only the unchanged startup-grace clock; never align
+    // a producer stamp by subtracting an age from a separately sampled clock.
+    public SteeringFeedState CheckAge(double now,double? age,bool required)
     {
         if(!required){Reset();return SteeringFeedState.Off;}
         if(!double.IsFinite(now))return SteeringFeedState.Lost;
         started??=now;
-        double age=now-lastCommandAt;
-        if(double.IsFinite(lastCommandAt)&&age>=0&&age<=MaxAge)
+        if(age is double value&&double.IsFinite(value)&&value>=0&&value<=MaxAge)
         {received=true;return SteeringFeedState.Healthy;}
         if(received || now-started.Value>=StartGrace)return SteeringFeedState.Lost;
         return SteeringFeedState.Starting;

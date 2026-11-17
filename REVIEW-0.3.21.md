@@ -30,4 +30,6 @@ Auch alle drei [GitHub-Prüfungen des Code-Commits 9f1f09b](https://github.com/P
 
 ## Grenzen
 
+Nachtrag zur Live-Beobachtung: Nach manuellem Verlassen eines ungeeigneten Haltepunkts startete .21. In einer zehnminütigen Aufnahme kam es zunächst zu einem Halt vor einem offenen Tor mit anschließender manueller Übernahme sowie zu einer separaten Straßenbremsung. Eine spätere automatische Mautdurchfahrt lief in der Aufnahme ohne Stillstand/Assistenzunterbrechung; der Nutzer bestätigte auch die anschließende Spurführung ohne Eingriff. Die getrennten Ursachen und verbleibenden Grenzen sind im [Review 0.3.22](REVIEW-0.3.22.md) dokumentiert. Die vorstehenden Angaben „Live-Fahrprüfung steht aus“ beschreiben den früheren Installationszeitpunkt.
+
 Diese Korrektur betrifft nachweisbare Abschnittsübergänge und den eng begrenzten Pause-Nachlauf. Sie belegt weder alle Mautanlagen noch vollständige Ladungsfreiheit, Baustellenvermeidung oder eine allgemein gelöste Hintergrund-Pedalausgabe. Die aufgezeichneten Karten-/Bewegungsproben bleiben privat; der öffentliche Test verwendet die minimal erforderlichen geometrischen Gegenfälle.

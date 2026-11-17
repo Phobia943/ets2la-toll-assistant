@@ -10,6 +10,7 @@
     <Compile Include="../Core/*.cs" Link="Core/%(Filename)%(Extension)" />
     <Compile Include="../Tests/Program.cs" Link="Program.cs" />
     <Compile Include="../Tests/StandardSliceHandoffIntegration.cs" Link="StandardSliceHandoffIntegration.cs" />
+    <Compile Include="../Tests/NativeCommandTimingTests.cs" Link="NativeCommandTimingTests.cs" />
     <Compile Include="../Tests/GeometryBrakeTests.cs" Link="GeometryBrakeTests.cs" />
     <Compile Include="../Tests/CurveSpeedTests.cs" Link="CurveSpeedTests.cs" />
     <Compile Include="../Tests/ApproachStopTests.cs" Link="ApproachStopTests.cs" />

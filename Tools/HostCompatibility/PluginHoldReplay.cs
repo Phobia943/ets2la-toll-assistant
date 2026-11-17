@@ -32,7 +32,7 @@ internal static class PluginHoldReplay
         using var module=ModuleDefinition.ReadModule(candidate);
         if(module.GetType("<Module>").Methods.Any(m=>m.IsConstructor))throw new InvalidDataException("Unaudited plugin module initializer");
         var plugin=module.GetType("MautAssistent.TollPlugin")??throw new InvalidDataException("Plugin type missing");
-        foreach(string pure in new[]{"FaultBrake","SceneStopHold","SceneHoldBrake","PlannedHoldBrake"})
+        foreach(string pure in new[]{"FaultBrake","SceneStopHold","SceneHoldBrake","PlannedHoldBrake","SteeringFeedGuard"})
             if(module.GetType("MautAssistent."+pure).Methods.Any(m=>m.IsConstructor&&m.IsStatic))
                 throw new InvalidDataException("Unaudited hold/fault static initializer: "+pure);
         foreach(string name in new[]{"CommitPlannedHolds","ClearSceneHold","PublishPlannedHold","SensorsFresh"})
@@ -208,12 +208,175 @@ internal static class PluginHoldReplay
             Check(brake()==0&&gas()==0,"product state withdraws its physical floor: "+invalid);
             if(invalid=="assists-off")Set(state,"<EnableAssists>k__BackingField",true);
         }
+        // Exercise the real raw-origin observer/store against the REAL isolated
+        // Host3 epoch source. No timer, native lane Tick or live output is run.
+        Reset();Set(plugin,"requireHostCompatibility",true);Set(plugin,"monitorSteering",true);
+        Set(plugin,"steeringSync",new object());Set(plugin,"steeringGuard",NewCore("SteeringFeedGuard"));
+        Set(plugin,"steeringMonitoringLive",true);Set(plugin,"lastSteeringCommand",null);
+        foreach(string name in new[]{"OnControlOutput","StoreSteering","CheckSteeringOutput","SteeringCommandAge"})
+            RuntimeHelpers.PrepareMethod(type.GetMethod(name,All)!.MethodHandle);
+        object NativeSteering(long origin,long issued,float value=.12f)
+        {
+            var definition=Activator.CreateInstance(definitionType)!;Set(definition,"Id","LaneAssist.SteeringCorrection");
+            Set(definition,"Timeout",1f);Set(definition,"MautEpoch",origin);Set(definition,"MautIssuedAt",issued);
+            var variables=Activator.CreateInstance(variablesType)!;Set(variables,"steering",value);
+            var message=Activator.CreateInstance(eventType)!;Set(message,"ChannelDefinition",definition);
+            Set(message,"Variables",variables);Set(message,"Properties",Activator.CreateInstance(propertiesType));return message;
+        }
+        void ObserveSteering(long origin,long issued)=>Call("OnControlOutput",NativeSteering(origin,issued));
+        string Feed(){Call("CheckSteeringOutput");return Get(plugin,"steeringFeedState")!.ToString()!;}
+        var clone=typeof(object).GetMethod("MemberwiseClone",All)!;
+        object CloneCommand(object source,long origin,long issued,double localAt)
+        {
+            var copyCommand=clone.Invoke(source,null)!;var commandType=copyCommand.GetType();
+            commandType.GetProperty("Epoch")!.SetValue(copyCommand,origin);
+            commandType.GetProperty("IssuedTicks")!.SetValue(copyCommand,issued);
+            commandType.GetProperty("At")!.SetValue(copyCommand,localAt);return copyCommand;
+        }
+        int steeringOriginChecks=0;
+        void SteeringCheck(bool okay,string why){Check(okay,"steering origin: "+why);steeringOriginChecks++;}
+        long firstSteeringEpoch=epoch(),firstSteeringOrigin=Stopwatch.GetTimestamp();
+        ObserveSteering(firstSteeringEpoch,firstSteeringOrigin);
+        var firstCommand=Get(plugin,"lastSteeringCommand");
+        SteeringCheck(firstCommand!=null&&
+            (long?)firstCommand.GetType().GetProperty("IssuedTicks")!.GetValue(firstCommand)==firstSteeringOrigin&&
+            (long?)firstCommand.GetType().GetProperty("Epoch")!.GetValue(firstCommand)==firstSteeringEpoch,
+            "the current verified Host3 epoch and raw producer ticks are retained by the genuine observer");
+        SteeringCheck(Feed()=="Healthy","a genuine current-epoch fresh command makes the watchdog healthy");
+        enable(false);SteeringCheck(Feed()=="Off","native disable ends the old watchdog session");
+        enable(true);long secondSteeringEpoch=epoch();
+        SteeringCheck(secondSteeringEpoch!=firstSteeringEpoch,"the real F9/F8 state transition changes the isolated Host3 epoch");
+        // Intentionally retain the old record: this tests the guard's epoch
+        // defense independently of Cancel/Stop clearing the normal lifecycle.
+        SteeringCheck(ReferenceEquals(firstCommand,Get(plugin,"lastSteeringCommand"))&&Feed()=="Starting",
+            "an already stored fresh E1 command cannot make E2 healthy before its first own output");
+        var delayedOld=CloneCommand(firstCommand!,firstSteeringEpoch,Stopwatch.GetTimestamp(),clock.Elapsed.TotalSeconds+1000);
+        Call("StoreSteering",delayedOld);
+        SteeringCheck(ReferenceEquals(firstCommand,Get(plugin,"lastSteeringCommand"))&&Feed()=="Starting",
+            "a callback validated before F9 but committed after F8 cannot store its now-foreign epoch");
+        ObserveSteering(firstSteeringEpoch,Stopwatch.GetTimestamp());
+        SteeringCheck(ReferenceEquals(firstCommand,Get(plugin,"lastSteeringCommand")),
+            "outer observer admission also rejects a late old-epoch callback");
+        long secondSteeringOrigin=Stopwatch.GetTimestamp();ObserveSteering(secondSteeringEpoch,secondSteeringOrigin);
+        var secondCommand=Get(plugin,"lastSteeringCommand");
+        SteeringCheck(secondCommand!=null&&!ReferenceEquals(secondCommand,firstCommand)&&Feed()=="Healthy",
+            "a new E2 command is accepted and restores healthy monitoring without borrowing E1");
+        foreach(long invalidOrigin in new[]{0L,-1L,Stopwatch.GetTimestamp()-Stopwatch.Frequency,
+            Stopwatch.GetTimestamp()+Stopwatch.Frequency,long.MaxValue}) {
+            ObserveSteering(secondSteeringEpoch,invalidOrigin);
+            SteeringCheck(ReferenceEquals(secondCommand,Get(plugin,"lastSteeringCommand")),
+                "outer admission rejects zero/negative/expired/future producer stamps without renewing the current command: "+invalidOrigin);
+            var delayedInvalid=CloneCommand(secondCommand!,secondSteeringEpoch,invalidOrigin,clock.Elapsed.TotalSeconds+1000);
+            Call("StoreSteering",delayedInvalid);
+            SteeringCheck(ReferenceEquals(secondCommand,Get(plugin,"lastSteeringCommand")),
+                "the atomic store rechecks invalid producer stamps even after earlier callback validation: "+invalidOrigin);
+        }
+        var oldRawNewLocal=CloneCommand(secondCommand!,secondSteeringEpoch,secondSteeringOrigin-1,clock.Elapsed.TotalSeconds+1000);
+        Call("StoreSteering",oldRawNewLocal);
+        SteeringCheck(ReferenceEquals(secondCommand,Get(plugin,"lastSteeringCommand")),
+            "a larger local receipt timestamp cannot outrank a smaller raw producer origin");
+        // Deterministically block the ACTUAL epoch getter, not a fixture
+        // delegate. A140ms origin crosses the150ms watchdog deadline while the
+        // same epoch's host gate is held for30ms. Never renew its origin.
+        long waitEpoch=epoch(),waitOrigin=Stopwatch.GetTimestamp()-Stopwatch.Frequency*14/100;
+        var waitCommand=CloneCommand(secondCommand!,waitEpoch,waitOrigin,clock.Elapsed.TotalSeconds-.14);
+        Set(plugin,"lastSteeringCommand",null);Call("StoreSteering",waitCommand);
+        SteeringCheck(ReferenceEquals(waitCommand,Get(plugin,"lastSteeringCommand")),
+            "the wait regression begins with a genuinely admitted current-epoch raw command");
+        var hostGate=output.GetField("MautGate",All)!.GetValue(null)!;
+        var ageMethod=type.GetMethod("SteeringCommandAge",All)!;
+        long releaseTicks=0,probeTicks=0;double probeNow=0;double? probeAge=null;Exception? probeFailure=null;
+        var waitThread=new Thread(()=> {
+            try {
+                // Retain the prior API branch solely to demonstrate the
+                // regression against a sealed older candidate, without edits.
+                if(ageMethod.GetParameters().Length==1) {
+                    var result=ageMethod.Invoke(plugin,[waitCommand])!;var resultType=result.GetType();
+                    probeNow=(double)resultType.GetField("Item1")!.GetValue(result)!;
+                    probeTicks=(long)resultType.GetField("Item2")!.GetValue(result)!;
+                    probeAge=(double?)resultType.GetField("Item3")!.GetValue(result);
+                } else {
+                    probeNow=clock.Elapsed.TotalSeconds;probeTicks=Stopwatch.GetTimestamp();
+                    probeAge=(double?)ageMethod.Invoke(plugin,[waitCommand,probeTicks,probeNow]);
+                }
+            }catch(Exception ex){probeFailure=ex;}
+        }) {IsBackground=true,Name="isolated-host-epoch-wait-review"};
+        bool monitorBlocked=false;
+        Monitor.Enter(hostGate);
+        try {
+            waitThread.Start();
+            monitorBlocked=SpinWait.SpinUntil(()=>
+                (waitThread.ThreadState&System.Threading.ThreadState.WaitSleepJoin)!=0,TimeSpan.FromSeconds(2));
+            if(monitorBlocked)Thread.Sleep(30);
+            releaseTicks=Stopwatch.GetTimestamp();
+        } finally {Monitor.Exit(hostGate);}
+        if(!waitThread.Join(TimeSpan.FromSeconds(2)))throw new TimeoutException("Isolated epoch probe failed to exit the released host gate");
+        var epochWaitProbe=new {monitorBlocked,probeFailure=probeFailure?.ToString(),waitEpoch,waitOrigin,releaseTicks,probeTicks,probeAge,
+            clockFrequency=Stopwatch.Frequency,probeTicksAfterRelease=probeTicks>=releaseTicks,
+            scope="Controlled test thread blocked in the real isolated host epoch getter; no native Tick or timer executed"};
+        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new{epochWaitProbe}));
+        SteeringCheck(monitorBlocked&&probeFailure==null,"the real epoch getter demonstrably waits on its held host monitor and then completes");
+        SteeringCheck(probeTicks>=releaseTicks,
+            "the watchdog source-age clock is sampled after the epoch getter's actual gate wait");
+        double expectedProbeAge=(double)(probeTicks-waitOrigin)/Stopwatch.Frequency;
+        SteeringCheck(probeAge is double actualAge&&Math.Abs(actualAge-expectedProbeAge)<1e-9&&actualAge>.15&&epoch()==waitEpoch,
+            "an unchanged epoch cannot conceal producer aging past150ms while its getter is blocked");
+        var waitGuard=NewCore("SteeringFeedGuard");var checkAge=waitGuard.GetType().GetMethod("CheckAge")!;
+        checkAge.Invoke(waitGuard,[probeNow-.01,(double?)0,true]);
+        SteeringCheck(checkAge.Invoke(waitGuard,[probeNow,probeAge,true])!.ToString()=="Lost",
+            "the post-wait raw age still trips the unchanged150ms watchdog deadline");
+        // Block only the FINAL age probe. Telemetry delivered during that
+        // epoch-getter wait must be sampled afterwards, before committing AEB.
+        Fresh();Set(plugin,"latestDeliveredTelemetry",null);Set(plugin,"lastSteeringCommand",
+            CloneCommand(secondCommand!,epoch(),Stopwatch.GetTimestamp()-Stopwatch.Frequency,clock.Elapsed.TotalSeconds-1));
+        var pauseGuard=NewCore("SteeringFeedGuard");Set(plugin,"steeringGuard",pauseGuard);
+        pauseGuard.GetType().GetMethod("CheckAge")!.Invoke(pauseGuard,[clock.Elapsed.TotalSeconds,(double?)0,true]);
+        var faultGate=Get(fault,"sync")!;Exception? pauseFailure=null;
+        bool initialPauseFault=(bool)faultType.GetProperty("Latched")!.GetValue(fault)!;
+        var pauseThread=new Thread(()=>{try{Call("CheckSteeringOutput");}catch(Exception ex){pauseFailure=ex;}})
+            {IsBackground=true,Name="isolated-final-epoch-pause-review"};
+        bool firstFaultWait=false,finalEpochWait=false,faultHeld=false,hostHeld=false;
+        try {
+            Monitor.Enter(faultGate);faultHeld=true;pauseThread.Start();
+            firstFaultWait=SpinWait.SpinUntil(()=>
+                (pauseThread.ThreadState&System.Threading.ThreadState.WaitSleepJoin)!=0,TimeSpan.FromSeconds(2));
+            if(firstFaultWait) {
+                Monitor.Enter(hostGate);hostHeld=true;
+                Monitor.Exit(faultGate);faultHeld=false;
+                finalEpochWait=SpinWait.SpinUntil(()=> {
+                    if(Monitor.TryEnter(faultGate)){Monitor.Exit(faultGate);return false;}
+                    return (pauseThread.ThreadState&System.Threading.ThreadState.WaitSleepJoin)!=0;
+                },TimeSpan.FromSeconds(2));
+                if(finalEpochWait) {
+                    var frameType=type.GetNestedType("TelemetryFrame",B.NonPublic)!;
+                    var pauseFrame=RuntimeHelpers.GetUninitializedObject(frameType);
+                    frameType.GetProperty("Paused")!.SetValue(pauseFrame,true);
+                    frameType.GetProperty("Active")!.SetValue(pauseFrame,true);
+                    frameType.GetProperty("Arrived")!.SetValue(pauseFrame,clock.Elapsed.TotalSeconds);
+                    Set(plugin,"latestDeliveredTelemetry",pauseFrame);
+                }
+            }
+        } finally {
+            if(hostHeld)Monitor.Exit(hostGate);
+            if(faultHeld)Monitor.Exit(faultGate);
+        }
+        if(!pauseThread.Join(TimeSpan.FromSeconds(2)))throw new TimeoutException("Isolated paused final probe did not exit released gates");
+        var finalPauseProbe=new{initialFaultLatched=initialPauseFault,firstFaultWait,finalEpochWait,probeFailure=pauseFailure?.ToString(),
+            feed=Get(plugin,"steeringFeedState")!.ToString(),latched=(bool)faultType.GetProperty("Latched")!.GetValue(fault)!,
+            assists=(bool)state.GetType().GetProperty("EnableAssists")!.GetValue(state)!,
+            scope="Private paused TelemetryFrame delivered while the genuine FINAL epoch getter waits; no OnTelemetry or SDK invocation"};
+        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new{finalPauseProbe}));
+        SteeringCheck(!initialPauseFault&&firstFaultWait&&finalEpochWait&&pauseFailure==null,
+            "the watchdog demonstrably reaches its first fault gate and then waits in the final epoch getter");
+        SteeringCheck(finalPauseProbe.feed=="Off"&&!finalPauseProbe.latched&&finalPauseProbe.assists,
+            "SDK pause delivered during the FINAL epoch wait cancels the stale decision without faulting or disabling assists");
+        Set(plugin,"latestDeliveredTelemetry",null);
         Reset();enable(false);frame(false);
         File.WriteAllText(Path.Combine(prepared,"plugin-hold-replay.json"),System.Text.Json.JsonSerializer.Serialize(new{
-            checks,passed=true,pluginSha256=sealedHash,
+            checks,steeringOriginChecks,epochWaitProbe,finalPauseProbe,passed=true,pluginSha256=sealedHash,
             pluginMvid=assembly.ManifestModule.ModuleVersionId,hostMvid=gameAssembly.ManifestModule.ModuleVersionId,
             liveMapsOpened=false,pluginInstanceConstructorsCalled=false,faultConstructorsCalled=false,
             coreHoldConstructorsCalled=false,auditedStaticInitializersOnly=true,outputThreadsStarted=false,
-            scope="Real CommitPlannedHolds/ClearSceneHold with controlled floor inputs and isolated real output sinks"}));
+            scope="Real hold Commit/Clear and steering raw-origin observer/store/watchdog with controlled inputs, actual isolated Host3 epochs and real isolated output sinks; no live native Tick or timers"}));
     }
 }
