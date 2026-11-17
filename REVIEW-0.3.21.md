@@ -24,7 +24,9 @@ Mit genau diesem finalen Build bestehen alle **480 Bewegungsproben** (240 je ges
 
 Plugin-Version `0.3.21.0`, SHA256 `B6657F0639F59FC1F1F2FB215AA048406042D1C4DAA5DB7C414028C071165CB3`, MVID `f215b974-8ece-4041-8a63-68d3db278ba8`. Das Hostmanifest und alle sechs Host-/SDK-/Messdateien bleiben unverändert. Die private Vergleichsaufnahme liegt unter `incident-exit-0320-20261117-0952/replay-after-seam-fix-0321.jsonl`; vollständige Aufzeichnungen werden nicht veröffentlicht.
 
-Die laufende Installation bleibt während der Nutzerfahrt unverändert. Die neue Version ist noch nicht installiert oder live gefahren.
+**Installiert am 17. November 2026, 11:13 Uhr MEZ:** Nach bestätigtem Stillstand, ausgeschalteter Assistenz und geschlossenem ETS2LA bestand die erneute Installervorschau. Nur die Plugin-DLL wurde atomar ausgetauscht; die vorherige .20-Datei ist gesichert. Eine unabhängige Nachprüfung bestätigt Pluginversion/Hash, Backup-Hash und alle sechs unveränderten Begleitdateien. Manifest-SHA256 `71F90E518A649CF831DBBDA6D74B4C55B4A8F5B4E402B819079974210E07009D`. Private Nachweise: `maut-0321-install-result.json`, `maut-0321-installed-verified.json`. Während der vorherigen Fahrt gab es keine Installationsänderung. Der Installer hat ETS2LA und Assistenz nicht gestartet; die Live-Fahrprüfung steht aus.
+
+Auch alle drei [GitHub-Prüfungen des Code-Commits 9f1f09b](https://github.com/Phobia943/ets2la-toll-assistant/actions/runs/44062434726) sind erfolgreich abgeschlossen. Das umfasst Kernlogik, Aufnahmetests und die unveränderten nativen Protokollprüfungen. Die örtliche Integrations-/Hostprüfung und die privaten historischen Kartenproben bleiben davon getrennte Nachweise.
 
 ## Grenzen
 

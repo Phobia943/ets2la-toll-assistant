@@ -1,6 +1,6 @@
 # ETS2LA Mautassistent
 
-**0.3.21 korrigiert einen reproduzierten unnötigen Halt nach der Mautausfahrt; der Einbau steht noch aus.** Identische oder numerisch leicht abweichende Endpunkte zwischen zwei Straßenabschnitten werden bei der Standardführung nicht mehr als verlorene Route behandelt. Die laufende Installation bleibt vorerst auf 0.3.20. [Befund, Prüfungen und Grenzen](REVIEW-0.3.21.md), [Standardmodus und Installation 0.3.20](REVIEW-0.3.20.md), [Baseline 0.3.18](REVIEW-0.3.18.md).
+**0.3.21 ist installiert und korrigiert einen reproduzierten unnötigen Halt nach der Mautausfahrt.** Identische oder numerisch leicht abweichende Endpunkte zwischen zwei Straßenabschnitten werden bei der Standardführung nicht mehr als verlorene Route behandelt. Die vorherige .20-Datei ist gesichert; die Live-Fahrprüfung der .21 steht noch aus. [Befund, Prüfungen und Grenzen](REVIEW-0.3.21.md), [Standardmodus 0.3.20](REVIEW-0.3.20.md), [Baseline 0.3.18](REVIEW-0.3.18.md).
 
 Standardmäßig wird ein benannter Planungskorridor von 4,5 m Höhe und 3,4 m Breite verwendet. Eine unbekannte Ladung blockiert allein weder Zahlungsarterkennung noch lokale Fahrentscheidung. Die zusätzliche genaue Gespannprüfung bleibt optional. Dieser Standardkorridor bestätigt keine vollständige Ladungs- oder Aufliegerfreiheit.
 
@@ -62,7 +62,7 @@ Beim damaligen vollständigen Sieben-Datei-Austausch mussten ETS2LA **und ETS2/T
 
 **Niemals den gesamten Host-Vorbereitungsordner oder `isolated-replay-*` installieren oder verteilen.** Die Replay-Unterordner enthalten absichtlich umgeschriebene Test-DLLs mit anderen Prüfsummen. Nur die ausdrücklich im versiegelten Sieben-Datei-Paket aufgeführten Produktionspfade dürfen ausgetauscht werden.
 
-Der neue .21-Plugin-Build besteht 170 Integrations-, 84 Kernlogik-, 120 Host-/Plugin- und 63 Aufnahmetests ohne Fehler sowie den geometrischen Vergleich aller 480 gespeicherten Bewegungsproben des Ausfahrtstopps. Prüfsummen, Review und genaue Grenzen stehen im [aktuellen Prüfbericht](REVIEW-0.3.21.md). Die unveränderten Geometriequellen haben zuvor 31 isolierte Beobachterprüfungen und 33 + 18 SDK-Szenenprüfungen bestanden. Einbau und Live-Fahrprüfung der .21 stehen noch aus. ETS2LA-Updates können die Kombination ersetzen; danach sind Fassungen und Prüfsummen erneut zu prüfen.
+Der installierte .21-Plugin-Build besteht 170 Integrations-, 84 Kernlogik-, 120 Host-/Plugin- und 63 Aufnahmetests ohne Fehler sowie den geometrischen Vergleich aller 480 gespeicherten Bewegungsproben des Ausfahrtstopps. Prüfsummen, Review und genaue Grenzen stehen im [aktuellen Prüfbericht](REVIEW-0.3.21.md). Die unveränderten Geometriequellen haben zuvor 31 isolierte Beobachterprüfungen und 33 + 18 SDK-Szenenprüfungen bestanden. Die Live-Fahrprüfung der .21 steht noch aus. ETS2LA-Updates können die Kombination ersetzen; danach sind Fassungen und Prüfsummen erneut zu prüfen.
 
 Die Initialisierung stößt reine Modellarbeit im Hintergrund an, und der F8-Wartezustand hält bis zur Bereitschaft. Ein vorbereiteter Korridor wird einmal pro Auswertung erzeugt und zwischen den lokalen Prüfungen geteilt. Die Laufzeitbelege der .18-Basis und die separaten .19-Kartenproben sind in den Reviews abgegrenzt; sie garantieren keine entsprechende Laufzeit für alle Modelle oder den gesamten Ausgabepfad. `Supported` des Bewegungsmodells allein erteilt keine Fahrberechtigung.
 
