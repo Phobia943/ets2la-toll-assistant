@@ -58,6 +58,7 @@ internal static class LongitudinalPluginReplay
                     owner.StartsWith("System.Func`",StringComparison.Ordinal)||owner.StartsWith("System.Action",StringComparison.Ordinal)||owner.StartsWith("System.Threading.AsyncLocal`",StringComparison.Ordinal))||
                     owner=="System.Diagnostics.Stopwatch"&&call.Name=="StartNew"||owner=="System.Environment"&&call.Name=="GetFolderPath"||
                     owner=="System.IO.Path"&&call.Name=="Combine"||owner=="System.Array"&&call.Name=="Empty"||
+                    owner=="System.StringComparer"&&call.Name=="get_Ordinal"||
                     owner=="System.Type"&&call.Name is "GetTypeFromHandle" or "GetField" or "GetMethod" or "GetProperty"||
                     call.FullName=="System.Void System.ArgumentOutOfRangeException::.ctor(System.String)";
                 if(!allowed)throw new InvalidDataException("Unaudited Tick fixture constructor call: "+call.FullName);

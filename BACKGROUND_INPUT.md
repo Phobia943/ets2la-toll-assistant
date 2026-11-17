@@ -1,6 +1,14 @@
 # Hintergrundbetrieb unter TruckersMP
 
-Stand: 14. November 2026. **Hintergrundfahrt ist nicht gelöst. TruckersMP-Unterstützung bleibt eine Anforderung.** Die Einzelspieler-Lösung ersetzt sie nicht.
+**Hintergrundfahrt ist weiterhin nicht gelöst. TruckersMP-Unterstützung bleibt eine Anforderung.** Die Einzelspieler-Lösung ersetzt sie nicht.
+
+## Prüfung für 0.4.4
+
+Die offizielle [SCS SDK 1.16](https://download.eurotrucksimulator2.com/scs_sdk_1_16.zip) enthält weiterhin die Input-API 1.00. Deren Initialisierung registriert ein Gerät; es gibt kein Background-/AlwaysActive-Flag und keinen Aufruf, der seine Aktivität erzwingt. Der Aktivitätscallback ist eine Benachrichtigung. Eingabeereignisse werden vom Spiel nur für aktive Geräte abgefragt.
+
+Der geprüfte [ETS2LA-Controller](https://github.com/ETS2LA/controller/blob/85a81236e474311494d72383283d54da4ff786b4/src/dll/input_device.cpp) registriert denselben semantischen Gerätetyp. `active`, `last_frame_qpc`, `applied_write_seq` und `applied_qpc` können dessen Callback/Abholung diagnostizieren. Die Bestätigung erfolgt vor der Ausgabe der einzelnen Ereignisse und belegt weder den logischen Spieleingang noch die effektive Fahrzeugwirkung. Diese Felder werden von unserer unveränderten installierten Legacy-Ausgabe nicht bereitgestellt und werden in 0.4.4 nicht erfunden. Der Standard-Timeout des neueren Controllers ist kein Ersatz für unsere kürzeren ursprünglichen Ausgabefristen.
+
+0.4.4 erfasst zusätzlich den exakten lebenden Spielprozess, Vordergrundfenster und die getrennten logischen/effektiven Pedale. Das verbessert die Zuordnung weiterer Fehler und bindet die neue Zahlungsinteraktion an das aktive Spiel. Es ist kein Fokus-Override und noch kein Nachweis funktionierender Hintergrundpedale. Die bisherige Standard-Pedaleinstellung bleibt unverändert.
 
 ## Neuer Vergleich mit SDK 1.62 und 0.3.11
 

@@ -1,8 +1,8 @@
 # ETS2LA Mautassistent
 
-**0.4.3 berücksichtigt ausgeschaltete Kartenampeln und wiederholte Physikframes.** Ein Ampelprofil allein erzeugt keinen Halt mehr, wenn die konkrete Karteninstanz keine Ampelmodelle erzeugt und dort kein passender Live-Actor beobachtet wird. Reales Rot und unbekannte aktive Ampeln bleiben berücksichtigt. Identische Telemetriewiederholungen dürfen einen noch aktuellen Beschleunigungswert innerhalb seiner ursprünglichen Frist weiterverwenden; sie verlängern diese Frist nicht. [Korrektur, Prüfungen und offene Grenzen](REVIEW-0.4.3.md). Die Fassung ist mit Sicherung und Dateiprüfung installiert; Start- und Fahrprüfung sind noch offen.
+**0.4.4 ergänzt die automatische Bestätigung an belegten manuellen Zahlspuren und eine genauere Eingabediagnose.** Der Helfer interagiert einmal im bestätigten Stillstand an einer eindeutig zugeordneten Zahlzone und wartet auf die eigene Schrankenöffnung. Nicht erreichbare oder unbekannte Zahlzonen bleiben manuell. Die Fassung ist offline geprüft und lokal installiert; ein Fahrnachweis steht aus. [Umfang und Grenzen](REVIEW-0.4.4.md).
 
-Die [Stillstandsbehandlung aus 0.4.2](REVIEW-0.4.2.md), die [Gasüberwachung aus 0.4.1](REVIEW-0.4.1.md), die eigene Geschwindigkeitsregelung und das bestehende Hostpaket aus [0.4.0](REVIEW-0.4.0.md) bleiben die Grundlage. Automatisches Bezahlen an manuellen Mautspuren ist noch nicht enthalten.
+Die [Ampel- und Physikframekorrekturen aus 0.4.3](REVIEW-0.4.3.md), die [Stillstandsbehandlung aus 0.4.2](REVIEW-0.4.2.md), die [Gasüberwachung aus 0.4.1](REVIEW-0.4.1.md) und die eigene Geschwindigkeitsregelung aus [0.4.0](REVIEW-0.4.0.md) bleiben erhalten. Für den geschützten Zahlungsimpuls benötigt 0.4.4 das zusammengehörige neue Hostpaket.
 
 Die Erweiterung arbeitet mit ETS2LA Pathfinding und Lane Assist in Euro Truck Simulator 2/TruckersMP. Sie plant erreichbare Mautspuren, bremst vor der zugeordneten Schranke und wartet auf deren beobachtete Freigabe. Sie ist ein experimenteller Fahrassistent; allgemeine Hindernisvermeidung und fehlerfreie Fahrten in allen Ländern sind nicht nachgewiesen.
 

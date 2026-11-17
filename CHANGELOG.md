@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.4.4 – gebundene Zahlungsinteraktion und Eingabekontext
+
+- Ergänzt eine einmalige automatische Bestätigung an unterstützten manuellen Mautspuren. Stillstand, gerichtete Modellzahlzone, exakte eigene Schranke, aktuelle Route und bestätigter Spielvordergrund sind Voraussetzung. Automatische Abrechnung bleibt die bevorzugte Spurwahl; unbekannte oder am sicheren Haltepunkt unerreichbare Zahlzonen bleiben manuell.
+- Speichert die Versuchsreservierung vor der Ausgabe auf einem unabhängigen begrenzten Hintergrundschreiber. Abbruch, F9/F8 und Neustart am selben Tor erzeugen keinen blinden Wiederholungsversuch. Ein Speicherfehler blockiert nur die automatische Interaktion, nicht den Fahrzyklus.
+- Bindet den semantischen Spieleingang an Versuch und ursprüngliche Zeitgrenzen. Der Host prüft den Kontext erneut; alte generische Toggle-Aufgaben dürfen diesen Eingang nicht übernehmen. Öffnung und Weiterfahrt benötigen weiterhin den Nachweis der eigenen Schranke.
+- Zeichnet den verifizierten Spielprozess und Fensterkontext auf und trennt Befehle, spätere logische Spieleingänge und effektive Pedalwirkung. Keine behauptete Lösung für Hintergrundfahrt unter TruckersMP und keine Änderung der Pedaleinstellung.
+- [Prüfstand, Paketstatus und Grenzen](REVIEW-0.4.4.md). Reale Zahlung und vollständige Durchfahrt mit dieser Fassung sind separat zu prüfen.
+
 ## 0.4.3 – Ampelinstanzen und aktuelle Fahrzeugdynamik, installiert
 
 - Berücksichtigt das belegte Spawnflag der konkreten Karteninstanz. Ein ausgeschalteter Ampelkopf ohne passenden Runtime-Actor erzeugt keinen erfundenen Halt. Echte Signale, unbekannte Instanzen und widersprüchliche Actors bleiben konservativ behandelt.

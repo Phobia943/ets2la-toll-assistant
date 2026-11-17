@@ -1,5 +1,11 @@
 # Fahrnachweis
 
+## 0.4.4 – Installiert, automatische Zahlung noch im Spiel zu prüfen
+
+217 Integrationsgruppen, 99 Logikgruppen, 299 isolierte Host-/Produktassertionen, 70 Aufnahmeprüfungen und drei Inventurtests bestehen. Kritischer Code- und Installerreview abgeschlossen. Alle fünf Paketdateien und die fünf Sicherungen sind nach dem Einbau unabhängig per SHA256 bestätigt. Keine Anwendung gestartet; Spiel-SDK, Fahrzeugmessung und Pedaleinstellung unverändert. [Konkrete Nachweise und Grenzen](REVIEW-0.4.4.md).
+
+Die Interaktion ist nur für eindeutig belegte, vom sicheren Haltepunkt erreichbare manuelle Modellzahlzonen freigegeben. Die angenommene Aktivierungsposition im Spiel, tatsächliche Abbuchung, eigene Schrankenöffnung und anschließende Spurführung brauchen noch eine reale Prüfung. Die Eingabediagnose behebt keinen Fokusverlust. Hintergrundpedale, allgemeine Baustellen-/Hindernisvermeidung und flächendeckende Länderabdeckung bleiben offen.
+
 ## 0.4.3 – Installiert, Start- und Fahrtest offen
 
 Am 17. November um 19:33 Uhr MEZ wurde ausschließlich die Plugin-Datei ersetzt und die vorherige 0.4.2 gesichert. Das Spiel war beendet; ein nach dem Schließen verbliebener ETS2LA-Hintergrundprozess wurde vor dem Austausch beendet. Die neue Datei und die Sicherung stimmen mit den geprüften Prüfsummen überein. Keine Anwendung wurde automatisch gestartet. Die konkreten Kartenflag-, Ampel- und Telemetrieprüfungen sind in [REVIEW-0.4.3.md](REVIEW-0.4.3.md) dokumentiert. Ein Archivvergleich mit synthetischen Runtime-Zuständen ist keine wiederholte reale Durchfahrt. Die zuvor mit 0.4.2 bestätigte manuelle Übernahme und Parkbehandlung gelten nicht automatisch als neuer Fahrnachweis für diese Fassung.

@@ -70,6 +70,7 @@ public sealed partial class TollPlugin
         var frame=new GateFrame(clock.Elapsed.TotalSeconds,(source?.Item2??data).semaphores.Select(s=>new Semaphore {
             position=s.position,cx=s.cx,cy=s.cy,rotation=s.rotation,type=s.type,state=s.state,id=s.id
         }).ToArray()){Origin=source?.Item1??0,Epoch=sourceEpoch};
+        Interlocked.Exchange(ref latestDeliveredGates,frame);
         Interlocked.Exchange(ref incomingGates,frame);
         if(!Monitor.TryEnter(sync))return;
         try {DrainInputFrames();}
@@ -107,9 +108,19 @@ public sealed partial class TollPlugin
 
     void OnPath(PathLib.PlannedPathData data)
     {
+        long paymentGeneration=Interlocked.Increment(ref paymentPathGeneration);
         using var operation=faultBrake.BeginOperation();
         double started=clock.Elapsed.TotalSeconds;
-        try {ProcessPath(data);}
+        try {
+            // ProcessPath deliberately releases sync for native route probes.
+            // Keep that boundary: an arriving route revokes payment, but must
+            // never block driving output or cancellation while its probe runs.
+            ProcessPath(data);
+            lock(sync) {
+                if(paymentGeneration==Volatile.Read(ref paymentPathGeneration)&&ReferenceEquals(path,data))
+                    Volatile.Write(ref paymentAppliedPathGeneration,paymentGeneration);
+            }
+        }
         finally
         {
             double elapsed=(clock.Elapsed.TotalSeconds-started)*1000;

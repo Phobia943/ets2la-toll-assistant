@@ -67,7 +67,7 @@ internal static class Rewrite
             foreach(var parameter in method.Parameters)copy.Parameters.Add(new(parameter.Name,parameter.Attributes,module.ImportReference(parameter.ParameterType)));
             target.Methods.Add(copy);
         }
-        foreach(var method in template.Methods.Where(m=>m.Name.StartsWith("Maut",StringComparison.Ordinal)||m.Name is "Tick" or "OnControlEvent"))
+        foreach(var method in template.Methods.Where(m=>m.Name.StartsWith("Maut",StringComparison.Ordinal)||m.Name is "Tick" or "OnControlEvent" or "WriteBool"))
             CopyBody(method,Method(target,method.Name),template,target);
         var epochGetter=Method(target,"MautDefinitionEpoch");epochGetter.Body=new(epochGetter);
         var getterIl=epochGetter.Body.GetILProcessor();getterIl.Emit(OpCodes.Ldarg_0);getterIl.Emit(OpCodes.Ldfld,definition.Fields.Single(f=>f.Name=="MautEpoch"));getterIl.Emit(OpCodes.Ret);

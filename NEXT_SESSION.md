@@ -1,5 +1,15 @@
 # Nächste Sitzung
 
+## Maßgeblicher aktueller Stand: 0.4.4 installiert, Liveprüfung offen
+
+0.4.4 wurde am 17. November mit Sicherung aller fünf ersetzten Dateien installiert und unabhängig gegen das versiegelte Paket geprüft. Spiel und ETS2LA waren geschlossen und wurden nicht automatisch gestartet. Die Fassung ergänzt gebundene einmalige Zahlungsinteraktion, einen unabhängigen dauerhaften Zahlungsschreiber und genaue Fokus-/Pedaldiagnose. 217 Integrationsgruppen, 99 Logikgruppen, 299 Host-/Produktprüfungen, 70 Aufnahmeprüfungen und drei Inventurtests bestehen. Kritischer Gegenreview abgeschlossen. [Paketidentität und Grenzen](REVIEW-0.4.4.md). Nicht aus einem älteren Versionsabschnitt auf den laufenden Stand schließen: Prozess und Datei jeweils neu prüfen.
+
+Als Nächstes über die üblichen Verknüpfungen starten und zunächst mit Feststellbremse stehen bleiben, F8 noch auslassen. Geladene Version und Bereitschaft prüfen; dann Start/Parken sowie F9 und Controllerbremse im Stand. Erst anschließend eigene Geschwindigkeitsregelung, manuelle Zahlzone, echte Schrankenöffnung und Anschlussstraße prüfen. Keine Fahrmodule während einer Fahrt neu laden. Ein ausgegebener Interaktionsimpuls oder Speicher-ACK ist keine Zahlung und kein Nachweis einer autonomen Durchfahrt. Bei nicht belegter oder unerreichbarer Zahlzone bleibt manuelle Übernahme erforderlich; bestehende Abstände nicht für den Test verkleinern.
+
+TruckersMP-Hintergrundpedale bleiben offen. Die offizielle Input-API bietet keinen erzwungenen Background-Schalter; 0.4.4 erfasst verifizierten Fensterkontext und trennt logischen Empfang von effektiver Pedalwirkung. Kein Einzelspieler-FocusKeeper und keine blinde Rückkehr zur luftverbrauchenden modernen Pedalausgabe. Die bisherige Standardeinstellung bleibt erhalten.
+
+## Historischer Ausgangsstand 0.4.1 – durch obigen Stand ersetzt
+
 **0.4.1 ist installiert und unabhängig geprüft. Die erneute Stand-/Fahrprüfung steht aus.** Die erste Fahrt mit 0.4.0 zeigte einen Fehlerhalt durch Verwechslung des Gaseingangs mit seiner effektiven Wirkung. 0.4.1 korrigiert die Überwachung und sperrt bei echtem Empfangsausfall nur die Beschleunigung, ohne daraus allein eine Vollbremsung zu erzeugen. Der Austausch der Plugin-Datei erfolgte am 17. November um 17:18 Uhr MEZ nach erneut bestätigtem Stillstand und geschlossenem ETS2LA; vorherige Plugin-Datei gesichert, Hostbibliotheken unverändert. [Befund und Nachweise](REVIEW-0.4.1.md).
 
 ## Abschluss und nächste reale Prüfung

@@ -15,7 +15,10 @@ public sealed partial class TollPlugin
     internal sealed record SpeedBound(string Source,double? Acceleration,double? TargetSpeed=null,string? Reason=null);
     internal sealed record LongitudinalSnapshot(DateTimeOffset Utc,long IssuedAt,long Epoch,double TelemetryAt,
         LongitudinalInput Input,LongitudinalOutput Output,SpeedBound[] Bounds,bool Published) {
-            public object? TrafficEvidence{get;init;} public long? DynamicsOrigin{get;init;}}
+            public object? TrafficEvidence{get;init;} public long? DynamicsOrigin{get;init;}
+            public GameInputContextSnapshot? InputContext{get;init;}
+            public GameInputDiagnosisResult? InputDiagnosis{get;init;}
+            public PedalDeliverySample? InputSample{get;init;}}
     LongitudinalSnapshot? longitudinalSnapshot;
     bool throttleDeliveryWarningShown;
     public string SpeedControlStatus {get {lock(sync) {
@@ -153,8 +156,17 @@ public sealed partial class TollPlugin
                 // Tests and event sinks need not feed events back to this plugin.
                 OnControlOutput(command);
             });
+        var inputContextSnapshot=ReadInputContext();
+        // Compare a previously published command to a LATER telemetry frame,
+        // never the just-computed command to its earlier input observation.
+        var previous=longitudinalSnapshot;PedalDeliverySample? deliverySample=null;
+        if(previous?.Published==true&&previous.Epoch==epoch&&appliedTelemetry is { } actual&&actual.Origin>=previous.IssuedAt)
+            deliverySample=new(actual.Origin,previous.IssuedAt,previous.Output.Throttle,previous.Output.Brake,
+                actual.Physics.ReceivedThrottle,actual.Physics.ReceivedBrake,actual.Physics.GameThrottle,actual.Physics.GameBrake,
+                actual.Physics.EffectiveClutch,actual.Physics.Gear,actual.Physics.DashboardGear,actual.Physics.EngineRpm);
         longitudinalSnapshot=new(DateTimeOffset.UtcNow,issuedAt,epoch,telemetryAt,input,result,speedBounds.ToArray(),published){
-            TrafficEvidence=longitudinalTrafficEvidence,DynamicsOrigin=dynamics?.Origin};
+            TrafficEvidence=longitudinalTrafficEvidence,DynamicsOrigin=dynamics?.Origin,InputContext=inputContextSnapshot,
+            InputSample=deliverySample,InputDiagnosis=deliverySample==null?null:GameInputDiagnosis.Evaluate(deliverySample,inputContextSnapshot,Stopwatch.GetTimestamp(),Stopwatch.Frequency)};
         if(!result.ThrottleDeliveryMissing)throttleDeliveryWarningShown=false;
         else if(published&&!throttleDeliveryWarningShown) {
             throttleDeliveryWarningShown=true;

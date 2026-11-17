@@ -87,6 +87,11 @@ internal static class TollSignals
         }
     }
 
+    internal static Vector3[][]? SnapshotComponents(int id,Vector3 anchor)
+    {
+        lock(groupSync)return liveGroups.TryGetValue((id,anchor),out var components)?components.Select(c=>c.ToArray()).ToArray():null;
+    }
+
     internal static ETS2LA.Game.SDK.Semaphore? ReadLive(ETS2LA.Game.SDK.Semaphore[] samples,int id,Vector3 anchor)
     {
         Vector3[][]? components;

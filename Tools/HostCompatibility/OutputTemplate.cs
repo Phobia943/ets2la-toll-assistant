@@ -21,14 +21,20 @@ internal sealed partial class OutputTemplate
     void TryOpenMemory()=>throw new NotSupportedException();
     void ProcessChannel(ControlChannel channel)=>throw new NotSupportedException();
     void WriteFloat(MemoryMappedViewAccessor target,int offset,float value)=>throw new NotSupportedException();
-    void WriteBool(MemoryMappedViewAccessor target,int offset,bool value)=>throw new NotSupportedException();
+    void WriteBool(MemoryMappedViewAccessor target,int offset,bool value) {
+        // Payment interaction has exactly one synchronous owner. In particular
+        // an old generic ToggleBool task cannot write after F9 or context loss.
+        if(ReferenceEquals(target,legacyAccessor)&&legacyShmOffsets.TryGetValue("activate",out int activate)&&offset==activate)return;
+        MautRawWriteBool(target,offset,value);
+    }
+    void MautRawWriteBool(MemoryMappedViewAccessor target,int offset,bool value)=>target.Write(offset,value);
     void WriteDouble(MemoryMappedViewAccessor target,int offset,double value)=>throw new NotSupportedException();
 
     public static object MautGate=null!; // initialized in the real host cctor, not its singleton
     public static long MautEpoch;
     public static bool MautAssists;
     public static int MautMode;
-    public const string MautCompatibility="0.4.0-host-1";
+    public const string MautCompatibility="0.4.4-host-1";
     public const string MautLongitudinalChannel="local.mautassistent.longitudinal";
     static string? MautHoldKey;
     static long MautHoldEpoch,MautHoldUntil;
@@ -253,6 +259,7 @@ internal sealed partial class OutputTemplate
                     else if(field.FieldType==typeof(bool?))WriteBool(legacyAccessor,legacyShmOffsets[field.Name],false);
                 }
             }
+            MautPaymentFrame(now,faultBrake<0);
             IsReset=Channels.Count==0;
             modernAccessor.Flush();legacyAccessor.Flush();curFrameFloats.Clear();
         }

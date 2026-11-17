@@ -63,6 +63,7 @@ void Run()
     Check("Standard exit slicing accepts numerical item handoffs but rejects physical gaps and reversals",()=>StandardSliceHandoffIntegration.NumericalItemBoundaries(Assert));
     Check("Curve planning and supervision share stationary signed-speed policy without losing completed profiles",()=>CurveSpeedTests.StationarySignedSpeed(Assert));
     Check("Simulation dynamics preserve original evidence age across identical provider repetitions",()=>SimulationDynamicsTests.Run(Assert));
+    Check("Manual payment intents require exact current zones and cannot repeat consumed gate attempts",()=>ManualPaymentTests.Run(Assert));
     Check("Recorded stand jitter preserves completed synthetic curves and counterfactual parking neutrality",()=>StandstillRegressionTests.Run(Assert));
     Check("Curve geometry excludes grades, item seams and isolated interpolation spikes",()=>CurveSpeedTests.Geometry(Assert));
     Check("Curve speed preview slows ahead without increasing native bounds or stopping a slow truck",()=>CurveSpeedTests.Limits(Assert));
@@ -267,6 +268,12 @@ void Run()
     Check("Geometry reader is optional, read-only, coherent and session-bound",()=>BrakeGeometryIntegration.Reader(Assert));
     Check("Blocked status geometry cannot stall driving callbacks or manual takeover",()=>DiagnosticDeliveryIntegration.BlockedGeometry(Assert));
     Check("Manual trigger rectangles are matched to a straight gate lane with conservative bounds",()=>ManualTriggerIntegration.Run(Assert));
+    Check("Manual payment zones retain exact directed gate identity and world geometry without reducing stop clearance",()=>ManualPaymentTests.RouteZone(Assert));
+    Check("Game input context and receipt diagnostics preserve process identity and observation origins",()=>GameInputContextIntegration.Run(Assert));
+    Check("Payment journal persists off the driving thread and binds durable acknowledgements to requests",()=>PaymentJournalTests.Run(Assert));
+    Check("Actual payment runtime waits off-thread and revokes stale context before its semantic host request",()=>ManualPaymentRuntimeIntegration.Run(Assert));
+    Check("Native payment route probes preserve the nonblocking driving boundary",()=>PaymentReviewRegressionTests.RouteProbeKeepsDrivingLockAvailable(Assert));
+    Check("Older route callbacks cannot borrow a newer applied payment generation",()=>PaymentReviewRegressionTests.OlderArrivingPathCannotBorrowNewerAppliedGeneration(Assert));
     Check("Legacy toll model registry includes multiple country folders without granting unknown payment",()=>ModelRegistryIntegration.Run(Assert));
     Check("Toll units distinguish legacy manual gates, automatic triggers and uninspected child models",()=>TollDefinitionIntegration.Run(Assert));
     Check("Confirmed impact cuts output before route work and manual takeover cancels pending braking",()=>ImpactSafetyIntegration.Run(Assert));

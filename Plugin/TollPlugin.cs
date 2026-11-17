@@ -255,6 +255,7 @@ public sealed partial class TollPlugin : Plugin
         lock(sync)
         {
             if (subscribed) return;
+            StartManualPayment();
             vehicleGeometry.Resume();
             diagnostics.Resume();
             _=State; // Register host controls before our cancel listener.
@@ -286,6 +287,7 @@ public sealed partial class TollPlugin : Plugin
             subscribed = true;
         }
         base.OnEnable();
+        if(requireHostCompatibility)StartInputContext();
         StartSteeringMonitor();
         Logger.Info("Mautassistent: automatische Vorbereitung im Stand; Fahrassistenz bleibt ausgeschaltet.");
     }
@@ -439,6 +441,9 @@ public sealed partial class TollPlugin : Plugin
         lock (sync)
         {
             DrainInputFrames();
+            // An older callback may acquire sync after a newer one. Revoke
+            // payment at every actual path replacement, not only at arrival.
+            Volatile.Write(ref paymentAppliedPathGeneration,0);
             path = data;
             pathAt = clock.Elapsed.TotalSeconds;
             pathReceivedAt=pathAt;
@@ -568,7 +573,7 @@ public sealed partial class TollPlugin : Plugin
                 ?router.CurrentKey+":"+selectedManual:null;
             if(manualKey!=manualNoticeKey) {
                 manualNoticeKey=manualKey;
-                if(manualKey!=null)notify("Mautspur für manuelle Zahlung gewählt", "Die gewählte Spur verlangt manuelle Zahlung. Das ist keine Aussage über alle Spuren dieser Mautanlage. "+router.Status+" Wenn der Zahlpunkt nicht erreichbar ist, mit F9 übernehmen.");
+                if(manualKey!=null)notify("Mautspur mit Zahlungsbestätigung", "Die gewählte Spur verlangt eine Bestätigung. In einer eindeutig erkannten und sicher erreichbaren Zahlzone versucht der Helfer sie einmal automatisch. Wenn der Zahlpunkt nicht erreichbar ist, mit F9 übernehmen und manuell bezahlen.");
             }
             if(active && State.EnableAssists && !preview && router.StopBoundary.HasValue) {
                 try {
@@ -943,6 +948,7 @@ public sealed partial class TollPlugin : Plugin
                 if(options.DetailedRigProtection&&envelopeEvidence!=null)_=ReadEnvelopeProfile();
                 UpdateTollDecision(now);
                 RunLongitudinal(controlEpoch,controlIssuedAt);
+                RunManualPayment(controlEpoch,controlIssuedAt);
             }
             catch(Exception ex)
             {
@@ -990,6 +996,7 @@ public sealed partial class TollPlugin : Plugin
                         faultBraking=faultBrake.Latched,headingTurns,
                         sceneStopping,sceneStatus,scenePedalFloor,sceneHoldOwner=sceneHold.OwnerKey,sceneHolding=sceneHold.Holding,
                         tollAccelerationLimit=decision.MaxAcceleration,longitudinal=longitudinalSnapshot,parkedSceneSource=parkedScene.Status,
+                        manualPayment=paymentSnapshot,paymentStatus,inputContext=ReadInputContext(),
                         laneAttempts=router.LaneAttempts,laneDecisionContext=router.LaneDecisionContext,laneAttemptContext=router.LaneAttemptContext,
                         pendingRouteGap=safetyTrace?.EndReason,
                         connectedMetresAhead=safetyTrace!=null?safetyTrace.Length-safetyTrace.Project(position).Along:(double?)null,
@@ -1040,6 +1047,8 @@ public sealed partial class TollPlugin : Plugin
     }
     public override void OnDisable()
     {
+        StopManualPayment();
+        StopInputContext();
         StopSteeringMonitor();
         StopDiagnostics();
         lock(sync)
@@ -1071,5 +1080,5 @@ public sealed partial class TollPlugin : Plugin
             decision = TollDecision.Idle("Plugin ausgeschaltet");
         }
     }
-    public override void Shutdown() { OnDisable(); if (ReferenceEquals(Current,this)) Current = null; }
+    public override void Shutdown() { OnDisable();paymentJournal?.Dispose(); if (ReferenceEquals(Current,this)) Current = null; }
 }

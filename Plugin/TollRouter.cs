@@ -1,10 +1,14 @@
 using System.Numerics;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using ETS2LA.Game.Data;
 using PathLib;
 using TruckLib.Models.Ppd;
 
 namespace MautAssistent;
+
+public sealed record ManualPaymentRouteZone(PaymentZoneProof Zone,int GateId,Vector3 Anchor);
 
 public sealed class TollRouter
 {
@@ -98,22 +102,66 @@ public sealed class TollRouter
     }
     double? ReadManualStopOffset(double safeOffset)
     {
-        if(SelectedGate is not int gate||PaymentFor(gate)!=TollPayment.Manual||!plans.TryGetValue(gate,out var plan))return null;
-        var original=PrefabRefinement.OriginalFor(plan);
-        if(!DirectedChain(original)||ViaGate(original,gate)==null)return null;
-        var curves=original.Curves.Where(c=>c.SemaphoreId==gate).ToArray();
-        var signal=original.GetSemaphores().FirstOrDefault(s=>s.Semaphore.SemaphoreId==gate);
-        if(curves.Length!=1||signal==null)return null;
+        return TryManualStopContext(out _,out _,out var zone)?zone.Choose(safeOffset):null;
+    }
+    // This is an interaction-zone proof, never clearance or activation delivery.
+    // A trigger closer than the unchanged safe stop offset remains manual-only.
+    public ManualPaymentRouteZone? ManualPaymentZone(double safeOffset)
+    {
+        ManualStopIssue=null;
+        try {
+            if(!TryManualStopContext(out var original,out int gate,out var stop)||stop.Choose(safeOffset)==null||
+                stop.Trigger is not { } trigger||SelectedBarrier is not { } barrier||barrier.GateId!=gate||
+                barrier.PlazaKey!=CurrentKey||barrier.PrefabUid!=original.Prefab.Prefab.Uid||
+                !PrefabModelTransform.TryRead(original,out var placement))return null;
+            var x=Vector3.TransformNormal(Vector3.UnitX,placement);var y=Vector3.TransformNormal(Vector3.UnitY,placement);
+            var z=Vector3.TransformNormal(Vector3.UnitZ,placement);
+            // Existing trigger semantics are supported only under a rigid,
+            // level placement. Do not silently turn scale/shear into a zone.
+            if(!PaymentZoneProof.Finite(x)||!PaymentZoneProof.Finite(y)||!PaymentZoneProof.Finite(z)||
+                Math.Abs(x.LengthSquared()-1)>.001||Math.Abs(z.LengthSquared()-1)>.001||
+                Vector3.Distance(y,Vector3.UnitY)>.001||Math.Abs(Vector3.Dot(x,z))>.001||
+                Vector3.Dot(Vector3.Cross(x,y),z)<.999||placement.M14!=0||placement.M24!=0||placement.M34!=0||placement.M44!=1)return null;
+            var center=Vector3.Transform(trigger.Center,placement);
+            var forward=Vector3.Normalize(Vector3.TransformNormal(trigger.Forward,placement));
+            if(!PaymentZoneProof.Finite(barrier.Anchor)||!PaymentZoneProof.Finite(barrier.Forward)||
+                Vector3.Dot(forward,barrier.Forward)<.995)return null;
+            static string Hash(string value)=>Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+            static string V(Vector3 v)=>string.Join(',',new[]{v.X,v.Y,v.Z}.Select(BitConverter.SingleToInt32Bits));
+            string gateIdentity=original.Prefab.Prefab.Uid+":"+gate+":"+V(barrier.Anchor);
+            string world=string.Join(',',new[]{placement.M11,placement.M12,placement.M13,placement.M14,placement.M21,placement.M22,placement.M23,placement.M24,
+                placement.M31,placement.M32,placement.M33,placement.M34,placement.M41,placement.M42,placement.M43,placement.M44}.Select(BitConverter.SingleToInt32Bits));
+            string routeRevision=Hash(Key(original)+":"+Curves(original)+":"+world+":"+
+                original.Prefab.Prefab.Model+":"+original.Prefab.Prefab.Variant+":"+Parts(original));
+            string zoneRevision=Hash(V(center)+":"+V(forward)+":"+BitConverter.DoubleToInt64Bits(trigger.HalfLength)+":"+
+                BitConverter.DoubleToInt64Bits(trigger.HalfWidth)+":"+BitConverter.DoubleToInt64Bits(stop.MinimumOffset)+":"+BitConverter.DoubleToInt64Bits(stop.MaximumOffset));
+            var key=new PaymentKey(gateIdentity,routeRevision,zoneRevision);
+            // The 0.5m height guard rejects a different deck; it is not a claim
+            // about an undocumented trigger height or activation reference point.
+            var proof=new PaymentZoneProof(key,center,forward,trigger.HalfLength,trigger.HalfWidth,.5,.995);
+            return proof.Valid?new(proof,gate,barrier.Anchor):null;
+        }catch(Exception ex) {ManualStopIssue=ex.Message;return null;}
+    }
+    bool TryManualStopContext(out PrefabPath original,out int gate,out ManualStopZone zone)
+    {
+        original=null!;zone=null!;gate=-1;
+        if(readManualStop==null||SelectedGate is not int selected||PaymentFor(selected)!=TollPayment.Manual||!plans.TryGetValue(selected,out var plan))return false;
+        gate=selected;original=PrefabRefinement.OriginalFor(plan);
+        if(!DirectedChain(original)||ViaGate(original,gate)==null)return false;
+        var curves=original.Curves.Where(c=>c.SemaphoreId==selected).ToArray();
+        var signal=original.GetSemaphores().FirstOrDefault(s=>s.Semaphore.SemaphoreId==selected);
+        if(curves.Length!=1||signal==null)return false;
         double local=Vector3.Distance(curves[0].StartPosition,curves[0].EndPosition);
         double world=Vector3.Distance(signal.GetCurveStartWorldCoordinates().Position,signal.GetCurveEndWorldCoordinates().Position);
-        if(!double.IsFinite(local)||local<1||!double.IsFinite(world)||Math.Abs(local-world)>Math.Max(.01,local*.005))return null;
+        if(!double.IsFinite(local)||local<1||!double.IsFinite(world)||Math.Abs(local-world)>Math.Max(.01,local*.005))return false;
         var single=(PrefabPath)clone.Invoke(original,null)!;single.Curves=[curves[0]];single.Length=curves[0].Length;
         var begin=single.Interpolate(.00001f,0);var end=single.Interpolate(.99999f,0);
-        if(!begin.HasValue||!end.HasValue)return null;
+        if(!begin.HasValue||!end.HasValue)return false;
         float alignment=Vector3.Dot(Vector3.Normalize(end.Value.Position-begin.Value.Position),
             Vector3.Normalize(signal.GetCurveEndWorldCoordinates().Position-signal.GetCurveStartWorldCoordinates().Position));
-        if(!float.IsFinite(alignment)||alignment<.95f)return null;
-        return readManualStop!(plan.Prefab,gate)?.Choose(safeOffset);
+        if(!float.IsFinite(alignment)||alignment<.95f)return false;
+        var value=readManualStop(plan.Prefab,gate);if(value==null)return false;
+        zone=value;return true;
     }
     static bool DirectedChain(PrefabPath path)
     {

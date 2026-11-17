@@ -9,6 +9,7 @@
     <p>@TollPlugin.Current?.Details</p>
     <p>@TollPlugin.Current?.DataStatus</p>
     <p>@TollPlugin.Current?.SpeedControlStatus</p>
+    <p>@TollPlugin.Current?.PaymentStatus</p>
     <p>@TollPlugin.Current?.RouteStatus</p>
     <p>@TollPlugin.Current?.LaneProtectionStatus</p>
     <p>@TollPlugin.Current?.VehicleGeometryStatus</p>
@@ -34,7 +35,7 @@
         </label>
         <button style="padding:10px;border:1px solid #777;border-radius:6px" @onclick="ConfirmLane">Lkw-Freigabe und Zahlart dieser Spur speichern</button>
     }
-    <p>Die Spurwahl nutzt die Zahlart im Spielmodell und prüft den gesamten Lkw-Weg. Sie bevorzugt automatische Abrechnung. Bei einer manuellen Zahlspur hält die Assistenz vor der Schranke. Fehlt eine passende Spur, nähert sich der Lkw dem Haltepunkt vor der Aufteilung. F9 gibt die Steuerung zurück.</p>
+    <p>Die Spurwahl bevorzugt automatische Abrechnung. Bei einer manuellen Zahlspur hält die Assistenz an und bestätigt einmal automatisch, wenn die Zahlzone eindeutig erkannt und sicher erreichbar ist und das Spiel im Vordergrund bleibt. Weiter geht es erst nach bestätigter Schrankenöffnung. Ohne passende Zahlzone oder bei ausbleibender Öffnung bitte mit F9 übernehmen und manuell bezahlen.</p>
     <p>Die Standard-Spurführung nutzt einen Planungskorridor von 4,5 m Höhe und 3,4 m Breite. Fehlende Ladungs- oder Achsdetails verhindern die normale Spurwahl nicht. Bekannte niedrige Durchfahrten, Hindernisse und geschlossene Schranken bleiben berücksichtigt. Der Standardkorridor bestätigt nicht die vollständige Bewegungsfläche eines langen oder überstehenden Gespanns.</p>
     <label><input type="checkbox" @bind="detailedRigProtection" /> Detaillierten Gespannschutz zusätzlich verlangen</label>
     <p>Diese zusätzliche Prüfung benötigt unterstützte Fahrzeug-, Ladungs- und Achsdaten. Wenn sie fehlen, kann die Durchfahrt anhalten. Standardmäßig ist sie ausgeschaltet.</p>
@@ -58,7 +59,7 @@
     <p>@message</p>
     <p>Zum Einschalten F8 drücken. Im Stand erfolgt die Vorbereitung automatisch. Während der Fahrt fordert F8 eine neue Prüfung und anschließende Übernahme an. Eine fehlgeschlagene Startprüfung lässt die manuelle Fahrt ohne Bremseingriff weiterlaufen. Nach spätestens vier Sekunden wird ein noch offener Startversuch verworfen.</p>
     <p>Fehlende oder veraltete Spieldaten verhindern den Start. Eine aktive Fehlerbremsung muss zuerst mit F9 oder der zugeordneten physischen Bremse quittiert werden; dabei selbst die Bremse halten. „Nur beobachten“ pausiert die Vorbereitung und den Start während der Fahrt bis F9 oder bis zur manuellen Vorbereitung.</p>
-    <p>Bei Trackingverlust oder falscher Fahrtrichtung wird die Lenkassistenz ausgeschaltet und starkes Bremsen angefordert. Die Fehlerbremsung bleibt bis zur manuellen Übernahme mit F9 oder der zugeordneten physischen Bremse aktiv, auch im Stand. Dann selbst die Bremse halten. F8 kann die Fehlerbremsung nicht lösen. Kein automatisches Bezahlen und keine Schrankenmanipulation.</p>
+    <p>Bei Trackingverlust oder falscher Fahrtrichtung wird die Lenkassistenz ausgeschaltet und starkes Bremsen angefordert. Die Fehlerbremsung bleibt bis zur manuellen Übernahme mit F9 oder der zugeordneten physischen Bremse aktiv, auch im Stand. Dann selbst die Bremse halten. F8 kann die Fehlerbremsung nicht lösen.</p>
     <p>Diagnose: @TollPlugin.Current?.DiagnosticPath</p>
 </div>
 @code {

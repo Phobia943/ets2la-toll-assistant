@@ -66,7 +66,7 @@ internal sealed class Replay
             var output=game.GetType("ETS2LA.Game.Output.GameOutput");BodyReturnStatic(output,"get_Current","ReplayCurrent");ForbidConstructors(output);
             ForbidMethod(Rewrite.Method(output,"Tick"));ForbidMethod(Rewrite.Method(output,"TryOpenMemory"));
             ReplaceWrite(output,"WriteFloat",typeof(Action<MemoryMappedViewAccessor,int,float>));
-            ReplaceWrite(output,"WriteBool",typeof(Action<MemoryMappedViewAccessor,int,bool>));
+            ReplaceWrite(output,"MautRawWriteBool",typeof(Action<MemoryMappedViewAccessor,int,bool>));
             ReplaceWrite(output,"WriteDouble",typeof(Action<MemoryMappedViewAccessor,int,double>));
             var frame=Rewrite.Method(output,"MautFrame");
             foreach(var instruction in frame.Body.Instructions.Where(i=>i.Operand is MethodReference m&&m.DeclaringType.FullName==typeof(MemoryMappedViewAccessor).FullName&&m.Name=="Flush")) {
@@ -152,11 +152,13 @@ internal sealed class Replay
         var offsets=new Dictionary<string,int>();int cursor=0;
         foreach(var field in variablesType.GetFields()){offsets[field.Name]=cursor;cursor+=field.FieldType==typeof(float?)?4:1;}
         Set(host,"legacyShmOffsets",offsets);Set(host,"legacyAccessor",legacyMarker);Set(host,"modernAccessor",modernMarker);
+        var activationWrites=new List<bool>();
         void Write(MemoryMappedViewAccessor target,int offset,double value) {
             var sink=ReferenceEquals(target,legacyMarker)?legacy:ReferenceEquals(target,modernMarker)?modern:throw new Exception("Unknown output sink");sink[offset]=value;
+            if(ReferenceEquals(target,legacyMarker)&&offset==offsets["activate"])activationWrites.Add(value!=0);
         }
         outputType.GetField("ReplayWriteFloat")!.SetValue(null,(Action<MemoryMappedViewAccessor,int,float>)((map,offset,value)=>Write(map,offset,value)));
-        outputType.GetField("ReplayWriteBool")!.SetValue(null,(Action<MemoryMappedViewAccessor,int,bool>)((map,offset,value)=>Write(map,offset,value?1:0)));
+        outputType.GetField("ReplayMautRawWriteBool")!.SetValue(null,(Action<MemoryMappedViewAccessor,int,bool>)((map,offset,value)=>Write(map,offset,value?1:0)));
         outputType.GetField("ReplayWriteDouble")!.SetValue(null,(Action<MemoryMappedViewAccessor,int,double>)Write);
         // Compile the transplanted output terminals before assigning short-lived
         // native timestamps. First JIT latency must not become a test grace.
@@ -438,6 +440,8 @@ internal sealed class Replay
 
         }
 
+        PaymentReplay.Run(outputType,host,Frame,Enable,Epoch,()=>legacy.GetValueOrDefault(offsets["activate"]),Assert,
+            activationWrites,()=>outputType.GetMethod("OnControlEvent")!.Invoke(host,[NewNeutralEvent()]));
         if(Environment.GetEnvironmentVariable("MAUT_PLUGIN_CANDIDATE") is {Length:>0} pluginCandidate)
             PluginHoldReplay.Run(pluginCandidate,root,prepared,sandbox,context,gameAsm,stateAsm,host,state,Frame,Gas,Brake,Enable,Epoch,Assert,()=> (float)modern.GetValueOrDefault(13),()=> (float)modern.GetValueOrDefault(0));
         File.WriteAllText(Path.Combine(prepared,"native-replay.json"),System.Text.Json.JsonSerializer.Serialize(new{checks,passed=true,liveMapsOpened=false,outputThreadsStarted=false,fixtureDirectory=sandbox}));

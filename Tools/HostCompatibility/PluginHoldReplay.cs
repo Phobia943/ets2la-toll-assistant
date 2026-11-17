@@ -101,7 +101,7 @@ internal static class PluginHoldReplay
             if(pinned.Mvid!=gameAssembly.ManifestModule.ModuleVersionId)throw new InvalidDataException("Wrong isolated host module identity");
         using(var pinned=ModuleDefinition.ReadModule(copy))
             if(pinned.Mvid!=assembly.ManifestModule.ModuleVersionId)throw new InvalidDataException("Wrong candidate module identity");
-        if((string?)output.GetField("MautCompatibility")!.GetRawConstantValue()!="0.4.0-host-1")throw new InvalidDataException("Plugin replay requires the exclusive longitudinal host revision");
+        if((string?)output.GetField("MautCompatibility")!.GetRawConstantValue()!=OutputTemplate.MautCompatibility)throw new InvalidDataException("Plugin replay requires the sealed exclusive longitudinal/payment host revision");
 
         // Do not invoke any product constructor. Build precisely the fields
         // used by the real Commit/Clear and FaultBrake.RunCurrent methods.
