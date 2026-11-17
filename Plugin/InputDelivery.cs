@@ -21,7 +21,7 @@ public sealed partial class TollPlugin
         public int Gear {get;init;} public int DashboardGear {get;init;} public float EngineRpm {get;init;}
     }
     sealed record TelemetryFrame(double Arrived,ulong Time,bool Active,bool Paused,double Speed,Vector3 Position,double Heading,
-        PhysicsObservation Physics) {public EnvelopeContext? Envelope {get;init;}}
+        PhysicsObservation Physics) {public EnvelopeContext? Envelope {get;init;} public long Origin {get;init;}}
     sealed record GateFrame(double Arrived,Semaphore[] Gates) {public long Origin {get;init;} public long Epoch {get;init;}}
     long gatesOrigin,gatesSourceEpoch;
     TelemetryFrame? incomingTelemetry;
@@ -34,15 +34,18 @@ public sealed partial class TollPlugin
 
     void OnTelemetry(GameTelemetryData data)
     {
+        long originalOrigin=System.Diagnostics.Stopwatch.GetTimestamp();
         using var operation=faultBrake.BeginOperation();
-        var frame=new TelemetryFrame(clock.Elapsed.TotalSeconds,data.time,data.sdkActive,data.paused,
+        double originalArrival=clock.Elapsed.TotalSeconds;
+        var frame=new TelemetryFrame(originalArrival,data.time,data.sdkActive,data.paused,
             data.truckFloat.speed,data.truckPlacement.coordinate.ToVector3(),data.truckPlacement.rotation.X,
             new(data.simulatedTime,data.renderTime,data.truckFloat.wearEngine,data.truckFloat.wearTransmission,
                 data.truckFloat.wearCabin,data.truckFloat.wearChassis,data.truckFloat.wearWheels,
                 data.truckFloat.gameThrottle,data.truckFloat.gameBrake){SpeedLimitMps=data.truckFloat.speedLimit,GameCruise=data.truckBool.cruiseControl,ParkingBrake=data.truckBool.parkingBrake,
                     ReceivedThrottle=data.truckFloat.userThrottle,ReceivedBrake=data.truckFloat.userBrake,
                     EffectiveClutch=data.truckFloat.gameClutch,Gear=data.truckInt.gear,
-                    DashboardGear=data.truckInt.gearDashboard,EngineRpm=data.truckFloat.engineRpm}) {Envelope=EnvelopeContext.Capture(data)};
+                    DashboardGear=data.truckInt.gearDashboard,EngineRpm=data.truckFloat.engineRpm}) {
+                        Envelope=EnvelopeContext.Capture(data),Origin=originalOrigin};
         Interlocked.Exchange(ref incomingTelemetry,frame);
         Interlocked.Exchange(ref latestDeliveredTelemetry,frame);
         var ground=Volatile.Read(ref stationaryGround);
@@ -79,9 +82,11 @@ public sealed partial class TollPlugin
     {
         if(Interlocked.Exchange(ref incomingTelemetry,null) is { } frame)
         {
-            observedAcceleration=0;
-            accelerationKnown=frame.Active&&!frame.Paused&&SimulationAcceleration.TryMeasure(
-                physicsObservation?.SimulatedTime??0,frame.Physics.SimulatedTime,speed,frame.Speed,out observedAcceleration);
+            simulationDynamics.Observe(frame.Arrived,frame.Origin,frame.Time,frame.Physics.SimulatedTime,
+                frame.Speed,frame.Position,frame.Heading,frame.Active,frame.Paused);
+            var dynamics=simulationDynamics.Read(clock.Elapsed.TotalSeconds,System.Diagnostics.Stopwatch.GetTimestamp());
+            observedAcceleration=dynamics?.Acceleration??0;
+            accelerationKnown=dynamics!=null;
             appliedTelemetry=frame;
             telemetryAt=frame.Arrived;
             if(gameTime!=frame.Time) {gameTimeChangedAt=frame.Arrived;gameTime=frame.Time;}

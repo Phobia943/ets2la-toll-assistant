@@ -58,7 +58,8 @@ internal static class LongitudinalPluginReplay
                     owner.StartsWith("System.Func`",StringComparison.Ordinal)||owner.StartsWith("System.Action",StringComparison.Ordinal)||owner.StartsWith("System.Threading.AsyncLocal`",StringComparison.Ordinal))||
                     owner=="System.Diagnostics.Stopwatch"&&call.Name=="StartNew"||owner=="System.Environment"&&call.Name=="GetFolderPath"||
                     owner=="System.IO.Path"&&call.Name=="Combine"||owner=="System.Array"&&call.Name=="Empty"||
-                    owner=="System.Type"&&call.Name is "GetTypeFromHandle" or "GetField" or "GetMethod" or "GetProperty";
+                    owner=="System.Type"&&call.Name is "GetTypeFromHandle" or "GetField" or "GetMethod" or "GetProperty"||
+                    call.FullName=="System.Void System.ArgumentOutOfRangeException::.ctor(System.String)";
                 if(!allowed)throw new InvalidDataException("Unaudited Tick fixture constructor call: "+call.FullName);
             }
         }
@@ -360,12 +361,12 @@ internal static class LongitudinalPluginReplay
             "Actual F9 handler releases the blocked-tick fault and both physical pedals without rearming");
         // Actual OnTelemetry delivers coherent parking state; no private
         // PhysicsObservation/clock replacement is used for these cases.
-        ulong parkingStamp=5000000;Vector3 parkingPoint=point;
+        ulong parkingStamp=5000000,parkingSdkStamp=5000000;Vector3 parkingPoint=point;
         var telemetryDto=gameAssembly.GetType("ETS2LA.Game.Telemetry.GameTelemetryData",true)!;
-        void LiveParking(double rawSpeed,bool parking) {
-            var dto=Activator.CreateInstance(telemetryDto)!;parkingStamp+=50000;
-            Member(dto,"sdkActive",true);Member(dto,"paused",false);Member(dto,"time",parkingStamp);
-            Member(dto,"simulatedTime",parkingStamp);Member(dto,"renderTime",parkingStamp);
+        void LiveParking(double rawSpeed,bool parking,bool repeatPhysics=false) {
+            var dto=Activator.CreateInstance(telemetryDto)!;if(!repeatPhysics)parkingStamp+=50000;parkingSdkStamp+=50000;
+            Member(dto,"sdkActive",true);Member(dto,"paused",false);Member(dto,"time",parkingSdkStamp);
+            Member(dto,"simulatedTime",parkingStamp);Member(dto,"renderTime",parkingSdkStamp);
             var floats=Get(dto,"truckFloat")!;Member(floats,"speed",(float)rawSpeed);Member(floats,"engineRpm",1200f);
             Member(floats,"userThrottle",0f);Member(floats,"gameThrottle",0f);Member(floats,"userBrake",0f);Member(floats,"gameBrake",0f);
             var ints=Get(dto,"truckInt")!;Member(ints,"gear",1);Member(ints,"gearDashboard",1);
@@ -376,6 +377,41 @@ internal static class LongitudinalPluginReplay
             type.GetMethod("OnTelemetry",All)!.Invoke(plugin,[dto]);
         }
         void ParkingTick(double rawSpeed,bool parking) {LiveParking(rawSpeed,parking);Send("LaneAssist.SteeringCorrection",0,.2f);Tick();frame(false);}
+        // These are real callback/DrainInputFrames/Tick/host paths. Only the
+        // simulator DTO is synthetic; duplicate physics must retain the first
+        // measured derivative's origin even while SDK and traffic frames move.
+        Restore();autoSources=true;Set(plugin,"readLongitudinalTraffic",null);
+        Set(plugin,"monitorSteering",false);Set(plugin,"steeringMonitoringLive",false);
+        Get(plugin,"simulationDynamics")!.GetType().GetMethod("Reset")!.Invoke(Get(plugin,"simulationDynamics"),null);
+        LiveParking(5,false);Thread.Sleep(20);LiveParking(5,false);
+        Send("LaneAssist.SteeringCorrection",0,.2f);Tick();frame(false);
+        var dynamicsFirst=Get(plugin,"longitudinalSnapshot")!;
+        long dynamicsOrigin=(long)dynamicsFirst.GetType().GetProperty("DynamicsOrigin")!.GetValue(dynamicsFirst)!;
+        Check(gas()>0&&brake()==0,"Two genuinely advancing OnTelemetry physics frames establish a usable original dynamics certificate through the actual host sink");
+        bool repeatGas=true,repeatOrigin=true,repeatNoPending=true;
+        for(int repeat=0;repeat<3;repeat++) {
+            Thread.Sleep(20);LiveParking(5,false,true);Send("LaneAssist.SteeringCorrection",0,.2f);Tick();frame(false);
+            var repeatedSnapshot=Get(plugin,"longitudinalSnapshot")!;
+            repeatGas&=gas()>0&&brake()==0;
+            repeatOrigin&=(long?)repeatedSnapshot.GetType().GetProperty("DynamicsOrigin")!.GetValue(repeatedSnapshot)==dynamicsOrigin;
+            var repeatedBounds=(System.Collections.IEnumerable)repeatedSnapshot.GetType().GetProperty("Bounds")!.GetValue(repeatedSnapshot)!;
+            repeatNoPending&=!repeatedBounds.Cast<object>().Any(b=>(string?)b.GetType().GetProperty("Source")!.GetValue(b)=="DynamicsPending");
+        }
+        Check(repeatGas&&repeatOrigin&&repeatNoPending,"Repeated identical physics with advancing SDK/traffic frames keeps actual gas without a fake DynamicsPending brake or renewed dynamics origin");
+        long definitionDynamicsSource=(long)Get(Get(OwnMessage(),"ChannelDefinition")!,"MautSourceAt")!;
+        Check(definitionDynamicsSource>0&&definitionDynamicsSource<=dynamicsOrigin,"The unchanged actual emitted event binds its source deadline to the original dynamics origin, not the latest traffic callback");
+        frame(true);Check(modernPedal()>0&&gas()==0&&brake()==0,"The benign physics-repeat throttle also reaches the genuine modern output sink");
+        WaitAge(dynamicsOrigin,.15);LiveParking(5,false,true);Send("LaneAssist.SteeringCorrection",0,.2f);Tick();frame(false);
+        Check(gas()>0&&brake()==0,"A fresh own Tick still uses the bounded original dynamics lease before its200ms deadline");
+        WaitAge(dynamicsOrigin,.205);
+        Sources(SourceFrameReplay.EmptyTraffic(gameAssembly));Send("LaneAssist.SteeringCorrection",0,.2f);frame(false);
+        Check(gas()==0&&brake()==0,"Fresh replacement traffic frames cannot keep an already emitted gas command alive after its original dynamics certificate expires");
+        frame(true);Check(modernPedal()==0,"Expired original dynamics withdraws positive gas from the modern sink as well");
+        LiveParking(5,false,true);Send("LaneAssist.SteeringCorrection",0,.2f);Tick();frame(false);
+        var expiredSnapshot=Get(plugin,"longitudinalSnapshot")!;
+        var expiredBounds=(System.Collections.IEnumerable)expiredSnapshot.GetType().GetProperty("Bounds")!.GetValue(expiredSnapshot)!;
+        Check(gas()==0&&brake()>0&&expiredBounds.Cast<object>().Any(b=>(string?)b.GetType().GetProperty("Source")!.GetValue(b)=="DynamicsPending"),
+            "A later actual Tick with only repeated stale physics retains the ordinary unknown-dynamics deceleration instead of inventing fresh acceleration");
         Restore();autoSources=true;Set(plugin,"readLongitudinalTraffic",null);Set(plugin,"monitorSteering",false);Set(plugin,"steeringMonitoringLive",false);
         LiveParking(0,true);
         output.GetMethod("MautSetPlannedHold")!.Invoke(null,[epoch(),"old-parking-test-hold",.65f,Stopwatch.GetTimestamp()]);frame(false);

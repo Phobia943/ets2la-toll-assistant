@@ -9,11 +9,13 @@ public sealed partial class TollPlugin
 {
     internal const string LongitudinalChannelId="local.mautassistent.longitudinal";
     readonly LongitudinalController longitudinal=new();
+    readonly SimulationDynamics simulationDynamics=new();
     readonly Func<TrafficSpeedDecision>? readLongitudinalTraffic;
     internal Action? BeforeLongitudinalCommit;
     internal sealed record SpeedBound(string Source,double? Acceleration,double? TargetSpeed=null,string? Reason=null);
     internal sealed record LongitudinalSnapshot(DateTimeOffset Utc,long IssuedAt,long Epoch,double TelemetryAt,
-        LongitudinalInput Input,LongitudinalOutput Output,SpeedBound[] Bounds,bool Published) {public object? TrafficEvidence{get;init;}}
+        LongitudinalInput Input,LongitudinalOutput Output,SpeedBound[] Bounds,bool Published) {
+            public object? TrafficEvidence{get;init;} public long? DynamicsOrigin{get;init;}}
     LongitudinalSnapshot? longitudinalSnapshot;
     bool throttleDeliveryWarningShown;
     public string SpeedControlStatus {get {lock(sync) {
@@ -38,12 +40,21 @@ public sealed partial class TollPlugin
     void RunLongitudinal(long epoch,long issuedAt)
     {
         if(!_IsRunning||!active||preview||!State.EnableAssists||State.DrivingMode==DrivingMode.LaneAssistOnly||
-            faultBrake.Latched||brakeHeld) {longitudinal.Reset();throttleDeliveryWarningShown=false;return;}
-        if(paused){longitudinal.Pause();return;}
+            faultBrake.Latched||brakeHeld) {longitudinal.Reset();simulationDynamics.Reset();throttleDeliveryWarningShown=false;return;}
+        if(paused){longitudinal.Pause();simulationDynamics.Reset();return;}
         bool rollback=ObserveReverseMotion(epoch);
         speedBounds.Clear();
         float safetyLimit=EvaluateAt(issuedAt,epoch);
         double now=clock.Elapsed.TotalSeconds;
+        // Only a derivative from advancing physics frames is evidence. An
+        // identical provider poll may reuse it within its ORIGINAL lease; it
+        // cannot reset its deadline or manufacture a negative acceleration.
+        var dynamics=simulationDynamics.Read(now,Stopwatch.GetTimestamp());
+        bool needsDynamics=requireHostCompatibility||appliedTelemetry!=null;
+        if(needsDynamics) {
+            accelerationKnown=dynamics!=null;
+            observedAcceleration=dynamics?.Acceleration??0;
+        }
         bool routeKnown=SensorsFresh(now)&&now-pathAt<.2&&safetyTrace!=null&&
             driveAction is DriveAction.Drive or DriveAction.AwaitRoute or DriveAction.Recover;
         double target=Math.Max(0,State.DesiredSpeed);
@@ -111,6 +122,9 @@ public sealed partial class TollPlugin
                 // already-unknown observation may still publish its no-gas
                 // braking plan; a revoked clear decision must be recomputed.
                 if(sourceLease!=null&&!SourceLeaseCurrent(sourceLease))return;
+                if(result.Throttle>0&&needsDynamics&&
+                    (dynamics==null||simulationDynamics.Read(clock.Elapsed.TotalSeconds,Stopwatch.GetTimestamp()) is not { } currentDynamics||
+                    currentDynamics.Origin!=dynamics.Value.Origin))return;
                 if(result.Fault) {
                     Disarm(result.DeliveryMissing?"Pedalbefehle werden im Spiel nicht wirksam – manuell übernehmen.":"Eigene Geschwindigkeitsregelung: "+result.Reason);
                     return;
@@ -129,15 +143,18 @@ public sealed partial class TollPlugin
                 var definition=new ControlChannelDefinition {Id=LongitudinalChannelId,Timeout=.2f};
                 outputIssuedAt?.SetValue(definition,issuedAt);outputEpoch?.SetValue(definition,epoch);
                 outputSourceEpoch?.SetValue(definition,observationEpoch);
-                outputSourceAt?.SetValue(definition,sourceLease==null?0L:
-                    Math.Min(Math.Min(sourceLease.Traffic,sourceLease.Parked),Math.Min(sourceLease.Signals,sourceLease.Gates)));
+                long sourceAt=sourceLease==null?0L:
+                    Math.Min(Math.Min(sourceLease.Traffic,sourceLease.Parked),Math.Min(sourceLease.Signals,sourceLease.Gates));
+                if(result.Throttle>0&&needsDynamics&&dynamics!=null)sourceAt=Math.Min(sourceAt,dynamics.Value.Origin);
+                outputSourceAt?.SetValue(definition,sourceAt);
                 var command=new ControlEvent {ChannelDefinition=definition,Properties=new(){Weight=1},
                     Variables=new() {aforward=result.Throttle,abackward=-result.Brake}};
                 publishOutput(command);published=true;
                 // Tests and event sinks need not feed events back to this plugin.
                 OnControlOutput(command);
             });
-        longitudinalSnapshot=new(DateTimeOffset.UtcNow,issuedAt,epoch,telemetryAt,input,result,speedBounds.ToArray(),published){TrafficEvidence=longitudinalTrafficEvidence};
+        longitudinalSnapshot=new(DateTimeOffset.UtcNow,issuedAt,epoch,telemetryAt,input,result,speedBounds.ToArray(),published){
+            TrafficEvidence=longitudinalTrafficEvidence,DynamicsOrigin=dynamics?.Origin};
         if(!result.ThrottleDeliveryMissing)throttleDeliveryWarningShown=false;
         else if(published&&!throttleDeliveryWarningShown) {
             throttleDeliveryWarningShown=true;

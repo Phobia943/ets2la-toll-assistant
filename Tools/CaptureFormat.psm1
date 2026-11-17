@@ -55,6 +55,22 @@ function Read-TollGateBuffer {
     })
     [pscustomobject]@{gates=$gates;issues=$issues.ToArray()}
 }
+function Read-TollSignalBuffer {
+    param([Parameter(Mandatory)][byte[]]$Bytes)
+    if($Bytes.Length -ne 1920){throw 'Die Signaldaten müssen exakt 1920 Byte enthalten.'}
+    # Keep actor types and raw states: unknown is not a green permission.
+    @(for($i=0;$i -lt 40;$i++) {
+        $o=$i*48;$type=[BitConverter]::ToInt32($Bytes,$o+32)
+        if($type -eq 0){continue}
+        $x=[single]([BitConverter]::ToSingle($Bytes,$o)+512*[BitConverter]::ToInt16($Bytes,$o+12))
+        $y=[BitConverter]::ToSingle($Bytes,$o+4)
+        $z=[single]([BitConverter]::ToSingle($Bytes,$o+8)+512*[BitConverter]::ToInt16($Bytes,$o+14))
+        $valid=[single]::IsFinite($x) -and [single]::IsFinite($y) -and [single]::IsFinite($z)
+        [ordered]@{slot=$i;type=$type;id=[BitConverter]::ToInt32($Bytes,$o+44);
+            state=[BitConverter]::ToInt32($Bytes,$o+40);positionValid=$valid;
+            x=$(if($valid){$x}else{$null});y=$(if($valid){$y}else{$null});z=$(if($valid){$z}else{$null})}
+    })
+}
 function Resolve-TollGateObservation {
     param([object[]]$Gates,[Parameter(Mandatory)][string]$GateKey,[object]$RememberedAnchor)
     $exact=@($Gates|Where-Object{$_.key -ceq $GateKey})
@@ -225,4 +241,4 @@ function Select-TollCaptureStatus($Status) {
         laneAttempts,laneAttemptContext,laneDecisionContext,laneProtection,detailedRigProtection,planningProfile,rigPrediction,
         sceneStopping,sceneStatus,scenePedalFloor,sceneHoldOwner,sceneHolding,holdPedalFloor,tollAccelerationLimit,nativeAcc,longitudinal,pedalFault,pedalSourceCurrent
 }
-Export-ModuleMember -Function Read-TruckPowertrainBuffer,Read-TollGateBuffer,Resolve-TollGateObservation,Read-ModernPedalBuffer,Read-TruckDamageBuffer,Read-TruckAirBuffer,Measure-TollDeparture,Select-TollCaptureStatus
+Export-ModuleMember -Function Read-TruckPowertrainBuffer,Read-TollGateBuffer,Read-TollSignalBuffer,Resolve-TollGateObservation,Read-ModernPedalBuffer,Read-TruckDamageBuffer,Read-TruckAirBuffer,Measure-TollDeparture,Select-TollCaptureStatus

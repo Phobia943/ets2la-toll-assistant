@@ -28,6 +28,22 @@ function InvokeRecordingAnalysis($records,[switch]$Automatic) {
     $json|ConvertFrom-Json
 }
 try {
+    $signalBytes=[byte[]]::new(1920)
+    [BitConverter]::GetBytes([int]1).CopyTo($signalBytes,32)
+    [BitConverter]::GetBytes([int]8).CopyTo($signalBytes,40)
+    [BitConverter]::GetBytes([int]3).CopyTo($signalBytes,44)
+    [BitConverter]::GetBytes([single]2.5).CopyTo($signalBytes,0)
+    [BitConverter]::GetBytes([int16]-2).CopyTo($signalBytes,12)
+    [BitConverter]::GetBytes([int]2).CopyTo($signalBytes,80)
+    [BitConverter]::GetBytes([int]1).CopyTo($signalBytes,88)
+    [BitConverter]::GetBytes([int]7).CopyTo($signalBytes,92)
+    $signals=@(Read-TollSignalBuffer $signalBytes)
+    Assert ($signals.Count -eq 2 -and $signals[0].type -eq 1 -and $signals[0].state -eq 8 -and
+        $signals[0].id -eq 3 -and $signals[0].x -eq -1021.5 -and $signals[1].type -eq 2 -and $signals[1].state -eq 1) 'Full signal capture retains separate light and gate states with signed-cell world coordinates.';$checks++
+    [BitConverter]::GetBytes([int]123).CopyTo($signalBytes,40)
+    [BitConverter]::GetBytes([single]::NaN).CopyTo($signalBytes,0)
+    $signals=@(Read-TollSignalBuffer $signalBytes)
+    Assert ($signals[0].state -eq 123 -and !$signals[0].positionValid -and $null -eq $signals[0].x) 'Unknown signal states and invalid positions remain explicit, never omitted as clear.';$checks++
     $status=[pscustomobject]@{version='0.4.0';longitudinal=[pscustomobject]@{
         Published=$true;IssuedAt=123456;Epoch=9;Input=[pscustomobject]@{Speed=20;StopIdentity='gate:10'};
         Output=[pscustomobject]@{Throttle=0;Brake=.2;Reason='Bounded deceleration'};

@@ -251,6 +251,7 @@ public sealed partial class TollPlugin : Plugin
     }
     public override void OnEnable()
     {
+        _=TrafficSignalEvidence.Prepare();
         lock(sync)
         {
             if (subscribed) return;
@@ -334,6 +335,7 @@ public sealed partial class TollPlugin : Plugin
     void ResetDriving()
     {
         longitudinal.Reset();
+        simulationDynamics.Reset();
         reverseMotion.Reset();
         sceneStopping=false;sceneHold.Reset();
         ResetRigEvaluation();

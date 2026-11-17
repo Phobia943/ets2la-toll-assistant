@@ -82,7 +82,8 @@ try {
             # proof of physical pedal activity; use the separate SDL brake input.
             userThrottle=[BitConverter]::ToSingle($telemetry,960);userBrake=[BitConverter]::ToSingle($telemetry,964)
             gameThrottle=[BitConverter]::ToSingle($telemetry,976);gameBrake=[BitConverter]::ToSingle($telemetry,980)
-            gates=$gates;statusUtc=$lastStatus;statusAgeSeconds=$age;status=$newStatus;issues=$issues.ToArray()
+            gates=$gates;signals=@(Read-TollSignalBuffer $semaphores)
+            statusUtc=$lastStatus;statusAgeSeconds=$age;status=$newStatus;issues=$issues.ToArray()
         }
         if($IncludePedalOutput){
             $views[2].ReadArray(0,$modernInput,0,26)|Out-Null

@@ -10,25 +10,71 @@ public static class LongitudinalIntegration
     {
         var physics=typeof(TollPlugin).GetNestedType("PhysicsObservation",System.Reflection.BindingFlags.NonPublic)!;
         var telemetry=typeof(TollPlugin).GetNestedType("TelemetryFrame",System.Reflection.BindingFlags.NonPublic)!;
-        void Deliver(RollingStartIntegration.Fixture f,double arrived,ulong simulated,double speed) {
+        void Deliver(RollingStartIntegration.Fixture f,ulong simulated,double speed) {
             var reading=Activator.CreateInstance(physics,simulated,simulated,0f,0f,0f,0f,0f,0f,0f)!;
-            f.Set("incomingTelemetry",Activator.CreateInstance(telemetry,arrived,simulated,true,false,speed,f.Point,.5d,reading)!);
+            var frame=Activator.CreateInstance(telemetry,f.Now,simulated,true,false,speed,f.Point,.5d,reading)!;
+            telemetry.GetProperty("Origin")!.SetValue(frame,Stopwatch.GetTimestamp());
+            f.Set("incomingTelemetry",frame);
             f.Call("DrainInputFrames");
         }
         var fast=new RollingStartIntegration.Fixture(withoutAcc:true,writeDiagnostic:(_,_)=>{});
         var delayed=new RollingStartIntegration.Fixture(withoutAcc:true,writeDiagnostic:(_,_)=>{});
-        Deliver(fast,1,1000000,20);Deliver(delayed,1,1000000,20);
-        Deliver(fast,1.001,1050000,20.05);Deliver(delayed,1.18,1050000,20.05);
+        Deliver(fast,1000000,20);Deliver(delayed,1000000,20);
+        Deliver(fast,1050000,20.05);Thread.Sleep(35);Deliver(delayed,1050000,20.05);
         check(fast.Get<bool>("accelerationKnown")&&delayed.Get<bool>("accelerationKnown")&&
             Math.Abs(fast.Get<double>("observedAcceleration")-1)<.001&&
             Math.Abs(delayed.Get<double>("observedAcceleration")-1)<.001,
             "Real frame draining measures identical dynamics across different callback arrival delays");
-        Deliver(delayed,1.19,1150000,20.15);
+        Deliver(delayed,1150000,20.15);
         check(Math.Abs(delayed.Get<double>("observedAcceleration")-1)<.001,"Coalesced source frames use their actual simulation interval");
-        Deliver(delayed,1.20,1150000,20.2);
+        Deliver(delayed,1150000,20.2);
         check(!delayed.Get<bool>("accelerationKnown")&&delayed.Get<double>("observedAcceleration")==0,
             "A repeated simulation timestamp cannot acquire dynamics from advancing arrival time");
         fast.Call("StopDiagnostics");delayed.Call("StopDiagnostics");
+    }
+    public static void RepeatedPhysics(Action<bool,string> check)
+    {
+        var f=Started();
+        var physics=typeof(TollPlugin).GetNestedType("PhysicsObservation",System.Reflection.BindingFlags.NonPublic)!;
+        var telemetry=typeof(TollPlugin).GetNestedType("TelemetryFrame",System.Reflection.BindingFlags.NonPublic)!;
+        void Deliver(ulong simulated,double age=0) {
+            var p=Activator.CreateInstance(physics,simulated,simulated,0f,0f,0f,0f,0f,0f,0f)!;
+            var frame=Activator.CreateInstance(telemetry,f.Now-age,simulated,true,false,5d,f.Point,.5d,p)!;
+            telemetry.GetProperty("Origin")!.SetValue(frame,Stopwatch.GetTimestamp()-(long)(age*Stopwatch.Frequency));
+            f.Set("incomingTelemetry",frame);f.Call("DrainInputFrames");
+        }
+        Deliver(1_000_000);Deliver(1_050_000);f.Fresh(5);
+        f.Call("RunLongitudinal",1L,Stopwatch.GetTimestamp());
+        var initial=f.Get<TollPlugin.LongitudinalSnapshot>("longitudinalSnapshot");
+        check(initial.Published&&initial.Output.Throttle>0&&initial.Output.Brake==0&&initial.DynamicsOrigin>0,
+            "Two actual drained simulation frames establish an original propulsion evidence lease");
+        Thread.Sleep(20);Deliver(1_050_000);f.Fresh(5);f.Call("RunLongitudinal",1L,Stopwatch.GetTimestamp());
+        var repeated=f.Get<TollPlugin.LongitudinalSnapshot>("longitudinalSnapshot");
+        check(repeated.Published&&repeated.Output.Throttle>0&&repeated.Output.Brake==0&&
+            repeated.DynamicsOrigin==initial.DynamicsOrigin&&!repeated.Bounds.Any(b=>b.Source=="DynamicsPending"),
+            "Identical physics repetition cannot introduce a brake bound or renew the derivative origin");
+        Thread.Sleep(210);Deliver(1_050_000);f.Fresh(5);f.Call("RunLongitudinal",1L,Stopwatch.GetTimestamp());
+        var expired=f.Get<TollPlugin.LongitudinalSnapshot>("longitudinalSnapshot");
+        check(expired.Output.Throttle==0&&expired.Bounds.Any(b=>b.Source=="DynamicsPending"),
+            "Fresh repeat callbacks cannot keep expired dynamics alive");
+        f.Call("StopDiagnostics");
+
+        var late=Started();
+        var dynamics=late.Get<SimulationDynamics>("simulationDynamics");
+        Thread.Sleep(250);
+        long qpc=Stopwatch.GetTimestamp();double now=late.Now;
+        dynamics.Observe(now-.24,qpc-(long)(Stopwatch.Frequency*.24),1_000_000,1_000_000,5,late.Point,.5,true,false);
+        dynamics.Observe(now-.19,qpc-(long)(Stopwatch.Frequency*.19),1_050_000,1_050_000,5,late.Point,.5,true,false);
+        // The constructor is an offline DI fixture; make the real telemetry
+        // requirement explicit without enabling any live host or SDK singleton.
+        var p2=Activator.CreateInstance(physics,1_050_000UL,1_050_000UL,0f,0f,0f,0f,0f,0f,0f)!;
+        late.Set("appliedTelemetry",Activator.CreateInstance(telemetry,now,1_050_000UL,true,false,5d,late.Point,.5d,p2)!);
+        late.Plugin.BeforeLongitudinalCommit=()=>Thread.Sleep(40);
+        late.Fresh(5);late.Call("RunLongitudinal",1L,Stopwatch.GetTimestamp());
+        var stale=late.Get<TollPlugin.LongitudinalSnapshot>("longitudinalSnapshot");
+        check(stale.Output.Throttle>0&&!stale.Published,
+            "An originally valid derivative that expires during final output work cannot publish gas");
+        late.Call("StopDiagnostics");
     }
     static RollingStartIntegration.Fixture Started()
     {

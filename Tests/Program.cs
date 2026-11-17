@@ -62,6 +62,7 @@ void Run()
     Check("Native age watchdog preserves real failure and startup deadlines",()=>NativeCommandTimingTests.GuardContract(Assert));
     Check("Standard exit slicing accepts numerical item handoffs but rejects physical gaps and reversals",()=>StandardSliceHandoffIntegration.NumericalItemBoundaries(Assert));
     Check("Curve planning and supervision share stationary signed-speed policy without losing completed profiles",()=>CurveSpeedTests.StationarySignedSpeed(Assert));
+    Check("Simulation dynamics preserve original evidence age across identical provider repetitions",()=>SimulationDynamicsTests.Run(Assert));
     Check("Recorded stand jitter preserves completed synthetic curves and counterfactual parking neutrality",()=>StandstillRegressionTests.Run(Assert));
     Check("Curve geometry excludes grades, item seams and isolated interpolation spikes",()=>CurveSpeedTests.Geometry(Assert));
     Check("Curve speed preview slows ahead without increasing native bounds or stopping a slow truck",()=>CurveSpeedTests.Limits(Assert));
@@ -236,10 +237,14 @@ void Run()
     #if INTEGRATION
     Check("Own Tick drives without native ACC and yields on physical brake and F9",()=>LongitudinalIntegration.TickAndTakeover(Assert));
     Check("Own dynamics use simulation time through actual frame draining",()=>LongitudinalIntegration.SimulationClock(Assert));
+    Check("Repeated physics does not pulse brake and expired dynamics cannot publish gas",()=>LongitudinalIntegration.RepeatedPhysics(Assert));
     Check("Own Tick rejects late observation work and cancellation",()=>LongitudinalIntegration.LateWork(Assert));
     Check("Independent own pedal watchdog brakes on a stalled controller with healthy steering",()=>LongitudinalIntegration.PedalDeadman(Assert));
     Check("Open local passage survives missing road speed data while game cruise excludes own takeover",()=>LongitudinalIntegration.RoadLimitAndGameCruise(Assert));
     Check("SDK byte orientations and fixed empty slots preserve real traffic geometry",()=>TrafficWireIntegration.Run(Assert));
+    Check("Traffic light instances expose verified spawn flags without defaulting unreadable data to off",()=>TrafficSignalEvidenceTests.InstanceFlags(Assert));
+    Check("Unspawned map lights cannot create ghost stops or erase live and canonical barrier evidence",()=>TrafficSignalEvidenceTests.Policy(Assert));
+    Check("Actual own Tick uses instance-aware traffic light policy for gas and service brake",()=>TrafficSignalEvidenceTests.TickPolicy(Assert));
     Check("Actual toll Tick binds open and closed canonical gates independently of the opposite lane",()=>CanonicalGateTickReview.Run(Assert));
     Check("Exit continuation carries a selected toll lane through the next road",()=>RoutingContinuationIntegration.RoadExit(Assert));
     Check("Exit continuation chooses a real directed connector alternative",()=>RoutingContinuationIntegration.ConnectorAlternatives(Assert));

@@ -18,6 +18,7 @@ public sealed partial class TollPlugin
         FreshSource(lease.Traffic)&&FreshSource(lease.Parked)&&FreshSource(lease.Signals)&&FreshSource(lease.Gates)&&
         ownTrafficFrame?.GetValue(null)!=null&&ownParkedFrame?.GetValue(null)!=null&&ownSemaphoreFrame?.GetValue(null)!=null;
     object? longitudinalTrafficEvidence;
+    readonly List<object> longitudinalSignalEvidence=[];
     // Immutable copies keep the selected command, its reasons and observed
     // objects together. Host stamps attest successful provider reads, not the
     // time at which this consumer happened to inspect an old object.
@@ -61,7 +62,7 @@ public sealed partial class TollPlugin
             trafficLimit=FiniteLimit(decision.Acceleration),decision.Reason,
             limitingBody=decision.LimitingBody is { } body?new{x=body.Position.X,y=body.Position.Y,z=body.Position.Z,
                 width=body.Size.X,height=body.Size.Y,length=body.Size.Z,body.Speed}:null,
-            signalReason=light.Reason,light.StopIdentity,light.StopDistance};
+            signalReason=light.Reason,light.StopIdentity,light.StopDistance,signals=longitudinalSignalEvidence.ToArray()};
         return new(Minimum(decision.Acceleration,light.Acceleration),decision.Clear&&light.Clear,
             !light.Clear?light.Reason:decision.Reason,
             Math.Min(decision.StopDistance??double.PositiveInfinity,light.StopDistance??double.PositiveInfinity) is var stop&&double.IsFinite(stop)?stop:null,
@@ -91,15 +92,22 @@ public sealed partial class TollPlugin
 
     TrafficSpeedDecision ReadTrafficLights(out long signalStamp)
     {
+        longitudinalSignalEvidence.Clear();
         signalStamp=0;
         if(path==null||safetyTrace==null)return new(-.35f,false,"Keine Ampelroute");
         var signalFrame=ownSemaphoreFrame?.GetValue(null) as Tuple<long,SemaphoreData>;
         if(signalFrame?.Item2?.semaphores==null||!FreshSource(signalFrame.Item1))return new(-.35f,false,"Signalzustände veraltet");
         signalStamp=signalFrame.Item1;
-        var signals=signalFrame.Item2.semaphores;
+        return EvaluateTrafficLights(path,safetyTrace,position,signalFrame.Item2.semaphores,router.SelectedBarrier,longitudinalSignalEvidence);
+    }
+    internal static TrafficSpeedDecision EvaluateTrafficLights(PathLib.PlannedPathData path,RouteTrace safetyTrace,Vector3 position,
+        ETS2LA.Game.SDK.Semaphore[] signals,TollBarrierPlan? selectedBarrier,List<object>? observations=null)
+    {
         double own=safetyTrace.ProjectForTracking(position).Along;
         double? stop=null;string? key=null;
-        foreach(var signal in path.PlannedPath.Where(item=>item.prefabPath!=null).SelectMany(item=>item.prefabPath!.GetSemaphores())) {
+        foreach(var item in path.PlannedPath.Where(item=>item.prefabPath!=null)) {
+        bool ownBarrier=TrafficSignalEvidence.OwnsBarrier(item,selectedBarrier);
+        foreach(var signal in item.prefabPath!.GetSemaphores()) {
             var mappedType=signal.Semaphore.Type;
             if(mappedType is TruckLib.Models.Ppd.SemaphoreType.ModelOnly or TruckLib.Models.Ppd.SemaphoreType.BarrierManualTimed or
                 TruckLib.Models.Ppd.SemaphoreType.BarrierDistanceActivated or TruckLib.Models.Ppd.SemaphoreType.BarrierGas or
@@ -110,15 +118,26 @@ public sealed partial class TollPlugin
             double distance=projection.Along-own-5;
             if(distance< -2||projection.Offset>2||Math.Abs(projection.HeightOffset)>2||projection.Along>=safetyTrace.Length-.01)continue;
             var matches=signals.Where(g=>g.id==signal.Semaphore.SemaphoreId&&Vector3.Distance(g.GetWorldCoordinates(),anchor)<=1).ToArray();
+            bool? spawnEnabled=TrafficSignalEvidence.SpawnEnabled(item.prefabPath.Prefab.Prefab);
+            bool omitted=TrafficSignalEvidence.OmitUnspawned(spawnEnabled,matches.Length>0);
+            if(observations is {Count:<64})observations.Add(new {
+                prefab=item.prefabPath.Prefab.Prefab?.Uid,id=signal.Semaphore.SemaphoreId,
+                mappedType=mappedType.ToString(),profile=signal.Semaphore.Profile.ToString(),spawnEnabled,
+                anchor=new{x=anchor.X,y=anchor.Y,z=anchor.Z},curveStart=new{x=start.X,y=start.Y,z=start.Z},
+                distance,omitted,live=matches.Select(g=>new{type=g.type.ToString(),g.state,g.id}).ToArray()});
+            // A disabled map instance is not an unobserved red light. A real
+            // matching SDK light overrules the map flag; missing/unknown flags
+            // never create a green permission. Toll gates keep their own policy.
+            if(omitted)continue;
             // Gates have exactly one authority: the mapped toll barrier binding.
             // Never substitute a closer SDK post from an adjacent/opposing lane.
-            if(matches.Any(g=>g.type==SemaphoreType.GATE)||router.SelectedBarrier is { } barrier&&
-                barrier.GateId==signal.Semaphore.SemaphoreId&&Vector3.Distance(barrier.Anchor,anchor)<=1)continue;
+            if(ownBarrier&&selectedBarrier!.GateId==signal.Semaphore.SemaphoreId)continue;
             if(matches.Length>0&&matches.All(g=>g.type==SemaphoreType.TRAFFICLIGHT&&g.state is 0 or 8))continue;
             if(stop==null||Math.Max(0,distance)<stop) {
                 stop=Math.Max(0,distance);
                 key=FormattableString.Invariant($"light:{signal.Semaphore.SemaphoreId}:{anchor.X:F1}:{anchor.Z:F1}");
             }
+        }
         }
         return stop==null?new(float.NaN,true,"Keine haltende Ampel auf der Route"):
             new(float.NaN,false,"Haltende oder unbestätigte Ampel auf der Route",stop,key);

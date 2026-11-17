@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.4.3 – Ampelinstanzen und aktuelle Fahrzeugdynamik, vorbereitet
+
+- Berücksichtigt das belegte Spawnflag der konkreten Karteninstanz. Ein ausgeschalteter Ampelkopf ohne passenden Runtime-Actor erzeugt keinen erfundenen Halt. Echte Signale, unbekannte Instanzen und widersprüchliche Actors bleiben konservativ behandelt.
+- Ordnet die Ausnahme für Mautschranken derselben gerichteten kanonischen Torgruppe zu, einschließlich mehrerer Schrankenarme. Eine gleiche ID an einem anderen Pfosten, Ort oder Routenabschnitt genügt nicht.
+- Bewahrt gültige Beschleunigungsableitungen bei identischen wiederholten Physikframes ausschließlich bis zu ihrem ursprünglichen Ablauf. Widersprüche und fehlende Quellen bleiben unbekannt. Die Gasausgabe prüft die Frist nochmals unmittelbar vor Übergabe und im Host.
+- Zeichnet die konkrete Ampelbindung sowie rohe Ampel-/Schranken-Actors getrennt auf. Die frühere Aufnahme war dafür unvollständig.
+- [Befunde, Gegenprüfungen und Grenzen](REVIEW-0.4.3.md). Keine zugesicherte Behebung ausbleibender Spieleingaben oder des Hintergrundbetriebs; automatisches Bezahlen an manuellen Mautspuren bleibt offen.
+
 ## 0.4.2 – Stillstand, Feststellbremse und tatsächliches Rollen unterscheiden, installiert
 
 - Vereinheitlicht die kleine negative Standtoleranz für Kurvenprofil, Szenenzulassung, Fahrüberwachung und eigene Geschwindigkeitsregelung. Ein winziger negativer Messwert verwirft keine vorhandene Kurvenvorschau mehr.
