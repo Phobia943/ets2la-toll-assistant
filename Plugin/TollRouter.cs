@@ -8,6 +8,12 @@ namespace MautAssistent;
 
 public sealed class TollRouter
 {
+    public sealed record RouteSearch(PrefabPath? Path,string Reason,int[] BlockedCurves) { public object? Evidence {get;init;} }
+    public sealed record LaneAttempt(int Gate,string Payment,int FirstCurve,int LastCurve,string Reason,int[] BlockedCurves,object? Evidence);
+    public LaneAttempt[] LaneAttempts {get;private set;}=[];
+    public object? LaneDecisionContext {get;private set;}
+    public object? LaneAttemptContext {get;private set;}
+    readonly Func<PrefabPath,int,RouteSearch>? findClearRoute;
     public sealed record LaneChoice(int GateId,string Label);
     public LaneChoice[] Choices {get;private set;}=[];
     public string? CurrentKey {get;private set;}
@@ -38,8 +44,8 @@ public sealed class TollRouter
     readonly PreferenceStore preferences;
     public TollRouter(PreferenceStore preferences, Func<ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments=null,
         Func<PrefabPath,bool>? readClearance=null,Action<ParsedPrefab>? prefetch=null,
-        Func<ParsedPrefab,int,ManualStopZone?>? readManualStop=null)
-    {this.preferences=preferences;this.readPayments=readPayments;this.readClearance=readClearance;this.prefetch=prefetch;this.readManualStop=readManualStop;}
+        Func<ParsedPrefab,int,ManualStopZone?>? readManualStop=null,Func<PrefabPath,int,RouteSearch>? findClearRoute=null)
+    {this.preferences=preferences;this.readPayments=readPayments;this.readClearance=readClearance;this.prefetch=prefetch;this.readManualStop=readManualStop;this.findClearRoute=findClearRoute;}
     public double? ManualStopOffset(double safeOffset)
     {
         ManualStopIssue=null;
@@ -89,6 +95,7 @@ public sealed class TollRouter
     internal void ResetSelection()
     {
         CurrentKey=null;SelectedGate=null;SelectedBarrier=null;Choices=[];Status="Warte auf Route";
+        LaneAttempts=[];LaneDecisionContext=null;LaneAttemptContext=null;
         ClearanceHoldRequested=false;
         ClearanceHoldKey=null;PlanningDeferred=false;PlanningDeferredKey=null;
         plans.Clear();entryCosts.Clear();replacements.Clear();
@@ -133,13 +140,21 @@ public sealed class TollRouter
             if(StopBoundary.HasValue && key!=StopKey)return;
             modelPayments=knownPayments;
             double now=System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
-            if(CurrentKey==key && (SelectedGate.HasValue || now-lastSearch < .5))return;
+            if(CurrentKey==key && SelectedGate.HasValue) {
+                if(PaymentFor(SelectedGate.Value)==TollPayment.Manual&&now-lastSearch>=.5) {
+                    lastSearch=now;
+                    TryUpgradeAutomatic(data,index,p,truck,sdkGates,speed);
+                }
+                return;
+            }
+            if(CurrentKey==key && now-lastSearch < .5)return;
             lastSearch=now;
             plans.Clear();
             entryCosts.Clear();
             replacements.Clear();
             var right=Vector3.Cross(forward,Vector3.UnitY);
             var lanes=new List<(int gate,float lateral,bool reachable)>();
+            var attempts=new List<LaneAttempt>();
             var anchors=new Dictionary<int,(Vector3 Anchor,Vector3 Heading)>();var ambiguous=new HashSet<int>();
             foreach(var c in p.Prefab.Descriptor!.NavCurves.Where(c=>c.SemaphoreId>=0)) {
                 var single=(PrefabPath)clone.Invoke(p,null)!;single.Curves=[c];single.Length=c.Length;
@@ -158,8 +173,19 @@ public sealed class TollRouter
                     .Where(option => Key(option) == key);
                 foreach (var alternative in alternatives)
                 {
-                    var route = ViaGate(alternative, c.SemaphoreId);
-                    if (route == null || readClearance?.Invoke(route)==false || TollEntry.Plan(data,index,p,route,truck,speed) is not { } entry) continue;
+                    var original=PrefabRefinement.OriginalFor(alternative);
+                    if(original.Curves.Count==0) {
+                        attempts.Add(new(c.SemaphoreId,PaymentFor(c.SemaphoreId).ToString(),-1,-1,"InvalidSourceShape",[],null));
+                        continue;
+                    }
+                    int firstCurve=p.Prefab.Descriptor.NavCurves.IndexOf(original.Curves.First()),lastCurve=p.Prefab.Descriptor.NavCurves.IndexOf(original.Curves.Last());
+                    var search=findClearRoute?.Invoke(alternative,c.SemaphoreId);
+                    var route = findClearRoute!=null?search?.Path:ViaGate(alternative, c.SemaphoreId);
+                    string? rejected=route==null?search?.Reason??"NoDirectedTruckPath":readClearance?.Invoke(route)==false?"ClearanceUnavailable":null;
+                    var entry=rejected==null?TollEntry.Plan(data,index,p,route!,truck,speed):null;
+                    rejected??=entry==null?"EntryNotReachable":null;
+                    attempts.Add(new(c.SemaphoreId,PaymentFor(c.SemaphoreId).ToString(),firstCurve,lastCurve,rejected??"Reachable",search?.BlockedCurves??[],search?.Evidence));
+                    if(rejected!=null||entry==null||route==null)continue;
                     var cost = (entry.SlowRoad != null, entry.Apply.Count);
                     if (entryCosts.TryGetValue(c.SemaphoreId,out var existing) && cost.CompareTo(existing) >= 0) continue;
                     entryCosts[c.SemaphoreId]=cost;
@@ -177,6 +203,10 @@ public sealed class TollRouter
                 .Select(x=>new LaneChoice(x.l.gate,$"{x.i+1}. Durchfahrt von rechts")).ToArray();
             SelectedGate=preferences.Gates.TryGetValue(key,out var chosen)?chosen:null;
             SelectAutomatic();
+            LaneAttempts=attempts.ToArray();
+            LaneDecisionContext=new{utc=DateTimeOffset.UtcNow,plaza=CurrentKey,truck=new{truck.X,truck.Y,truck.Z},speed,
+                selected=SelectedGate,routePlan=RouteSnapshot.Describe(RouteSnapshot.Capture(data))};
+            LaneAttemptContext=LaneDecisionContext;
             return;
         }
         if(CurrentKey!=null&&!StopBoundary.HasValue&&!data.PlannedPath.Any(i=>i.prefabPath!=null&&Key(i.prefabPath)==CurrentKey))ResetSelection();
@@ -192,6 +222,34 @@ public sealed class TollRouter
         var heading=signal.GetCurveEndWorldCoordinates().Position-signal.GetCurveStartWorldCoordinates().Position;
         if(!float.IsFinite(anchor.X)||!float.IsFinite(anchor.Y)||!float.IsFinite(anchor.Z)||!float.IsFinite(heading.LengthSquared())||heading.LengthSquared()<.01)return;
         SelectedBarrier=new(CurrentKey,original.Prefab.Prefab.Uid,gate,anchor,Vector3.Normalize(heading),applied==null?null:RouteMatcher.ItemIdentity(applied));
+    }
+
+    // An initially unavailable automatic lane may become proven before the
+    // split. Search separately, retain the committed lane on any failure, and
+    // let Apply recompute and validate actual changes against the current plan.
+    void TryUpgradeAutomatic(PlannedPathData data,int index,PrefabPath current,Vector3 truck,
+        ETS2LA.Game.SDK.Semaphore[] sdkGates,double speed)
+    {
+        if(shortChangeRoad!=null||data.PlannedPath.Any(i=>i.targetLaneIndex!=0))return;
+        try {
+            var trace=RouteMatcher.SampleForTracking(data,truck,speed);
+            if(BoundaryCoverage(trace,data.PlannedPath[index],CommonApproachEnd(current),truck,out double remaining)!=PrefixCoverage.Connected||
+                remaining<Math.Max(15,Math.Max(0,speed)*1.5+10))return;
+            var trial=new TollRouter(preferences,readPayments,readClearance,prefetch,readManualStop,findClearRoute);
+            var snapshot=RouteSnapshot.Capture(data);
+            trial.Discover(snapshot,truck,sdkGates,speed);
+            LaneAttempts=trial.LaneAttempts;
+            LaneAttemptContext=trial.LaneAttemptContext;
+            if(trial.CurrentKey!=CurrentKey||trial.SelectedGate is not int gate||trial.PaymentFor(gate)!=TollPayment.Automatic||
+                !trial.plans.TryGetValue(gate,out var candidate)||!CanRestoreApplied(data,index,current,candidate,truck,speed)||
+                readClearance?.Invoke(candidate)==false)return;
+            plans.Clear();foreach(var pair in trial.plans)plans[pair.Key]=pair.Value;
+            entryCosts.Clear();foreach(var pair in trial.entryCosts)entryCosts[pair.Key]=pair.Value;
+            replacements.Clear(); // The prior manual mapping is not the new automatic path.
+            Choices=trial.Choices;modelPayments=trial.modelPayments;SelectedGate=gate;
+            LaneDecisionContext=trial.LaneDecisionContext;
+            CancelPlannedStop();Status=LaneStatus(gate);RefreshSelectedBarrier();
+        }catch(InvalidOperationException) { /* No route proof: retain the current lane. */ }
     }
     void SelectAutomatic()
     {
@@ -315,14 +373,15 @@ public sealed class TollRouter
         return copy.Interpolate(.99999f,0)!.Value.Position;
     }
 
-    public static PrefabPath? ViaGate(PrefabPath source,int gate)
+    public static PrefabPath? ViaGate(PrefabPath source,int gate,IReadOnlyList<bool>? blockedCurves=null,bool allowSmallVehiclePreference=false)
     {
         source=PrefabRefinement.OriginalFor(source);
         var all=source.Prefab.Descriptor?.NavCurves;
-        if(all==null || source.Curves.Count==0)return null;
+        if(all==null || source.Curves.Count==0||blockedCurves!=null&&blockedCurves.Count!=all.Count)return null;
         var graph=all.Select((c,i)=>new CurveLink(i,c.NextLines.ToArray(),c.Length,
-            (c.AllowedVehicles is AllowedVehicles.AllVehicles or AllowedVehicles.LargeVehicles) &&
-            c.TrafficRule.ToString() != "escort_only",c.SemaphoreId)).ToArray();
+            (c.AllowedVehicles is AllowedVehicles.AllVehicles or AllowedVehicles.LargeVehicles ||
+                allowSmallVehiclePreference&&blockedCurves!=null&&c.AllowedVehicles==AllowedVehicles.SmallVehicles) &&
+            c.TrafficRule.ToString() != "escort_only" && (blockedCurves==null||!blockedCurves[i]),c.SemaphoreId)).ToArray();
         int first=all.IndexOf(source.Curves[0]),last=all.IndexOf(source.Curves[^1]);
         var ids=CurveGraph.ViaGate(graph,first,last,gate);
         if(ids==null)return null;

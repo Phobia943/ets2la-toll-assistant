@@ -27,7 +27,11 @@ public sealed class TollModelEvidence
     readonly Queue<Job> pending=[];
     bool worker;
     sealed record ModelKey(string Model,string Variant,string Parts,bool SpecialJob,PrefabDescriptor Descriptor,float Height,float Width,string GeometryStamp);
-    sealed class Entry {public ModelInspection? Result;}
+    static long nextRevision;
+    sealed class Entry(ModelKey key) {
+        public ModelInspection? Result;
+        public readonly object Diagnostic=new{revision=Interlocked.Increment(ref nextRevision),key.Model,key.Variant,key.Parts,key.Height,key.Width,key.GeometryStamp};
+    }
     sealed record Job(IFileSystem Source,ModelRequest Request,Entry Entry);
     internal sealed record ModelRequest(string Model,string Variant,string[] Parts,bool SpecialJob,PrefabDescriptor Descriptor,string[] Archives,float Height=6,float Width=3);
     public sealed record ModelInspection(IReadOnlyDictionary<int,TollPayment> Payments,bool[] BlockedCurves)
@@ -105,6 +109,28 @@ public sealed class TollModelEvidence
         return path.Curves.All(curve=>descriptor.NavCurves.IndexOf(curve) is int i && i>=0 && !result.BlockedCurves[i]);
     }
 
+    // Search within the proven free graph, rather than rejecting a gate after
+    // testing just its shortest topological path. The final route is still
+    // revalidated immediately before application and in the live output guard.
+    public TollRouter.RouteSearch FindClearRoute(PrefabPath input,int gate)
+    {
+        var path=PrefabRefinement.OriginalFor(input);
+        var entry=GetEntry(path.Prefab);var result=entry==null?null:Volatile.Read(ref entry.Result);
+        if(result==null)return new(null,"ModelPending",[]){Evidence=entry?.Diagnostic};
+        var descriptor=path.Prefab.Descriptor;
+        if(result.Issue!=null||descriptor==null||result.BlockedCurves.Length!=descriptor.NavCurves.Count)return new(null,"ModelRejected",[]){Evidence=entry?.Diagnostic};
+        var blocked=result.BlockedCurves.ToArray();
+        // SCS documents Allowed Vehicles as AI traffic suitability, not a
+        // player-truck restriction. Permit the small-vehicle preference ONLY
+        // for model-proven automatic payment with a completed physical mask.
+        // A low beam, narrow lane, unknown type or escort-only route remains
+        // rejected. The default/no-proof router is deliberately unchanged.
+        bool automatic=result.Payments.GetValueOrDefault(gate)==TollPayment.Automatic;
+        var route=TollRouter.ViaGate(path,gate,blocked,automatic);
+        return new(route,route!=null?"Available":TollRouter.ViaGate(path,gate,new bool[blocked.Length],automatic)==null?"NoDirectedTruckPath":"NoClearDirectedPath",
+            Enumerable.Range(0,blocked.Length).Where(i=>blocked[i]).ToArray()){Evidence=entry?.Diagnostic};
+    }
+
     Entry? GetEntry(ParsedPrefab prefab)
     {
         var current=readFiles();var descriptor=prefab.Descriptor;
@@ -136,7 +162,7 @@ public sealed class TollModelEvidence
             // objects from the model worker.
             foreach(var signal in descriptor.Semaphores)
                 copy.Semaphores.Add(new(){SemaphoreId=signal.SemaphoreId,Position=signal.Position});
-            var entry=new Entry();cache.Add(key,entry);
+            var entry=new Entry(key);cache.Add(key,entry);
             pending.Enqueue(new(current,new(key.Model,key.Variant,parts,key.SpecialJob,copy,archives,key.Height,key.Width),entry));
             if(!worker) {worker=true;ThreadPool.QueueUserWorkItem(_=>RunWorker());}
             // A larger completed corridor can safely prove a smaller one.

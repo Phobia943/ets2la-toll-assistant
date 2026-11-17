@@ -46,6 +46,7 @@ public sealed partial class TollPlugin : Plugin
     readonly Func<ETS2LA.Game.Data.PrefabPath,bool>? readClearance;
     readonly Action<ETS2LA.Game.Data.ParsedPrefab>? prefetch;
     readonly Func<ETS2LA.Game.Data.ParsedPrefab,int,ManualStopZone?>? readManualStop;
+    readonly Func<ETS2LA.Game.Data.PrefabPath,int,TollRouter.RouteSearch>? findClearRoute;
     readonly Func<RouteTrace?,Vector3,ETS2LA.Game.SDK.Semaphore[],object> buildStatusGeometry;
     readonly Func<ApplicationState> readState;
     readonly Func<CruiseLimits> readCruiseLimits;
@@ -92,7 +93,7 @@ public sealed partial class TollPlugin : Plugin
     TollPlugin(TollModelEvidence modelEvidence) : this(() => ApplicationState.Current, Notify,
         output=>Events.Current.Publish(GameOutput.Current.EventString,output),
         readPayments:modelEvidence.Read,readClearance:modelEvidence.IsClear,monitorSteering:true,
-        prefetch:modelEvidence.Prefetch,readManualStop:modelEvidence.ReadManualStop,readCruiseLimits:ReadHostCruiseLimits,requireHostCompatibility:true) { this.modelEvidence=modelEvidence; }
+        prefetch:modelEvidence.Prefetch,readManualStop:modelEvidence.ReadManualStop,readCruiseLimits:ReadHostCruiseLimits,requireHostCompatibility:true,findClearRoute:modelEvidence.FindClearRoute) { this.modelEvidence=modelEvidence; }
     internal TollPlugin(Func<ApplicationState> readState, Action<string,string> notify,Action<ControlEvent>? output=null,Func<IPlugin?>? readAcc=null,
         Func<ETS2LA.Game.Data.ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments=null, Func<IPlugin?>? readPlanner=null,
         Func<IPlugin,Vector3,double,Vector3[],PlannedPathData?>? probeRoute=null,
@@ -103,7 +104,8 @@ public sealed partial class TollPlugin : Plugin
         Func<ETS2LA.Game.Data.ParsedPrefab,int,ManualStopZone?>? readManualStop=null,
         Func<RouteTrace?,Vector3,ETS2LA.Game.SDK.Semaphore[],object>? buildStatusGeometry=null,
         Func<RouteTrace,Vector3,CurveSpeedProfile>? buildCurveProfile=null,Func<CruiseLimits>? readCruiseLimits=null,bool requireHostCompatibility=false,
-        Func<RigRuntimeObservation>? readRigObservation=null,TollModelEvidence? runtimeModels=null) {
+        Func<RigRuntimeObservation>? readRigObservation=null,TollModelEvidence? runtimeModels=null,
+        Func<ETS2LA.Game.Data.PrefabPath,int,TollRouter.RouteSearch>? findClearRoute=null) {
         curvePreview=new(buildCurveProfile);
         this.monitorSteering=monitorSteering;
         this.requireHostCompatibility=requireHostCompatibility;
@@ -114,13 +116,14 @@ public sealed partial class TollPlugin : Plugin
         this.readLaneAssist=readLaneAssist??FindLaneAssist;
         this.writeDiagnostic=writeDiagnostic??File.WriteAllText;
         this.readClearance=readClearance;this.prefetch=prefetch;this.readManualStop=readManualStop;
+        this.findClearRoute=findClearRoute;
         this.buildStatusGeometry=buildStatusGeometry??StatusGeometry.Build;
         this.probeRoute=probeRoute??ConnectorStart.Probe;
         this.installStart=installStart??ConnectorStart.TryInstallStart;
         publishOutput=output??(_=>{});
         router=CreateRouter();faultBrake=new(output??(_=>{}));
     }
-    TollRouter CreateRouter()=>new(preferences,readPayments,readClearance,prefetch,readManualStop);
+    TollRouter CreateRouter()=>new(preferences,readPayments,readClearance,prefetch,readManualStop,findClearRoute);
     string preparationReason="Automatische Vorbereitung wartet auf Stillstand und verbundene Module.";
     double lastStartWarning=double.NegativeInfinity;
     static void Notify(string title,string content) {
@@ -965,6 +968,7 @@ public sealed partial class TollPlugin : Plugin
                         selectedPayment=router.SelectedGate is int gateId ? router.PaymentFor(gateId).ToString() : null,
                         faultBraking=faultBrake.Latched,headingTurns,
                         sceneStopping,sceneStatus,parkedSceneSource=parkedScene.Status,
+                        laneAttempts=router.LaneAttempts,laneDecisionContext=router.LaneDecisionContext,laneAttemptContext=router.LaneAttemptContext,
                         pendingRouteGap=safetyTrace?.EndReason,
                         connectedMetresAhead=safetyTrace!=null?safetyTrace.Length-safetyTrace.Project(position).Along:(double?)null,
                         requiredLookahead=TrackingGuard.RequiredLookahead(speed),

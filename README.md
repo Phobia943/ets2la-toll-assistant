@@ -1,12 +1,22 @@
 # ETS2LA Mautassistent
 
-**0.3.18 ist lokal installiert; alle sieben Dateiprüfsummen wurden danach bestätigt. Die neue Kombination wurde noch nicht live gefahren.** Beim nächsten Start zuerst im Stand Aktivierung und manuelle Übernahme mit der Controller-Bremse prüfen, anschließend kontrolliert an einer Mautstelle testen. [Änderungen, Nachweise und Grenzen](REVIEW-0.3.18.md).
+**0.3.18 ist installiert und wird beobachtet. 0.3.19 ist fertig vorbereitet und noch nicht installiert.** 155 Integrations-, 82 Kernlogik-, 120 Host-/Plugin- und 63 Aufnahmetests sowie sechs frühe FR-Kartenfälle sind bestanden und kritisch geprüft. Installation, Standtest und echte Mautdurchfahrt bleiben offen. [Installierter Stand 0.3.18](REVIEW-0.3.18.md), [vorbereitete Korrektur 0.3.19](REVIEW-0.3.19.md).
 
-Der Sieben-Datei-Austausch ist mit geprüfter Sicherung abgeschlossen. Einstellungen und Eingabebelegungen blieben unverändert; Apps und Assistenz wurden nicht gestartet. Die früheren Sechs-Datei-Pakete bleiben gesperrt. Eine Installation ersetzt keine Live-Fahrprüfung.
+Der vorherige Sieben-Datei-Austausch auf 0.3.18 wurde mit geprüfter Sicherung und bestätigten Zielhashes abgeschlossen. Dabei blieben Einstellungen und Eingabebelegungen unverändert; der Installer startete keine Apps oder Assistenz. Beobachtungen der später gestarteten .18 sind keine Bestätigung der noch nicht installierten .19.
 
 Die Erweiterung ergänzt ETS2LA Pathfinding, Lane Assist und Adaptive Cruise Control in Euro Truck Simulator 2. Sie plant eine erreichbare Lkw-Mautspur, begrenzt die Anfahrt und wartet auf die tatsächlich geöffnete Schranke. Oberfläche und Meldungen sind auf Deutsch.
 
-## Was der Kandidat ändert
+## Umgesetzt und geprüft für 0.3.19
+
+- Die gerichtete Suche läuft innerhalb des belegten freien Navigationsgraphen. Eine gesperrte kürzeste Verbindung verwirft nicht automatisch dieselbe Mautspur, wenn eine längere belegte Verbindung zum selben Tor existiert. `AllowedVehicles` beschreibt laut [SCS eine Eignung für KI-Verkehr](https://modding.scssoft.com/wiki/Documentation/Tools/SCS_Blender_Tools/Locators/Prefab_Locators#Allowed_Vehicles), keinen geometrischen Lkw-Freiraumnachweis. Eine `SmallVehicles`-Präferenz ist ausschließlich für belegte automatische Tore mit abgeschlossener vollständiger physischer Kurvenprüfung überstimmbar. `PlayerOnly`, fehlende Belege, Gegenrichtung, fremde Tore und die aktuelle Anfahrtsprüfung werden dadurch nicht allgemein freigegeben.
+- Eine zunächst gewählte manuelle Spur kann nur dann auf eine inzwischen belegte automatische Spur wechseln, wenn die gemeinsame Zufahrt noch reicht und keine laufende Spuränderung stört. Fehlender Nachweis oder ein zu später Wechsel lässt die bisherige Auswahl bestehen. Manuelle Zahlung wird dadurch nicht als automatische Zahlung ausgegeben.
+- Diagnose hält je Spur Auswahl-/Ausschlussgrund, blockierte Kurven, Modell-/Profilrevision und den tatsächlichen Routen-/Anfahrtskontext fest. Spätere Suchversuche haben einen eigenen Kontext; ein gescheiterter Versuch überschreibt nicht den Kontext der tatsächlich gewählten Spur. Der Aufnahmehelfer bewahrt bei verworfenen Rohschranken zusätzlich Slot, ID, Originalzustand beziehungsweise Positionsbits; die gültigen Zustände und Fail-Closed-Regeln bleiben unverändert.
+
+Die konkrete Kartenanalyse fand eine physisch freie Verbindung zu Auto-Tor 15, die am bisherigen harten `SmallVehicles`-Filter scheiterte. Sechs Produktions-API-Gegenfälle bei 50/85/100 km/h und jeweils 200/300 m Zufahrtsrest wählen diese Spur erfolgreich. Sie verwenden rekonstruierte Positionen auf echten Kartendaten und ein ausdrücklich festgelegtes Profil; sie sind keine gefahrenen Passagen. Auto-Tor 16 bleibt physisch gesperrt. Keine Durchfahrt in allen Ländern ist belegt.
+
+Für das geplante .19-Update wird nur die Plugin-Datei ersetzt. Die sechs unveränderten Host-/SDK-/Geometriedateien der geprüften .18-Baseline müssen weiterhin exakt passen; sie müssen deshalb nicht pauschal erneut ausgetauscht werden. Dafür muss ETS2LA geschlossen sein, das Spiel kann geöffnet bleiben. Noch wurde nichts auf .19 aktualisiert.
+
+## Verhalten des installierten Stands 0.3.18
 
 - Eine modellseitig belegte und geometrisch passende Spur kann bereits geplant werden, bevor das kurze SDK-Sichtfeld ihre Schranke meldet. Fehlende Modellbelege führen zunächst nur zum Vorladen.
 - **Geplante Spur und live zugeordnete Schranke sind getrennte Zustände.** Ohne passende frische Torprobe bleibt innerhalb des geschwindigkeitsabhängigen Bremshorizonts ein normaler Halt vor dem Kartenanker erforderlich. SDK-Typ, Nummer, Weltposition und gerichteter Routenabschnitt müssen zusammenpassen; die Nummer allein genügt nicht.
@@ -35,7 +45,7 @@ Die bisherige [TruckersMP-Geometriequelle](Native/TruckersMPGeometry/README.md) 
 
 Die lokale Grundlage ist ETS2LA `2026.11.5297`, ETS2/SDK `1.62`, Pathfinding `1.2.9`, Lane Assist `1.6.2`, ACC `2.1.1`, PathLib `1.2.8`, PIDLib `1.0.4` und .NET 10. Andere Builds benötigen eine eigene Kompatibilitätsprüfung.
 
-Der Kandidat besteht aus **sieben zusammengehörigen Austauschdateien**:
+Die geprüfte **0.3.18-Baseline umfasst sieben zusammengehörige Dateien**:
 
 | ETS2LA-Anwendung | Spiel `bin/win_x64/plugins` |
 | --- | --- |
@@ -46,7 +56,7 @@ Der Kandidat besteht aus **sieben zusammengehörigen Austauschdateien**:
 
 Nur die neue Plugin-DLL zu kopieren ergibt keine unterstützte Kombination. Die Geometriequelle gehört jetzt zum gemeinsamen Austausch, weil ihr Beobachtungsintervall und ihre Zeitstempel Bestandteil der Laufzeitkorrelation sind. [Quellen der Hostanpassung](Tools/HostCompatibility) und [Review 0.3.18](REVIEW-0.3.18.md) beschreiben die Zuordnung.
 
-Für den Austausch müssen ETS2LA **und ETS2/TruckersMP geschlossen bleiben**, bis alle Dateien geprüft sind. Der vorbereitete lokale Ablauf kontrolliert Quell-/Zielprüfsummen, Modulkennungen, eingebettetes Hostmanifest, ein separat versiegeltes Laufzeitgate, erlaubte Pfade und laufende Prozesse. Er sichert alle sieben Originale, prüft sie und staged alle sieben Ersatzdateien vor dem ersten Austausch. Jeder einzelne Austausch ist atomisch; sieben Dateien in zwei Wurzeln bilden keinen gemeinsamen atomischen Dateisystemwechsel. Ein Fehler führt bei weiter geschlossenen Anwendungen zum geprüften Rücksetzen oder zu einer ausdrücklich protokollierten offenen Wiederherstellung. Der Installer startet weder Apps noch Assistenz oder Fahrtests.
+Beim damaligen vollständigen Sieben-Datei-Austausch mussten ETS2LA **und ETS2/TruckersMP geschlossen bleiben**, da auch Spiel-DLLs ersetzt wurden. Der Ablauf prüfte Quellen, Ziele, Modulkennungen, Hostmanifest und Runtimegate, sicherte alle sieben Originale und staged alle Ersatzdateien vor dem ersten Austausch. Jeder einzelne Austausch war atomisch; sieben Dateien in zwei Wurzeln bilden keinen gemeinsamen atomischen Dateisystemwechsel. Das geplante .19-Plugin-Update prüft diese Baseline weiter, ersetzt aber keine Spiel-DLL und benötigt deshalb nur geschlossenes ETS2LA. Der Installer startet weder Apps noch Assistenz oder Fahrtests.
 
 **Niemals den gesamten Host-Vorbereitungsordner oder `isolated-replay-*` installieren oder verteilen.** Die Replay-Unterordner enthalten absichtlich umgeschriebene Test-DLLs mit anderen Prüfsummen. Nur die ausdrücklich im versiegelten Sieben-Datei-Paket aufgeführten Produktionspfade dürfen ausgetauscht werden.
 
@@ -92,6 +102,7 @@ Die Logik- und Integrationstests verwenden synthetische Daten und echte Biblioth
 - Die neue Hüllen- und Szenenerfassung wurde noch nicht gemeinsam im laufenden Spiel als Grundlage einer Mautdurchfahrt bestätigt. Unbekannte Hüllen oder Bewegungen können weiterhin zu Halten führen.
 - Mehrfachauflieger, unbekannte Haupt-Ladungsmodelle, lenkbare Auflieger und Fahrten außerhalb der expliziten Modellannahmen sind nicht automatisch freigegeben. Eine endliche Modellvorhersage ist keine vollständige zukünftige physische Schleppkurve.
 - Allgemeine Baustellen-, Verkehrsschild- und Hindernisvermeidung ist nicht gelöst. Kurvenvorschau und lokale Schrankenprüfung ersetzen sie nicht.
+- Der Vollgespannsweep gilt für den Mautbereich, nicht für jede normale Straßenkurve. Für die berichtete Kurvenkollision fehlt eine Aufnahme des Ablaufs davor; ein späterer Snapshot beweist keinen Lenkausfall und die .19-Spurwahlkorrektur keine Behebung dieses Unfalls.
 - Hintergrund-Gas und -Bremse nach Alt+Tab in TruckersMP bleiben ungelöst. Für die Prüfung muss das Spiel im Vordergrund bleiben. [Bekannter Fokus-/Pedalnachweis](BACKGROUND_INPUT.md).
 
 Keine Abdeckung aller Länder und keine vollständige Behebung aller bisherigen Fahrprobleme ist nachgewiesen. Historische Beobachtungen stehen in [CHANGELOG.md](CHANGELOG.md), [TOLL_COVERAGE.md](TOLL_COVERAGE.md) und [VALIDATION.md](VALIDATION.md).

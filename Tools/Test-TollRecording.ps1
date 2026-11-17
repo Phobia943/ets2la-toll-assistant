@@ -94,7 +94,62 @@ try {
         $checks++
         [BitConverter]::GetBytes([int]9).CopyTo($bytes,40)
         $decoded=Read-TollGateBuffer $bytes
-        Assert ($decoded.gates.Count -eq 0 -and $decoded.issues.Count -eq 1) 'Invalid barrier state must be reported, not treated as open.';$checks++
+        Assert ($decoded.gates.Count -eq 0 -and $decoded.issues.Count -eq 2 -and $decoded.issues -contains 'InvalidGateData' -and
+            $decoded.issues -contains 'InvalidGateState:slot=0;id=7;rawState=9;rawType=2') 'Invalid barrier state must retain the old issue category and exact source details, never be treated as open.';$checks++
+        # Independent byte fixtures from pinned core.hpp / write_semaphore_data:
+        # 40 entries x48; signed cell offsets12/14, type32, time36, state40, id44.
+        foreach($state in 0..3) {
+            $bytes=[byte[]]::new(1920);$o=39*48
+            [BitConverter]::GetBytes([single]12.25).CopyTo($bytes,$o)
+            [BitConverter]::GetBytes([single]4).CopyTo($bytes,$o+4)
+            [BitConverter]::GetBytes([single]-3.5).CopyTo($bytes,$o+8)
+            [BitConverter]::GetBytes([int16]-83).CopyTo($bytes,$o+12)
+            [BitConverter]::GetBytes([int16]51).CopyTo($bytes,$o+14)
+            [BitConverter]::GetBytes([int]2).CopyTo($bytes,$o+32)
+            [BitConverter]::GetBytes([single]::NaN).CopyTo($bytes,$o+36) # unused timer is not the state
+            [BitConverter]::GetBytes([int]$state).CopyTo($bytes,$o+40)
+            [BitConverter]::GetBytes([int]93).CopyTo($bytes,$o+44)
+            $decoded=Read-TollGateBuffer $bytes
+            Assert ($decoded.gates.Count -eq 1 -and $decoded.gates[0].id -eq 93 -and $decoded.gates[0].state -eq $state -and
+                $decoded.gates[0].x -eq [single](12.25-83*512) -and $decoded.gates[0].z -eq [single](-3.5+51*512) -and
+                $decoded.issues.Count -eq 0) ('Last-slot gate state '+$state+' uses the correct stride, signed cells and state/id offsets.')
+            $checks++
+        }
+        foreach($lightState in @(0,1,2,4,8,32)) {
+            $bytes=[byte[]]::new(1920)
+            [BitConverter]::GetBytes([int]1).CopyTo($bytes,32)
+            [BitConverter]::GetBytes([int]$lightState).CopyTo($bytes,40)
+            $decoded=Read-TollGateBuffer $bytes
+            Assert ($decoded.gates.Count -eq 0 -and $decoded.issues.Count -eq 0) ('Traffic-light state '+$lightState+' cannot be decoded as a gate.')
+            $checks++
+        }
+        foreach($rawState in @(-1,4,8,32,[int]::MaxValue)) {
+            $bytes=[byte[]]::new(1920);$o=39*48
+            [BitConverter]::GetBytes([int]2).CopyTo($bytes,$o+32)
+            [BitConverter]::GetBytes([int]$rawState).CopyTo($bytes,$o+40)
+            [BitConverter]::GetBytes([int]19).CopyTo($bytes,$o+44)
+            $decoded=Read-TollGateBuffer $bytes
+            Assert ($decoded.gates.Count -eq 0 -and $decoded.issues -contains 'InvalidGateData' -and
+                $decoded.issues -contains ('InvalidGateState:slot=39;id=19;rawState='+$rawState+';rawType=2')) 'A type-2 unknown state remains invalid and its original value is recorded.';$checks++
+        }
+        foreach($badCoordinate in @([single]::NaN,[single]::PositiveInfinity,[single]::NegativeInfinity)) {
+            $bytes=[byte[]]::new(1920);[BitConverter]::GetBytes([int]2).CopyTo($bytes,32)
+            [BitConverter]::GetBytes([int]3).CopyTo($bytes,40)
+            [BitConverter]::GetBytes([int]20).CopyTo($bytes,44)
+            [BitConverter]::GetBytes([single]$badCoordinate).CopyTo($bytes,4)
+            $decoded=Read-TollGateBuffer $bytes
+            $roundtrip=$decoded|ConvertTo-Json -Depth 4 -Compress|ConvertFrom-Json
+            Assert ($roundtrip.gates.Count -eq 0 -and $roundtrip.issues -contains 'InvalidGateData' -and
+                @($roundtrip.issues|Where-Object {$_ -match '^InvalidGatePosition:slot=0;id=20;localXBits=0x[0-9A-F]{8};localYBits=0x[0-9A-F]{8};localZBits=0x[0-9A-F]{8};cellX=0;cellZ=0$'}).Count -eq 1) 'Non-finite position bits survive JSON as diagnostic strings, not invalid JSON numeric values.';$checks++
+        }
+        $bytes=[byte[]]::new(1920)
+        [BitConverter]::GetBytes([int16]::MinValue).CopyTo($bytes,12)
+        [BitConverter]::GetBytes([int16]::MaxValue).CopyTo($bytes,14)
+        [BitConverter]::GetBytes([int]2).CopyTo($bytes,32)
+        [BitConverter]::GetBytes([int]0).CopyTo($bytes,40)
+        $decoded=Read-TollGateBuffer $bytes
+        Assert ($decoded.gates.Count -eq 1 -and $decoded.gates[0].x -eq [single](-32768*512) -and
+            $decoded.gates[0].z -eq [single](32767*512) -and $decoded.issues.Count -eq 0) 'Cell-limit bit patterns remain signed coordinates; valid closing is never mistaken for an invalid or open gate.';$checks++
     } finally {[Threading.Thread]::CurrentThread.CurrentCulture=$culture}
     $r=InvokeRecordingAnalysis (Fixture)
     Assert ($r.observedOpenWindows.Count -eq 1 -and [math]::Abs($r.observedOpenWindows[0].observedSeconds-1) -lt .0001) 'Continuous open observations must have their measured duration.';$checks++

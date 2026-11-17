@@ -11,8 +11,28 @@ function Read-TollGateBuffer {
         $y=[BitConverter]::ToSingle($Bytes,$o+4)
         $z=[single]([BitConverter]::ToSingle($Bytes,$o+8)+512*[BitConverter]::ToInt16($Bytes,$o+14))
         $state=[BitConverter]::ToInt32($Bytes,$o+40);$id=[BitConverter]::ToInt32($Bytes,$o+44)
-        if(![single]::IsFinite($x) -or ![single]::IsFinite($y) -or ![single]::IsFinite($z) -or $state -notin 0..3) {
-            $issues.Add('InvalidGateData');continue
+        # Pinned SDK SemaphoreObject is 48 bytes: type 32, time 36, state 40,
+        # id 44. Type 1 light bits (including green=8/sleep=32) are NOT gate
+        # states. Type 2 gate states remain 0 closing/1 closed/2 opening/3 open.
+        $badPosition=![single]::IsFinite($x) -or ![single]::IsFinite($y) -or ![single]::IsFinite($z)
+        $badState=$state -notin 0..3
+        if($badPosition -or $badState) {
+            # Preserve the established category for old recorder/analyzer filters.
+            # Additional strings survive the recorder's existing issues field;
+            # rejected slots cannot silently disappear without diagnostic cause.
+            $issues.Add('InvalidGateData')
+            if($badState) {
+                $issues.Add([string]::Format([Globalization.CultureInfo]::InvariantCulture,
+                    'InvalidGateState:slot={0};id={1};rawState={2};rawType=2',$i,$id,$state))
+            }
+            if($badPosition) {
+                # Raw bit patterns are JSON-safe even when floats are NaN/Inf.
+                $issues.Add([string]::Format([Globalization.CultureInfo]::InvariantCulture,
+                    'InvalidGatePosition:slot={0};id={1};localXBits=0x{2:X8};localYBits=0x{3:X8};localZBits=0x{4:X8};cellX={5};cellZ={6}',
+                    $i,$id,[BitConverter]::ToUInt32($Bytes,$o),[BitConverter]::ToUInt32($Bytes,$o+4),
+                    [BitConverter]::ToUInt32($Bytes,$o+8),[BitConverter]::ToInt16($Bytes,$o+12),[BitConverter]::ToInt16($Bytes,$o+14)))
+            }
+            continue
         }
         [ordered]@{key=[string]::Format([Globalization.CultureInfo]::InvariantCulture,'{0}:{1:F1}:{2:F1}',$id,$x,$z);id=$id;x=$x;y=$y;z=$z;state=$state}
     })

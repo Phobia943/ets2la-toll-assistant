@@ -281,6 +281,9 @@ void Run()
     Check("Renderer-only flares require verified full materials, no collision and no hidden geometry",()=>ChildGeometryIntegration.FlareValidation(Assert));
     Check("Visible additional parts affect geometry independently of payment markers",()=>ModelClearanceIntegration.VisibleParts(Assert));
     Check("Slow model inspection is bounded, detached, cached and nonblocking for route callers",()=>ModelClearanceIntegration.NonBlocking(Assert));
+    Check("Lane search finds clear automatic alternatives before rejecting a gate",()=>LaneSearchIntegration.Run(Assert));
+    Check("Lane reselection upgrades early applied manual paths and preserves committed lanes",()=>LaneReselectionReviewTests.BeforeAndAfterCommit(Assert));
+    Check("Lane reselection failures preserve route ownership",()=>LaneReselectionReviewTests.FailuresRetainOwnership(Assert));
     Check("Connector starts distinguish passed signals from signals and restrictions ahead",()=>ConnectorSignalIntegration.Run(Assert));
     Check("Distant planning gaps do not trip current tracking; nearby gaps still brake",()=>FutureGapIntegration.Run(Assert));
     Check("Tracking faults brake independently of ACC; F9 releases and F8 cannot restart",()=>FaultBrakeIntegration.Run(Assert));
