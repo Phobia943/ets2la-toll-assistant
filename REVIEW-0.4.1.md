@@ -2,6 +2,8 @@
 
 Stand: 17. November 2026. Am 17. November 2026 um 17:18 Uhr MEZ nach bestätigtem Stillstand und geschlossenem ETS2LA installiert. Plugin, vorherige Sicherungsdatei und die drei unveränderten Hostbibliotheken wurden unabhängig geprüft; kein automatischer App- oder Assistenzstart. Ausgangsfassung ist 0.4.0; die drei Hostbibliotheken und deren Manifest bleiben unverändert.
 
+Nachtrag: Der anschließende Standtest aktivierte die Assistenz, endete um 17:28 Uhr MEZ aber mit einem anderen Fehler: Ein winziger negativer Geschwindigkeitswert wurde als Rückwärtsfahrt behandelt. Manuelle Übernahme wurde bestätigt. Die folgenden Offline-Nachweise zur Gasüberwachung bleiben davon getrennt; [0.4.2 behandelt den Standfehler](REVIEW-0.4.2.md). Eine erfolgreiche Gesamtfahrt ist mit 0.4.1 damit nicht belegt.
+
 ## Beobachteter Fehler
 
 Nach der ersten Fahrt mit 0.4.0 meldete die Überwachung fehlende Pedalwirkung und löste einen verriegelten Fehlerhalt aus. In der gespeicherten letzten Sequenz folgte die effektive Gasstellung zunächst dem eigenen Befehl. Dann fiel sie innerhalb weniger Zehntelsekunden gegen null, während der Lkw noch positiv beschleunigte. Die Route blieb gültig; es war keine zugeordnete Mautschranke der Haltegrund.

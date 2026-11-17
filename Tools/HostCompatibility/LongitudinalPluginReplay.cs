@@ -358,6 +358,81 @@ internal static class LongitudinalPluginReplay
         type.GetMethod("OnCancel",All)!.Invoke(plugin,[null,cancellation]);frame(false);
         Check(gas()==0&&brake()==0&&!(bool)Get(plugin,"faultBrake")!.GetType().GetProperty("Latched")!.GetValue(Get(plugin,"faultBrake"))!,
             "Actual F9 handler releases the blocked-tick fault and both physical pedals without rearming");
+        // Actual OnTelemetry delivers coherent parking state; no private
+        // PhysicsObservation/clock replacement is used for these cases.
+        ulong parkingStamp=5000000;Vector3 parkingPoint=point;
+        var telemetryDto=gameAssembly.GetType("ETS2LA.Game.Telemetry.GameTelemetryData",true)!;
+        void LiveParking(double rawSpeed,bool parking) {
+            var dto=Activator.CreateInstance(telemetryDto)!;parkingStamp+=50000;
+            Member(dto,"sdkActive",true);Member(dto,"paused",false);Member(dto,"time",parkingStamp);
+            Member(dto,"simulatedTime",parkingStamp);Member(dto,"renderTime",parkingStamp);
+            var floats=Get(dto,"truckFloat")!;Member(floats,"speed",(float)rawSpeed);Member(floats,"engineRpm",1200f);
+            Member(floats,"userThrottle",0f);Member(floats,"gameThrottle",0f);Member(floats,"userBrake",0f);Member(floats,"gameBrake",0f);
+            var ints=Get(dto,"truckInt")!;Member(ints,"gear",1);Member(ints,"gearDashboard",1);
+            Member(Get(dto,"truckBool")!,"parkingBrake",parking);
+            var placement=Get(dto,"truckPlacement")!;var coordinateType=Field(placement.GetType(),"coordinate").FieldType;
+            Member(placement,"coordinate",Activator.CreateInstance(coordinateType,[(double)parkingPoint.X,(double)parkingPoint.Y,(double)parkingPoint.Z]));
+            Member(placement,"rotation",Activator.CreateInstance(coordinateType,[0d,0d,0d]));
+            type.GetMethod("OnTelemetry",All)!.Invoke(plugin,[dto]);
+        }
+        void ParkingTick(double rawSpeed,bool parking) {LiveParking(rawSpeed,parking);Send("LaneAssist.SteeringCorrection",0,.2f);Tick();frame(false);}
+        Restore();autoSources=true;Set(plugin,"readLongitudinalTraffic",null);Set(plugin,"monitorSteering",false);Set(plugin,"steeringMonitoringLive",false);
+        LiveParking(0,true);
+        output.GetMethod("MautSetPlannedHold")!.Invoke(null,[epoch(),"old-parking-test-hold",.65f,Stopwatch.GetTimestamp()]);frame(false);
+        Check(brake()>.64,"Parking regression begins with a real previously admitted physical planned-hold lease");
+        var parkedClock=Stopwatch.StartNew();int parkedSamples=0;bool parkedNeutral=true,parkedSteering=true;
+        var parkingRows=new List<object>();
+        double[] signedStand=[-.011614151299,.03,-.099,.099,0];
+        while(parkedClock.Elapsed.TotalSeconds<2.1||parkedSamples<40) {
+            ParkingTick(signedStand[parkedSamples%signedStand.Length],true);parkedNeutral&=gas()==0&&brake()==0;
+            float legacyGas=gas(),legacyBrake=brake();frame(true);parkedNeutral&=modernPedal()==0;parkedSteering&=steering()>.19;
+            parkingRows.Add(new{index=parkedSamples,raw=signedStand[parkedSamples%signedStand.Length],legacyGas,legacyBrake,modern=modernPedal(),steering=steering(),
+                hostFloor=output.GetField("MautHoldFloor",All)!.GetValue(null),hold=Get(plugin,"holdPedalFloor"),scene=Get(plugin,"scenePedalFloor"),
+                active=Get(plugin,"active"),assists=state.GetType().GetProperty("EnableAssists")!.GetValue(state),snapshot=Get(plugin,"longitudinalSnapshot")});
+            parkedSamples++;Thread.Sleep(50);
+        }
+        Check(parkedSamples>=40&&parkedClock.Elapsed.TotalSeconds>=2.1&&parkedNeutral&&parkedSteering&&!(bool)Get(plugin,"faultBrake")!.GetType().GetProperty("Latched")!.GetValue(Get(plugin,"faultBrake"))!,
+            "Fresh actual OnTelemetry parking brake plus signed stationary jitter stays physically0/0 for2s, clears old normal holds and preserves lane output [samples="+parkedSamples+", neutral="+parkedNeutral+", steering="+parkedSteering+"]");
+        var parkRelease=Stopwatch.StartNew();while(parkRelease.Elapsed.TotalSeconds<.22){ParkingTick(0,false);Thread.Sleep(50);}
+        var parkingReleaseDiagnostic=new{gas=gas(),brake=brake(),action=Get(plugin,"driveAction"),
+            fault=Get(plugin,"faultBrake")!.GetType().GetProperty("Latched")!.GetValue(Get(plugin,"faultBrake")),snapshot=Get(plugin,"longitudinalSnapshot")};
+        Check(gas()>0&&gas()<.15&&brake()==0,"Releasing the measured parking brake with a valid plan resumes only gentle actual throttle [gas="+gas()+", brake="+brake()+", action="+Get(plugin,"driveAction")+"]");
+        ParkingTick(1,true);frame(false);
+        Check(gas()==0&&brake()>0,"A parking brake reported at1m/s cannot neutralize actual required service braking");
+        void LateParkingCheck(bool braking) {
+            Restore();autoSources=true;
+            ParkingTick(braking?5:0,false);Thread.Sleep(20);ParkingTick(braking?5:0,false);Thread.Sleep(20);
+            using var hostHeld=new ManualResetEventSlim();Task? holder=null,delivery=null;bool observedBeforeUnlock=false;
+            var hostGate=output.GetField("MautGate")!.GetValue(null)!;float proposedGas=0,proposedBrake=0;
+            Set(plugin,"BeforeLongitudinalCommit",(Action)(()=>{
+                proposedGas=(float)Get(Get(plugin,"longitudinal")!,"throttle")!;proposedBrake=(float)Get(Get(plugin,"longitudinal")!,"brake")!;
+                holder=Task.Run(()=>{lock(hostGate) {
+                    hostHeld.Set();Thread.Sleep(15);
+                    delivery=Task.Run(()=>LiveParking(braking?1:0,true));
+                    var limit=Stopwatch.StartNew();
+                    while(limit.Elapsed.TotalMilliseconds<60) {
+                        var latest=Get(plugin,"latestDeliveredTelemetry");var latestPhysics=latest?.GetType().GetProperty("Physics")!.GetValue(latest);
+                        if(latestPhysics?.GetType().GetProperty("ParkingBrake")!.GetValue(latestPhysics) is true){observedBeforeUnlock=true;break;}
+                        Thread.Sleep(1);
+                    }
+                }});
+                if(!hostHeld.Wait(TimeSpan.FromSeconds(2)))throw new TimeoutException("Private parking host epoch barrier did not enter");
+            }));
+            try{Tick();if(holder!=null&&!holder.Wait(TimeSpan.FromSeconds(2)))throw new TimeoutException("Parking epoch owner did not finish");
+                if(delivery!=null&&!delivery.Wait(TimeSpan.FromSeconds(2)))throw new TimeoutException("Actual parking callback did not finish");}
+            finally{Set(plugin,"BeforeLongitudinalCommit",(Action)(()=>duringTraffic?.Invoke()));}
+            frame(false);
+            Check(observedBeforeUnlock&&gas()==0&&(braking?proposedBrake>0&&brake()>=proposedBrake-.001:proposedGas>0&&brake()==0),
+                braking?"Actual PB telemetry arriving during final epoch wait preserves an already required gate brake":
+                    "Actual PB telemetry arriving during final epoch wait vetoes stale throttle before physical publication");
+            frame(true);Check((braking?modernPedal()<0:modernPedal()==0)&&steering()>.19,
+                "Late parking veto preserves the corresponding modern output and healthy lane sink");
+        }
+        LateParkingCheck(false);
+        // Clear this case's real frames before unrelated synthetic DTO cases.
+        Set(plugin,"latestDeliveredTelemetry",null);Set(plugin,"incomingTelemetry",null);Set(plugin,"appliedTelemetry",null);Set(plugin,"physicsObservation",null);
+        Set(plugin,"speed",5d);Set(plugin,"observedAcceleration",0d);
+
         // Input receipt and simulation-effective pedal are independent. This
         // actual Tick series reaches both physical sinks with no native ACC.
         Restore();autoSources=true;Set(plugin,"readLongitudinalTraffic",null);
@@ -426,10 +501,21 @@ internal static class LongitudinalPluginReplay
             "A later actual closed-gate negative bound still applies service braking after missing gas suspended propulsion");
         frame(true);Check(modernPedal()<0&&steering()>.19&&gas()==0&&brake()==0,
             "The post-suspension real gate brake reaches modern output without losing the lane sink");
+        // At the actual stop line a held parking brake suppresses ordinary
+        // service holds; releasing it must restore the still-closed gate brake.
+        parkingPoint=new(0,0,-67.5f);LiveParking(0,true);Send("LaneAssist.SteeringCorrection",0,.2f);Tick();frame(false);
+        Check(gas()==0&&brake()==0,"Actual stationary parking frame at the real closed gate is neutral rather than cycling service brake");
+        ParkingTick(0,false);
+        Check(gas()==0&&brake()>0,"Releasing parking at the still-closed canonical gate restores its normal service hold");
+        frame(true);Check(modernPedal()<0&&steering()>.19,"The released-parking closed-gate hold also reaches modern output with lane preserved");
+        LateParkingCheck(true);
+        Set(plugin,"latestDeliveredTelemetry",null);Set(plugin,"incomingTelemetry",null);Set(plugin,"appliedTelemetry",null);Set(plugin,"physicsObservation",null);
         testSignals=null;Set(plugin,"physicsObservation",null);
         enable(false);type.GetMethod("StopDiagnostics",All)!.Invoke(plugin,null);
         if(Environment.GetEnvironmentVariable("MAUT_CANONICAL_FIXTURE") is {Length:>0} canonical)
             count+=CanonicalGateHostReplay.Run(canonical,Path.GetDirectoryName(sealedCandidate)!,context,pluginAssembly,gameAssembly,host,frame,gas,brake,modernPedal,assert);
+        File.WriteAllText(Path.Combine(Path.GetDirectoryName(sealedCandidate)!,"parking-runtime-rows.json"),System.Text.Json.JsonSerializer.Serialize(parkingRows));
+        File.WriteAllText(Path.Combine(Path.GetDirectoryName(sealedCandidate)!,"parking-release.json"),System.Text.Json.JsonSerializer.Serialize(parkingReleaseDiagnostic));
         return count;
     }
 }

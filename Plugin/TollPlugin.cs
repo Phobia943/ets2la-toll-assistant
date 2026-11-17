@@ -334,6 +334,7 @@ public sealed partial class TollPlugin : Plugin
     void ResetDriving()
     {
         longitudinal.Reset();
+        reverseMotion.Reset();
         sceneStopping=false;sceneHold.Reset();
         ResetRigEvaluation();
         standardMotions.Reset();

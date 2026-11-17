@@ -1,0 +1,29 @@
+# 0.4.2 – Stillstand, Feststellbremse und Rollbewegung
+
+Stand: 17. November 2026. Kandidat, noch nicht installiert. Im Spiel ist 0.4.1 installiert; nach dem fehlgeschlagenen Standtest wurde die manuelle Übernahme vom Nutzer bestätigt. Für den nächsten Einbau wird ausschließlich die Plugin-Datei ausgetauscht. Die geprüften Hostbibliotheken und ihr Manifest bleiben unverändert.
+
+## Aufgezeichneter Fehler
+
+Der Fehlerhalt um 17:28 Uhr MEZ entstand bei gemeldeten −0,0116 m/s (rund −0,042 km/h). Die 240 gespeicherten Bewegungsproben umfassen 15,361 Sekunden. Ihre Position schwankt insgesamt um weniger als einen Millimeter; der Gang war vorwärts, die Lenkausgabe blieb frisch. Das belegt keine tatsächlich relevante Rückwärtsfahrt.
+
+Die Quellen hatten widersprüchliche Grenzen: Die Kurvenauswertung verwarf jede negative Geschwindigkeit, die eigene Geschwindigkeitsregelung löste unter −0,01 m/s aus, während die Fahrüberwachung bereits ±0,1 m/s als Standbereich verwendete. In der aufgezeichneten Folge sind alle 31 negativen Reglereingaben mit fehlender Kurvenvorschau und 0,4 Betriebsbremse verknüpft; die 22 fertigen Vorschauen haben nichtnegative Geschwindigkeit und Gas. Nur die erste, noch im Aufbau befindliche Vorschau fehlt auch bei einem positiven Wert. Der einzelne Standfehler erklärt damit sowohl den späteren Fehlerhalt als auch das wiederholte Gas-/Bremswechseln davor.
+
+Der Nutzer bestätigte eine angezogene Feststellbremse. Die separate Aufnahme meldet sie bis 41,073 Sekunden vor dem Fehler; im alten Fehlerdatensatz fehlt dieses Feld. Eine lückenlos gemessene Feststellbremse zum Fehlerzeitpunkt ist deshalb **nicht** belegt. Die neue Fassung nimmt das Feld direkt in ihre unveränderliche Telemetriebeobachtung auf.
+
+## Änderung
+
+Vorwärtsbezogene Planung verwendet für kleine negative Werte bis −0,1 m/s denselben auf null begrenzten Wert. Das ist allein kein Beweis für Stillstand: Frische, unterschiedliche Simulationsframes liefern zusätzlich eine gerichtete Positionsfolge. Dauerhaftes Rückrollen über mindestens fünf Zentimeter, mehrere Frames und mindestens 0,4 Sekunden bleibt ein Übernahmegrund; schnellere Rückwärtsfahrt wird unmittelbar erkannt. Wechselnde Einzelwerte addieren sich nicht künstlich zu Rückwärtsstrecke. Tatsächlicher Vorwärtsweg kann frühere Rückwärtsstrecke ausgleichen.
+
+Bei frisch gemeldeter Feststellbremse beginnt die Parkbehandlung unter 0,05 m/s und bleibt bis 0,1 m/s bestehen. Nachgewiesenes Rollen entzieht diese Freigabe. Eine neue Ruhephase braucht mindestens 0,5 Sekunden frische Frames mit sehr kleiner Geschwindigkeit und höchstens drei Millimetern Gesamtversatz innerhalb des Ruhefensters. Ein wiederholter alter Frame kann weder Bewegung noch neue Ruhe bestätigen. Sprünge, ungültige Quellen und Wechsel der Steuerungsphase verwerfen alte Evidenz.
+
+Im bestätigten Parkstand bleiben Gas und Betriebsbremse neutral; Integratoren und gewöhnliche alte Halteanforderungen bauen sich nicht gegeneinander auf. Bestehende Fehlerverriegelungen werden dadurch nicht quittiert. Beim Lösen der Feststellbremse werden die aktuellen Route-, Hindernis- und Schrankenanforderungen wieder wirksam. Eine bewegte Feststellbremse erhält die erforderliche Betriebsbremsung. Eine neue Parkbremsmeldung kurz vor Ausgabe vetoisiert Gas, ohne eine bereits erforderliche Bremsausgabe zu löschen. Rückwärtsgang im Stand fordert manuelle Übernahme statt einer künstlichen Vollbremsung.
+
+Die ursprüngliche Bindung laufender Telemetriearbeit an die manuelle Abschaltung bleibt unverändert. Der zwischenzeitlich untersuchte Verdacht einer Sperre in `BeginOperation` bestätigte sich nicht; dafür wurde kein Produktumbau übernommen.
+
+## Prüfung und Grenzen
+
+Die anonymisierte Regression bewahrt alle 240 originalen Geschwindigkeits-, relativen Positions-, Richtungs-, Simulationszeit- und Gangwerte. Die einmal vollständig erstellte Kurvenroute im Test ist synthetisch. Frisch bestätigte Feststellbremse an/aus sind zwei ausdrücklich konstruierte Vergleichsfälle; sie ersetzen keine fehlende historische Messung. Alte Nullziele und fehlende Vorschauen werden nicht als neue Eingaben übernommen, weil gerade deren Entstehung korrigiert wird.
+
+Unabhängige Gegenprüfungen umfassen langsames Vorwärts- und Rückwärtsrollen, wechselndes Messrauschen, doppelte Frames, Rückkehr zum Stillstand, epochale Unterbrechungen, Gangwahl, vorhandene Gassperre und weiterhin vorrangige Bremsanforderungen. Der gesamte Plugin-Tick bis zu beiden isolierten Hostausgaben prüft auch bestehende Halteanforderungen, Freigabe bei freier Strecke, eine echte kartierte geschlossene Schranke sowie eine während des wartenden Ausgabeabschlusses tatsächlich zugestellte Parkbremsmeldung.
+
+Der endgültige Plugin-Kandidat `D08B4951358089CAF0E584029B5E5437E6662CC1A796ACCACD8175D723081504` (MVID `e1783954-93fa-45f9-b840-d9888db5a3e1`) besteht 205 Integrations-, 97 Kernlogik-, 243 isolierte Host-/Plugin- und 68 Aufnahmeprüfungen. Die 52 unabhängigen Gegenprüfungen und sieben Aussagen über die 240 gespeicherten Frames sind teilweise darin enthalten; die Zahlen werden nicht addiert. Im Hosttest bleiben mindestens 40 tatsächlich zugestellte Parkframes über mehr als 2,1 Sekunden an beiden Ausgaben neutral; anschließend baut sich mit frischen Quellen sanft Gas auf. Die späte Parkbremsmeldung wird über den echten Telemetrie-Callback zugestellt, ohne privaten Austausch des letzten Frames. Zwei anfangs fehlgeschlagene Fixture-Prüfungen wurden ohne Produktänderung korrigiert: eine zu starre Anzahl zeitgesteuerter Messpunkte sowie ein aus dem vorherigen Ausfalltest verbliebener künstlicher Verkehrsleser ohne gültige Quellenzeit. Die Quellensicherung des Hosts blieb unverändert. Reale Anfahrt, manuelle Bremsübernahme und Mautdurchfahrt mit 0.4.2 bleiben danach gesondert zu prüfen. Die Änderung löst weder die bekannte TruckersMP-Fokusabhängigkeit noch beweist sie allgemeine Maut-, Länder- oder Hindernisabdeckung.

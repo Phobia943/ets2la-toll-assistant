@@ -46,7 +46,7 @@ public sealed class DriveSupervisor(DriveCheckpoint initialState = default)
         }
 
         started ??= frame.Time;
-        bool stationary = Math.Abs(frame.Speed) <= .1;
+        bool stationary = ForwardMotion.IsStationary(frame.Speed);
         // Planner and SDK pause messages can arrive in either order. A pause
         // error is not a fresh route: the caller supplies the age of the LAST
         // accepted geometry and rechecks it at the current pose. This bounded

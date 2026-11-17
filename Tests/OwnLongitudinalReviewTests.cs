@@ -4,6 +4,107 @@ using System.Numerics;
 // Independent policy counterexamples. These do not create SDK, output or plugin instances.
 public static class OwnLongitudinalReviewTests
 {
+    public static void ParkingAndReverseEvidence(Action<bool,string> check)
+    {
+        var controller=new LongitudinalController();double time=1;
+        LongitudinalOutput Step(double speed=0,bool park=true,bool reverse=false,bool rollback=false,
+            double? limit=null,bool emergency=false,bool planned=false,bool route=true,float received=0)
+        {
+            time+=.02;
+            return controller.Step(new(time,1,true,false,route,speed,0,25,
+                AccelerationSafetyLimit:limit,Emergency:emergency,PlannedHold:planned,
+                ActualThrottle:0,ActualBrake:0,ReceivedThrottle:received,
+                ParkingBrake:park,ReverseGear:reverse,RollbackDetected:rollback));
+        }
+        bool standSafe=true;LongitudinalOutput output=new(0,0,0,"initial");
+        for(int i=0;i<150;i++) {
+            output=Step(i%2==0?-.011614:.0046,limit:i%2==0?-.35:null);
+            standSafe&=output.ParkingHold&&!output.Fault&&output.Throttle==0&&output.Brake==0&&!output.DeliveryMissing;
+        }
+        check(standSafe,"Fresh parked stand remains neutral through three seconds of signed-speed and planning-bound jitter without delivery faults");
+        output=Step(.09);
+        check(output.ParkingHold&&output.Throttle==0&&output.Brake==0,"An established parking stand survives the exit hysteresis band");
+        output=Step(.101);
+        check(!output.ParkingHold&&output.Throttle==0&&output.Brake>0,"Moving beyond the parking stand band requests service braking rather than neutralizing motion");
+        controller.Reset();output=Step(.09);
+        check(!output.ParkingHold&&output.Brake>0,"The parking exit threshold cannot establish a previously unconfirmed stand");
+        controller.Reset();Step();output=Step(park:false);
+        check(!output.Fault&&!output.ParkingHold&&output.Brake==0&&output.Throttle<=.01f,"Releasing a stationary parking brake resumes with fresh bounded pedals and no learned brake remainder");
+        controller.Reset();Step();output=Step(park:false,planned:true);
+        check(output.Brake>=.35f&&output.Throttle==0,"Parking release does not erase an independently required planned hold");
+        controller.Reset();Step();output=Step(park:false,limit:-2);
+        check(output.Brake>0&&output.Throttle==0&&output.TargetAcceleration<=-2,"Parking release does not erase a newly required hazard deceleration");
+        controller.Reset();output=Step(emergency:true);
+        check(output.Brake==1&&output.Throttle==0&&!output.ParkingHold,"An explicit emergency dominates stationary parking neutrality");
+        controller.Reset();output=Step(1);
+        check(!output.ParkingHold&&output.Brake>0&&output.Throttle==0,"A parking flag at one metre per second cannot suppress ordinary stopping brakes");
+        controller.Reset();output=Step(reverse:true);
+        check(output.ManualRequired&&!output.Fault&&output.Throttle==0&&output.Brake==0,"Reverse gear at stand requests manual control without an invented collision emergency");
+        controller.Reset();output=Step(-.101);
+        check(output.Fault&&output.Throttle==0,"Unambiguous reverse speed is not hidden by parking-brake neutrality");
+        controller.Reset();output=Step(-.03,rollback:true);
+        check(output.Fault&&output.Throttle==0,"Position-confirmed slow rollback overrides the parking stand band");
+        controller.Reset();
+        float last=0;
+        for(int i=0;i<80;i++) {
+            time+=.02;output=controller.Step(new(time,1,true,false,true,15,0,25,ActualThrottle:last,ActualBrake:0,ReceivedThrottle:last));last=output.Throttle;
+        }
+        for(int i=0;i<30;i++)Step(15,park:false);
+        check(Step().ThrottleDeliveryMissing,"A genuine propulsion-delivery latch survives entry into parking stand");
+        output=Step(park:false,received:.7f);
+        check(output.ThrottleDeliveryMissing&&output.Throttle==0&&!output.Fault,"Parking release cannot acknowledge a pre-existing propulsion suspension");
+
+        var evidence=new ReverseMotionEvidence();
+        DirectionSample Sample(int index,Vector3 position,double speed=-.03,long epoch=1,bool valid=true,double heading=0)
+            =>new((ulong)(index+1),index*.1,epoch,position,heading,speed,valid);
+        bool falseRollback=false;
+        for(int i=0;i<300;i++)falseRollback|=evidence.Observe(Sample(i,new(0,0,i%2==0?0:.000977f),i%2==0?.0046:-.011614));
+        check(!falseRollback&&!evidence.StationaryDisplaced&&evidence.BackwardMetres<.002,"Float-position oscillation with forward credit cannot accumulate fictitious rollback or parking displacement over thirty seconds");
+        void ForwardCreep()
+        {
+            evidence.Reset();for(int i=0;i<=10;i++)evidence.Observe(Sample(i,new(0,0,-i*.008f),.08));
+        }
+        ForwardCreep();
+        check(evidence.StationaryDisplaced&&!evidence.Confirmed,"Sustained forward creep withdraws stationary authority without fabricating reverse travel");
+        controller.Reset();Step();time+=.02;
+        output=controller.Step(new(time,1,true,false,true,.08,0,25,ParkingBrake:true,StationaryDisplacement:true));
+        check(!output.ParkingHold&&output.Throttle==0&&output.Brake>0,"Position-confirmed forward creep defeats parking hysteresis and receives ordinary stopping brakes");
+        var stopped=Sample(11,new(0,0,-.08f),0);evidence.Observe(stopped);
+        for(int i=0;i<100;i++)evidence.Observe(stopped);
+        check(evidence.StationaryDisplaced,"One repeated stopped simulation frame cannot establish a fresh stable parking rebase");
+        for(int i=12;i<20;i++)evidence.Observe(Sample(i,new(0,0,-.08f),0));
+        check(!evidence.StationaryDisplaced,"A genuinely stopped sequence of fresh source frames can restore stationary authority after service braking");
+        ForwardCreep();bool prematureRebase=false;
+        for(int i=11;i<40;i++) {
+            evidence.Observe(Sample(i,new(0,0,-.08f-(i-10)*.0009f),.009));
+            prematureRebase|=!evidence.StationaryDisplaced;
+        }
+        check(!prematureRebase,"Small per-frame movements cannot falsely rebase while total displacement exceeds the stable-window bound");
+        evidence.Reset();bool found=false;
+        for(int i=0;i<30;i++)found|=evidence.Observe(Sample(i,new(0,0,i*.003f)));
+        check(found,"Coherent slow reverse displacement is still detected despite lying inside the stand-speed band");
+        evidence.Reset();evidence.Observe(Sample(0,Vector3.Zero));
+        var duplicate=Sample(1,new(0,0,.01f));evidence.Observe(duplicate);
+        double debt=evidence.BackwardMetres;
+        for(int i=0;i<100;i++)evidence.Observe(duplicate);
+        check(!evidence.Confirmed&&evidence.BackwardMetres==debt,"Repeated reads of one original simulation frame cannot manufacture reverse samples or distance");
+        evidence.Reset();evidence.Observe(Sample(0,Vector3.Zero));
+        evidence.Observe(Sample(1,new(0,0,.06f)));
+        check(!evidence.Confirmed,"One corrected pose frame cannot alone establish sustained rollback");
+        evidence.Observe(Sample(2,Vector3.Zero,.02));
+        check(evidence.BackwardMetres<=.002&&!evidence.Confirmed,"An actual compensating forward displacement repays all reverse evidence");
+        foreach(string reset in new[]{"epoch","invalid","teleport","heading","clock"}) {
+            evidence.Reset();for(int i=0;i<6;i++)evidence.Observe(Sample(i,new(0,0,i*.006f)));
+            var next=Sample(6,new(0,0,.036f));
+            next=reset switch {
+                "epoch"=>next with{Epoch=2},"invalid"=>next with{Valid=false},
+                "teleport"=>next with{Position=new(0,0,1)},"heading"=>next with{Heading=.3},
+                _=>next with{Time=2}
+            };
+            evidence.Observe(next);
+            check(!evidence.Confirmed&&evidence.BackwardMetres==0,$"Rollback evidence is revoked on {reset} discontinuity");
+        }
+    }
     public static void TrafficGeometry(Action<bool,string> check)
     {
         var straight=new RouteTrace([Vector3.Zero,new(0,0,-600)]);

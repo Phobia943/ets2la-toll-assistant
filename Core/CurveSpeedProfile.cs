@@ -68,7 +68,7 @@ public sealed class CurveSpeedProfile
         =>Evaluate(position,speed,deceleration,false);
     public CurveSpeedDecision? Evaluate(Vector3 position,double speed,double deceleration,bool brisk)
     {
-        if(!double.IsFinite(speed)||speed<0||!double.IsFinite(deceleration)||deceleration is <.5 or >2)return null;
+        if(!ForwardMotion.TryNormalizeForwardSpeed(speed,out speed)||!double.IsFinite(deceleration)||deceleration is <.5 or >2)return null;
         var projection=route.ProjectForTracking(position);
         if(projection.Offset>3||Math.Abs(projection.HeightOffset)>2)return null;
         double bestAllowed=double.PositiveInfinity,bestRadius=0,bestDistance=0,bestCurveSpeed=0,bestAvailable=0,bestLateral=1;

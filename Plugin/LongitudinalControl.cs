@@ -40,6 +40,7 @@ public sealed partial class TollPlugin
         if(!_IsRunning||!active||preview||!State.EnableAssists||State.DrivingMode==DrivingMode.LaneAssistOnly||
             faultBrake.Latched||brakeHeld) {longitudinal.Reset();throttleDeliveryWarningShown=false;return;}
         if(paused){longitudinal.Pause();return;}
+        bool rollback=ObserveReverseMotion(epoch);
         speedBounds.Clear();
         float safetyLimit=EvaluateAt(issuedAt,epoch);
         double now=clock.Elapsed.TotalSeconds;
@@ -89,7 +90,9 @@ public sealed partial class TollPlugin
             CoastEligible:surroundings.Clear&&CanCoast()&&
                 (!cruise.HonorRoadLimit||physicsObservation?.SpeedLimitMps is float cap&&speed<=cap)&&
                 (cruise.MaximumSpeed==0||speed<=cruise.MaximumSpeed),StopIdentity:stopIdentity??sceneHold.OwnerKey??tracked,
-            ReceivedThrottle:physicsObservation?.ReceivedThrottle,ReceivedBrake:physicsObservation?.ReceivedBrake);
+            ReceivedThrottle:physicsObservation?.ReceivedThrottle,ReceivedBrake:physicsObservation?.ReceivedBrake,
+            ParkingBrake:physicsObservation?.ParkingBrake==true,ReverseGear:physicsObservation?.Gear<0,RollbackDetected:rollback,
+            StationaryDisplacement:reverseMotion.StationaryDisplaced);
         var result=longitudinal.Step(input);
         bool published=false;
         BeforeLongitudinalCommit?.Invoke(); // Isolated scheduling tests; unset in production.
@@ -111,6 +114,17 @@ public sealed partial class TollPlugin
                 if(result.Fault) {
                     Disarm(result.DeliveryMissing?"Pedalbefehle werden im Spiel nicht wirksam – manuell übernehmen.":"Eigene Geschwindigkeitsregelung: "+result.Reason);
                     return;
+                }
+                if(result.ManualRequired) {
+                    StopDriving("Rückwärtsgang gewählt – bitte manuell übernehmen.",DriveAction.RejectStart);
+                    return;
+                }
+                // A newly delivered parking brake can arrive while the host
+                // epoch lock is busy. Veto stale propulsion using that latest
+                // fresh frame, without erasing a required braking command.
+                if(latest?.Physics.ParkingBrake==true) {
+                    result=result with{Throttle=0};
+                    if(CurrentParkingStandstill(latest))SuspendNormalHoldsForParking(epoch,issuedAt);
                 }
                 var definition=new ControlChannelDefinition {Id=LongitudinalChannelId,Timeout=.2f};
                 outputIssuedAt?.SetValue(definition,issuedAt);outputEpoch?.SetValue(definition,epoch);

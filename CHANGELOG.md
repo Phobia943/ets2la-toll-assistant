@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.4.2 – Stillstand, Feststellbremse und tatsächliches Rollen unterscheiden, Kandidat
+
+- Vereinheitlicht die kleine negative Standtoleranz für Kurvenprofil, Szenenzulassung, Fahrüberwachung und eigene Geschwindigkeitsregelung. Ein winziger negativer Messwert verwirft keine vorhandene Kurvenvorschau mehr.
+- Eine frisch gemeldete Feststellbremse bei bestätigtem Stillstand hält Gas und Betriebsbremse neutral. Gewöhnliche alte Halteanforderungen werden aufgehoben; Hindernisse, geschlossene Schranken und Fehler bleiben erhalten und werden beim Lösen neu bewertet.
+- Gerichtete Positionsänderungen erkennen langsames Rückrollen trotz kleiner Geschwindigkeit. Vorwärtskriechen entzieht ebenfalls die Parkfreigabe; erst eine über frische Messungen bestätigte Ruhephase gibt sie wieder frei. Doppelte oder ungültige Messungen beweisen keine Ruhe.
+- Rückwärtsgang im Stand verlangt manuelle Übernahme, ohne allein daraus eine Notbremsung zu erzeugen. Eine spät eingehende Feststellbremsmeldung sperrt Gas vor der Ausgabe; eine erforderliche Betriebsbremse bleibt erhalten.
+- [Aufgezeichneter Vorfall, Gegenprüfungen und Grenzen](REVIEW-0.4.2.md). Noch kein Nachweis einer erfolgreichen realen Anfahrt oder Mautdurchfahrt mit dieser Fassung.
+
 ## 0.4.1 – Gasempfang von simulierter Gaswirkung trennen, installiert
 
 - Fehlendes effektives Gas allein löst keine verriegelte Vollbremsung mehr aus. Der Regler unterscheidet den vom Spiel gemeldeten Eingang von der anschließend verarbeiteten Gasstellung. Während einer Wirkungsabweichung steigen weder Gasintegrator noch Pedalanforderung weiter an.

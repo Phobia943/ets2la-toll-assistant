@@ -1,6 +1,6 @@
 # ETS2LA Mautassistent
 
-**0.4.1 korrigiert die Gasüberwachung; Installiert und Dateien geprüft; die neue Fahrprüfung steht aus.** Die erste Fahrt mit 0.4.0 zeigte einen Fehlerhalt durch die Verwechslung von empfangenem Gaseingang und effektiver Gasstellung. Der Nachfolger trennt diese Werte und behandelt fehlendes Gas ohne daraus allein eine Vollbremsung auszulösen. [Korrektur und Nachweise](REVIEW-0.4.1.md). Die eigene Geschwindigkeitsregelung und das bestehende Hostpaket aus [0.4.0](REVIEW-0.4.0.md) bleiben die Grundlage.
+**0.4.2 korrigiert die Behandlung von Stillstand und Feststellbremse; noch nicht installiert oder im Spiel bestätigt.** Der Standtest mit 0.4.1 zeigte, dass winzige negative Geschwindigkeitswerte eine fertige Kurvenvorschau verwerfen und einen falschen Rückwärtsfehler auslösen konnten. Die neue Fassung vereinheitlicht diese Grenzen, berücksichtigt die gemeldete Feststellbremse und erkennt tatsächliches langsames Rollen zusätzlich über die Positionsfolge. [Korrektur und Nachweise](REVIEW-0.4.2.md). Die [Gasüberwachung aus 0.4.1](REVIEW-0.4.1.md), die eigene Geschwindigkeitsregelung und das bestehende Hostpaket aus [0.4.0](REVIEW-0.4.0.md) bleiben die Grundlage.
 
 Die Erweiterung arbeitet mit ETS2LA Pathfinding und Lane Assist in Euro Truck Simulator 2/TruckersMP. Sie plant erreichbare Mautspuren, bremst vor der zugeordneten Schranke und wartet auf deren beobachtete Freigabe. Sie ist ein experimenteller Fahrassistent; allgemeine Hindernisvermeidung und fehlerfreie Fahrten in allen Ländern sind nicht nachgewiesen.
 

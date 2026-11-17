@@ -56,10 +56,13 @@ void Run()
     Check("Independent longitudinal review rejects oncoming and repeated-route geometry errors",()=>OwnLongitudinalReviewTests.TrafficGeometry(Assert));
     Check("Independent longitudinal review detects unapplied holding and full braking",()=>OwnLongitudinalReviewTests.DeliveryDuringHold(Assert));
     Check("Independent throttle receipt review separates simulation cuts, transport loss and pause acknowledgement",()=>OwnLongitudinalReviewTests.ThrottleReceiptAndEffect(Assert));
+    Check("Independent parking review separates noisy stand, release, hazards and coherent rollback",()=>OwnLongitudinalReviewTests.ParkingAndReverseEvidence(Assert));
     Check("Native command ages keep producer and observer clock domains separate",()=>NativeCommandTimingTests.ClockDomains(Assert));
     Check("Native command timestamp bounds retain admission and full diagnostic ages",()=>NativeCommandTimingTests.Bounds(Assert));
     Check("Native age watchdog preserves real failure and startup deadlines",()=>NativeCommandTimingTests.GuardContract(Assert));
     Check("Standard exit slicing accepts numerical item handoffs but rejects physical gaps and reversals",()=>StandardSliceHandoffIntegration.NumericalItemBoundaries(Assert));
+    Check("Curve planning and supervision share stationary signed-speed policy without losing completed profiles",()=>CurveSpeedTests.StationarySignedSpeed(Assert));
+    Check("Recorded stand jitter preserves completed synthetic curves and counterfactual parking neutrality",()=>StandstillRegressionTests.Run(Assert));
     Check("Curve geometry excludes grades, item seams and isolated interpolation spikes",()=>CurveSpeedTests.Geometry(Assert));
     Check("Curve speed preview slows ahead without increasing native bounds or stopping a slow truck",()=>CurveSpeedTests.Limits(Assert));
     Check("Delayed 90 km/h approach simulation slows before the curve without hard braking",()=>CurveSpeedTests.ApproachSimulation(Assert));

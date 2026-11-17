@@ -12,7 +12,7 @@ public sealed partial class TollPlugin
     sealed record PhysicsObservation(ulong SimulatedTime,ulong RenderTime,float EngineDamage,float TransmissionDamage,
         float CabinDamage,float ChassisDamage,float WheelDamage,float GameThrottle,float GameBrake)
     {
-        public float SpeedLimitMps {get;init;} public bool GameCruise {get;init;}
+        public float SpeedLimitMps {get;init;} public bool GameCruise {get;init;} public bool ParkingBrake {get;init;}
         // Received input includes virtual game controls; this is not the
         // independently sampled physical controller brake/accelerator axis.
         public float ReceivedThrottle {get;init;} public float ReceivedBrake {get;init;}
@@ -39,7 +39,7 @@ public sealed partial class TollPlugin
             data.truckFloat.speed,data.truckPlacement.coordinate.ToVector3(),data.truckPlacement.rotation.X,
             new(data.simulatedTime,data.renderTime,data.truckFloat.wearEngine,data.truckFloat.wearTransmission,
                 data.truckFloat.wearCabin,data.truckFloat.wearChassis,data.truckFloat.wearWheels,
-                data.truckFloat.gameThrottle,data.truckFloat.gameBrake){SpeedLimitMps=data.truckFloat.speedLimit,GameCruise=data.truckBool.cruiseControl,
+                data.truckFloat.gameThrottle,data.truckFloat.gameBrake){SpeedLimitMps=data.truckFloat.speedLimit,GameCruise=data.truckBool.cruiseControl,ParkingBrake=data.truckBool.parkingBrake,
                     ReceivedThrottle=data.truckFloat.userThrottle,ReceivedBrake=data.truckFloat.userBrake,
                     EffectiveClutch=data.truckFloat.gameClutch,Gear=data.truckInt.gear,
                     DashboardGear=data.truckInt.gearDashboard,EngineRpm=data.truckFloat.engineRpm}) {Envelope=EnvelopeContext.Capture(data)};

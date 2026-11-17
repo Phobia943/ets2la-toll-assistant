@@ -29,6 +29,7 @@ public sealed partial class TollPlugin
     }
     void CommitPlannedHolds(long epoch,long issuedAt)
     {
+        if(CurrentParkingStandstill()){SuspendNormalHoldsForParking(epoch,issuedAt);return;}
         double now=clock.Elapsed.TotalSeconds;
         float floor=_IsRunning&&active&&!preview&&State.EnableAssists&&!faultBrake.Latched&&!brakeHeld&&
             !paused&&now>=takeoverUntil&&driveAction==DriveAction.Drive&&SensorsFresh(now)&&now-pathAt<.2&&

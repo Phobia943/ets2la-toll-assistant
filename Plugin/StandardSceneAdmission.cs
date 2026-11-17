@@ -7,9 +7,9 @@ namespace MautAssistent;
 internal static class StandardSceneAdmission
 {
     const string Scope="Standardspurführung; kein Gesamtgespann-/Ladungs-Freiraumnachweis";
-    // Signed telemetry jitters around zero at rest. This 0.036km/h deadband
-    // must not reinterpret meaningful reverse travel as forward clearance.
-    internal const double StationarySignedSpeedTolerance=.01;
+    // Alias retained for existing callers; interpretation is shared with
+    // forward curve planning, supervision and longitudinal control.
+    internal const double StationarySignedSpeedTolerance=ForwardMotion.StationarySpeed;
     readonly record struct Segment(Vector3 A,Vector3 B,double From,double To);
     internal static ParkedSceneAdmission.Result Check(PrefabPath input,SceneSnapshot? scene,Vector3 own,RouteTrace road,
         double speed,ulong simulationTime,ulong renderTime,string itemIdentity,bool dynamicRequired,VehicleGeometry? rawShape,
@@ -21,8 +21,7 @@ internal static class StandardSceneAdmission
         ParkedSceneAdmission.Result Wait(string why,double distance=0,bool used=false,double? acute=null)=>
             new(false,why+" · "+Scope,Math.Max(0,distance)){HoldKey=owner,UsesLiveSource=used,AcuteDistance=acute};
         if(!double.IsFinite(speed))return Wait("Geschwindigkeitsmessung ist nicht endlich");
-        if(speed < -StationarySignedSpeedTolerance)return Wait("Rückwärtsfahrt außerhalb der vorwärts gerichteten Standardspurprüfung");
-        if(speed<0)speed=0;
+        if(!ForwardMotion.TryNormalizeForwardSpeed(speed,out speed))return Wait("Rückwärtsfahrt außerhalb der vorwärts gerichteten Standardspurprüfung");
         if(!SceneSnapshotProtocol.Finite(own)||road==null||
             !road.TryItemRange(itemIdentity,out double from,out double to))
             return Wait("Bestätigter gerichteter Mautabschnitt fehlt");

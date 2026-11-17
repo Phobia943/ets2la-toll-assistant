@@ -3,6 +3,27 @@ using MautAssistent;
 
 public static class CurveSpeedTests
 {
+    public static void StationarySignedSpeed(Action<bool,string> assert)
+    {
+        var route=Approach();var origin=Point(90);var profile=CurveSpeedProfile.Build(route,origin);
+        assert(profile.Count>0&&profile.Covers(route,origin,50),"A completed real geometric curve profile exists before stand-noise evaluation");
+        foreach(double speed in new[]{-.011614151299,.011614151299,-.03,.03,-.099,.099,-.1,.1,0d}) {
+            assert(ForwardMotion.TryNormalizeForwardSpeed(speed,out var normalized)&&normalized==Math.Max(0,speed)&&ForwardMotion.IsStationary(speed),
+                "Shared stand policy preserves raw sign externally and normalizes only forward planning at "+speed);
+            assert(profile.Evaluate(origin,speed,1.2) is {},"An already completed curve profile is not misreported missing for measured stationary signed speed "+speed);
+            var supervisor=new DriveSupervisor();
+            assert(supervisor.Step(new(0,speed,true,false,true,RouteFeed.Rejected,0,false,false))==DriveAction.RejectStart,
+                "Supervisor uses the same stationary interpretation while still rejecting an unavailable start route");
+        }
+        foreach(double speed in new[]{-.101,-1,double.NaN,double.PositiveInfinity,double.NegativeInfinity}) {
+            assert(!ForwardMotion.TryNormalizeForwardSpeed(speed,out _)&&!ForwardMotion.IsStationary(speed)&&profile.Evaluate(origin,speed,1.2)==null,
+                "Genuine reverse/nonfinite motion cannot borrow a forward curve plan or stationary authority");
+        }
+        assert(ForwardMotion.TryNormalizeForwardSpeed(.101,out var forward)&&forward==.101&&!ForwardMotion.IsStationary(.101),
+            "Positive speed above the stationary band remains real forward travel");
+        assert(ForwardMotion.EnterStationarySpeed<ForwardMotion.StationarySpeed,
+            "Entering standstill has a distinct smaller threshold; the pure helper does not carry a hidden latch");
+    }
     public static Vector3 Point(double distance,double radius=40,double approach=300)
     {
         if(distance<=approach)return new(0,0,(float)distance);

@@ -13,7 +13,7 @@ public static class TelemetryPedalMappingIntegration
         telemetry.truckFloat.userThrottle=.81f;telemetry.truckFloat.gameThrottle=.12f;
         telemetry.truckFloat.userBrake=.34f;telemetry.truckFloat.gameBrake=.56f;
         telemetry.truckFloat.userClutch=.23f;telemetry.truckFloat.gameClutch=.91f;
-        telemetry.truckInt.gear=12;telemetry.truckInt.gearDashboard=11;telemetry.truckFloat.engineRpm=1450;
+        telemetry.truckBool.parkingBrake=true;telemetry.truckInt.gear=12;telemetry.truckInt.gearDashboard=11;telemetry.truckFloat.engineRpm=1450;
         f.Call("OnTelemetry",telemetry);
         var observation=f.Get<object>("physicsObservation");
         T Read<T>(string name)=>(T)observation.GetType().GetProperty(name,BindingFlags.Instance|BindingFlags.Public)!.GetValue(observation)!;
@@ -22,12 +22,14 @@ public static class TelemetryPedalMappingIntegration
             "Actual OnTelemetry preserves separately received virtual-capable inputs and simulation-effective pedals");
         assert(Read<float>("EffectiveClutch")==.91f&&Read<int>("Gear")==12&&Read<int>("DashboardGear")==11&&Read<float>("EngineRpm")==1450,
             "Actual OnTelemetry copies effective clutch, engine gear, dashboard gear and RPM without substituting input clutch or equal defaults");
+        assert(Read<bool>("ParkingBrake"),"Actual OnTelemetry maps the SDK parkingBrake flag independently of pedal brake");
+        telemetry.truckBool.parkingBrake=false;
         telemetry.truckFloat.userThrottle=0;telemetry.truckFloat.gameThrottle=1;telemetry.truckFloat.gameClutch=0;
         telemetry.truckInt.gear=0;telemetry.truckInt.gearDashboard=7;telemetry.truckFloat.engineRpm=900;
-        assert(Read<float>("ReceivedThrottle")==.81f&&Read<float>("GameThrottle")==.12f&&Read<float>("EffectiveClutch")==.91f&&Read<int>("Gear")==12,
+        assert(Read<float>("ReceivedThrottle")==.81f&&Read<float>("GameThrottle")==.12f&&Read<float>("EffectiveClutch")==.91f&&Read<int>("Gear")==12&&Read<bool>("ParkingBrake"),
             "Mutating the publisher's telemetry object cannot alter the already delivered coherent diagnostic frame");
         telemetry.time++;telemetry.simulatedTime+=20000;f.Call("OnTelemetry",telemetry);observation=f.Get<object>("physicsObservation");
-        assert(Read<int>("Gear")==0&&Read<int>("DashboardGear")==7&&Read<float>("EngineRpm")==900,
+        assert(Read<int>("Gear")==0&&Read<int>("DashboardGear")==7&&Read<float>("EngineRpm")==900&&!Read<bool>("ParkingBrake"),
             "Neutral engine gear and a different dashboard gear remain independent observations, not an inferred shift flag");
         telemetry.truckInt.gear=-2;telemetry.truckInt.gearDashboard=-1;telemetry.time++;telemetry.simulatedTime+=20000;
         f.Call("OnTelemetry",telemetry);observation=f.Get<object>("physicsObservation");

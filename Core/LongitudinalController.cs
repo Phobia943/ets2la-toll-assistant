@@ -6,7 +6,7 @@ public sealed record LongitudinalInput(double Time,long Epoch,bool Enabled,bool 
     double Speed,double Acceleration,double TargetSpeed,double? AccelerationSafetyLimit=null,
     double? StopDistance=null,bool PlannedHold=false,bool Emergency=false,bool OutputAvailable=true,
     double Pitch=0,float? ActualThrottle=null,float? ActualBrake=null,bool CoastEligible=false,string? StopIdentity=null,
-    float? ReceivedThrottle=null,float? ReceivedBrake=null);
+    float? ReceivedThrottle=null,float? ReceivedBrake=null,bool ParkingBrake=false,bool ReverseGear=false,bool RollbackDetected=false,bool StationaryDisplacement=false);
 
 public sealed record LongitudinalOutput(float Throttle,float Brake,double TargetAcceleration,string Reason,
     bool Holding=false,bool Fault=false)
@@ -15,6 +15,8 @@ public sealed record LongitudinalOutput(float Throttle,float Brake,double Target
     public bool DeliveryMissing {get;init;}
     public bool ThrottleDeliveryMissing {get;init;}
     public bool ThrottleEffectLimited {get;init;}
+    public bool ParkingHold {get;init;}
+    public bool ManualRequired {get;init;}
 }
 
 // Own speed/acceleration-to-pedal controller. No game objects, native ACC/PID,
@@ -23,7 +25,7 @@ public sealed record LongitudinalOutput(float Throttle,float Brake,double Target
 public sealed class LongitudinalController
 {
     public const double MaximumAcceleration=1.2,MaximumBrakeDeceleration=4.5,ComfortJerk=.8;
-    public const double StandstillTolerance=.01,MaximumStep=.25,CoastOverspeed=6/3.6;
+    public const double StandstillTolerance=ForwardMotion.StationarySpeed,MaximumStep=.25,CoastOverspeed=6/3.6;
     double? at;
     long epoch;
     double filteredAcceleration,accelerationCommand,driveIntegral,brakeIntegral,deliveryMismatch,throttleMismatch;
@@ -34,12 +36,14 @@ public sealed class LongitudinalController
     bool coastBlocked;
     string? stopOwner;
     int pedalMode;
+    public bool ParkingHeld {get;private set;}
 
     public void Reset()
     {
         at=null;epoch=0;filteredAcceleration=accelerationCommand=driveIntegral=brakeIntegral=deliveryMismatch=throttleMismatch=0;
         throttle=brake=0;holding=deliveryFault=throttleDeliveryFault=throttleEffectLimited=wasStopping=false;stopOwner=null;pedalMode=0;
         coastSince=null;coastTarget=0;coastBlocked=false;
+        ParkingHeld=false;
     }
     public void Pause()
     {
@@ -76,8 +80,20 @@ public sealed class LongitudinalController
         }
         if(!double.IsFinite(input.Speed)||input.Speed>100||!double.IsFinite(input.Acceleration)||Math.Abs(input.Acceleration)>20||
             !double.IsFinite(input.Pitch)||Math.Abs(input.Pitch)>.35)return Neutral("Invalid control measurement",true);
-        if(input.Speed < -StandstillTolerance)return Neutral("Reverse travel is outside forward control",true);
+        if(input.Speed < -StandstillTolerance||input.RollbackDetected)return Neutral("Reverse travel is outside forward control",true);
+        if(input.ReverseGear)return Neutral("Reverse gear selected: manual control required") with{ManualRequired=true};
         if(!input.OutputAvailable)return Neutral("Pedal transport unavailable",true);
+        bool parkStand=input.ParkingBrake&&!input.StationaryDisplacement&&Math.Abs(input.Speed)<=(ParkingHeld?ForwardMotion.StationarySpeed:ForwardMotion.EnterStationarySpeed);
+        if(parkStand||ParkingHeld) {
+            // Never fight a confirmed stationary parking brake or integrate
+            // absent acceleration against it. Preserve a latched propulsion
+            // failure; releasing the parking brake is not acknowledgement.
+            driveIntegral=brakeIntegral=deliveryMismatch=throttleMismatch=0;
+            throttle=brake=0;accelerationCommand=0;filteredAcceleration=input.Acceleration;
+            holding=wasStopping=false;stopOwner=null;pedalMode=0;
+        }
+        ParkingHeld=parkStand;
+        if(parkStand)return new(0,0,0,"Stationary parking brake: pedals neutral",Fault:deliveryFault){ParkingHold=true};
         double speed=Math.Max(0,input.Speed);
         filteredAcceleration=first?input.Acceleration:filteredAcceleration+(input.Acceleration-filteredAcceleration)*(1-Math.Exp(-dt/.15));
         if(input.AccelerationSafetyLimit is double invalidLimit&&!double.IsFinite(invalidLimit)||
@@ -89,9 +105,9 @@ public sealed class LongitudinalController
         double target=known?input.TargetSpeed:0;
         double hardLimit=input.AccelerationSafetyLimit??double.PositiveInfinity;
         if(!known)hardLimit=Math.Min(hardLimit,-1.2);
-        if(input.PlannedHold){target=0;hardLimit=Math.Min(hardLimit,-1.2);}
-        bool stopping=input.StopDistance.HasValue||input.PlannedHold||!known;
-        bool shouldHold=speed<=.12&&(input.PlannedHold||target<=.01||input.StopDistance is <=.3);
+        if(input.PlannedHold||input.ParkingBrake){target=0;hardLimit=Math.Min(hardLimit,-1.2);}
+        bool stopping=input.StopDistance.HasValue||input.PlannedHold||input.ParkingBrake||!known;
+        bool shouldHold=speed<=.12&&(input.PlannedHold||input.ParkingBrake||target<=.01||input.StopDistance is <=.3);
         string? owner=input.StopIdentity;
         if(holding!=shouldHold||stopOwner!=owner||wasStopping&&!stopping) {
             driveIntegral=brakeIntegral=deliveryMismatch=0;accelerationCommand=0;throttle=brake=0;pedalMode=0;

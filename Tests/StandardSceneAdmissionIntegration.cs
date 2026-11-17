@@ -83,12 +83,13 @@ public static class StandardSceneAdmissionIntegration
             StandardSceneAdmission.Check(path,scene,Vector3.Zero,road,speed,1000000,1000000,identity,true,raw);
         Check(0,Scene(Body()),Raw());
         foreach(double speed in new[]{-6.240893344511278E-05/3.6,-0.0009240548475645483/3.6,
+            -.011614151299, .011614151299,-.03,.03,-.099,.099,
             -StandardSceneAdmission.StationarySignedSpeedTolerance,0d,.000001}) {
             assert(Check(speed,Scene(),Raw()).Clear,"Signed standstill telemetry retains valid empty scoped corridor at "+speed+"m/s");
             assert(!Check(speed,Scene(Body()),Raw()).Clear,"Standstill normalization cannot erase a present corridor blocker at "+speed+"m/s");
             assert(!Check(speed,null,Raw()).Clear,"Standstill normalization cannot invent required missing scene evidence at "+speed+"m/s");
         }
-        foreach(double speed in new[]{-StandardSceneAdmission.StationarySignedSpeedTolerance-.000001,-1d}) {
+        foreach(double speed in new[]{-.101,-StandardSceneAdmission.StationarySignedSpeedTolerance-.000001,-1d}) {
             var reverse=Check(speed,Scene(),Raw());
             assert(!reverse.Clear&&reverse.Reason.Contains("Rückwärtsfahrt")&&!reverse.UsesLiveSource,
                 "Meaningful reverse travel is explicitly unsupported, never made into forward clearance by Abs");
