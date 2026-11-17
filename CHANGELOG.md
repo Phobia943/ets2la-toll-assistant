@@ -1,6 +1,6 @@
 # Änderungen
 
-## 0.4.1 – Gasempfang von simulierter Gaswirkung trennen, offline geprüft
+## 0.4.1 – Gasempfang von simulierter Gaswirkung trennen, installiert
 
 - Fehlendes effektives Gas allein löst keine verriegelte Vollbremsung mehr aus. Der Regler unterscheidet den vom Spiel gemeldeten Eingang von der anschließend verarbeiteten Gasstellung. Während einer Wirkungsabweichung steigen weder Gasintegrator noch Pedalanforderung weiter an.
 - Ein tatsächlich fehlender Gaseingang sperrt die Beschleunigung mit Übernahmehinweis, erhält jedoch gültige Lenkführung und bestehende Bremsgrenzen. Die Gassperre bleibt auch über Pause/Fortsetzen bestehen und erfordert manuelle Übernahme beziehungsweise einen neuen Start. Kurven-, Verkehrs-, Maut- und explizite Notbremsgrenzen bleiben vorrangig.

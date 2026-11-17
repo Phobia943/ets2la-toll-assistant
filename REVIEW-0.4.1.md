@@ -1,6 +1,6 @@
 # 0.4.1 – Eingangsbestätigung und wirksame Gasstellung trennen
 
-Stand: 17. November 2026. Offline geprüfter Kandidat, noch nicht installiert. Ausgangsfassung ist 0.4.0; die drei Hostbibliotheken und deren Manifest bleiben unverändert.
+Stand: 17. November 2026. Am 17. November 2026 um 17:18 Uhr MEZ nach bestätigtem Stillstand und geschlossenem ETS2LA installiert. Plugin, vorherige Sicherungsdatei und die drei unveränderten Hostbibliotheken wurden unabhängig geprüft; kein automatischer App- oder Assistenzstart. Ausgangsfassung ist 0.4.0; die drei Hostbibliotheken und deren Manifest bleiben unverändert.
 
 ## Beobachteter Fehler
 

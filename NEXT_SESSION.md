@@ -1,6 +1,6 @@
 # Nächste Sitzung
 
-**0.4.0 ist installiert; der erste Fahrtest meldete einen Fehlerhalt durch die Gasüberwachung. 0.4.1 korrigiert diesen Fall, ist offline geprüft und noch nicht installiert.** Der Nutzer bestätigte das Spiel im Vordergrund und sicheren Stillstand mit manueller Übernahme. Vor einem Dateiaustausch muss der aktuelle App-/Fahrzustand erneut bestätigt sein. [Befund und Korrektur](REVIEW-0.4.1.md).
+**0.4.1 ist installiert und unabhängig geprüft. Die erneute Stand-/Fahrprüfung steht aus.** Die erste Fahrt mit 0.4.0 zeigte einen Fehlerhalt durch Verwechslung des Gaseingangs mit seiner effektiven Wirkung. 0.4.1 korrigiert die Überwachung und sperrt bei echtem Empfangsausfall nur die Beschleunigung, ohne daraus allein eine Vollbremsung zu erzeugen. Der Austausch der Plugin-Datei erfolgte am 17. November um 17:18 Uhr MEZ nach erneut bestätigtem Stillstand und geschlossenem ETS2LA; vorherige Plugin-Datei gesichert, Hostbibliotheken unverändert. [Befund und Nachweise](REVIEW-0.4.1.md).
 
 ## Abschluss und nächste reale Prüfung
 
