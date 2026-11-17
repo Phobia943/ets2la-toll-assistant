@@ -1,6 +1,6 @@
 # Review 0.4.0 – Eigene Geschwindigkeitsregelung und Routenanschluss
 
-Stand: 17. November 2026. **Offline fertig und Paket geprüft, nicht installiert und noch nicht im Spiel geprüft.** Installierte Ausgangsfassung ist 0.3.22. Nur die konkret versiegelte Kombination gehört zum Update; Zwischenbuilds und isolierte Testkopien sind keine installierbaren Ersatzdateien.
+Stand: 17. November 2026. **Installiert und Dateien geprüft; Stand- und Fahrprüfung noch ausstehend.** Gesicherte Ausgangsfassung ist 0.3.22. Nur die konkret versiegelte Kombination gehört zum Update; Zwischenbuilds und isolierte Testkopien sind keine installierbaren Ersatzdateien.
 
 ## Problem und neue Zuständigkeit
 
@@ -76,9 +76,12 @@ Finaler Prüfstand: **200 Integrationsprüfungen, 93 Kernlogikprüfungen, 223 is
 
 Produkt-SHA256: `2DCE3375D186D74FDD169C560F8C618BED7E7008DB11C2AB218BE3925C9BE0EB`. Hostmanifest-SHA256: `5365FB49AAAE8711CD8118FD1C01C93F0C0C1E2A853761172DDC694B2174B374`. Der identische reale Kartenlauf wurde gegen diesen Produktpin wiederholt. Ein späterer Build benötigt einen neuen Paketnachweis und denselben Gegenlauf erneut. Für das Update werden vier ETS2LA-Dateien benötigt: Plugin, Game, State und LaneAssist. Die ACC-Datei und die bisherigen Spiel-DLLs bleiben unverändert. Pathfinding, Lane Assist und Mautassistent müssen mit den passenden Bibliotheken bereitstehen. ACC ist optional; sein alter Pedalkanal bleibt im neuen Host gesperrt.
 
+## Installation
+
+Am 17. November 2026 um 16:46 Uhr MEZ nach erneuter Bestätigung von sicherem Halt, manueller Übernahme und geschlossenem ETS2LA installiert. Die vier endgültigen Dateien und alle vier Sicherungskopien wurden unabhängig gegen ihre SHA256-Pins geprüft. ACC und die beiden Spiel-DLLs entsprechen weiterhin der geprüften Baseline. Kein automatischer App- oder Assistenzstart; dies ist kein Fahrnachweis.
+
 ## Noch erforderlich
 
-- Exakte Paketkombination sichern, prüfen und erst nach autorisiertem geschlossenem ETS2LA austauschen; kein automatischer App-/Fahrtstart.
 - Neue Standprüfung: Versions-/Quellenbereitschaft, F8, physische Bremsübernahme, F9 und tatsächlich wieder manuelle Lenkung/Pedale.
 - Neue überwachte Fahrt: freie Strecke/Rollen/Kurven, Verkehr/Ampel, geschlossene und offene Mautschranke, automatische Abrechnung, vollständige Ausfahrt und Folgeanschluss.
 - Alt+Tab-Gas/-Bremse in TruckersMP bleiben offen. Ein eigener Regler behebt den Fokus-/Spielausgabeweg nicht automatisch.
