@@ -1,6 +1,6 @@
 # Änderungen
 
-## 0.4.10 – Katalogwiederverwendung, Kandidat noch nicht installiert
+## 0.4.10 – Katalogwiederverwendung installiert, Spielprüfung offen
 
 - Behält vollständig geladene Modell- und Hookup-Kataloge über leere Arbeitswarteschlangen hinweg, gebunden an die jeweilige Dateisystemgeneration. Archive und Modellgeometrie bleiben getrennt verwaltet.
 - Korrigiert einen teilweise übernommenen Quellenwechsel bei fehlgeschlagener Archivabfrage. Unlesbare Hookup-Dateien dürfen keinen Teilkatalog mit möglicherweise falscher Zahlart freigeben.

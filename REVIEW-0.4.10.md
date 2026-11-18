@@ -1,6 +1,6 @@
 # 0.4.10 – wiederholte Katalogarbeit entfernen
 
-Stand: 18. November 2026. Kandidat gebaut und offline geprüft, noch nicht installiert. In der laufenden Fahrt bleibt 0.4.9 unverändert. Dies ist eine belegte Leistungsverbesserung, kein Nachweis, dass sämtliche Ausfälle behoben sind.
+Stand: 18. November 2026. Nach bestätigtem sicheren Halt und beendeter Assistenz um 14:22 MEZ mit geprüfter Sicherung installiert. Alle fünf Live- und Sicherungsdateien stimmen. Die App blieb beendet; tatsächliches Laden und Fahrprüfung stehen aus. Dies ist eine belegte Leistungsverbesserung, kein Nachweis, dass sämtliche Ausfälle behoben sind.
 
 ## Neue Ausfälle und Beweisgrenzen
 
@@ -40,8 +40,8 @@ Zusätzlich bestehen 307 Assertions am isolierten tatsächlichen Host-/Plugin-Au
 - Paketmanifest SHA-256: `CCE7448254BE3B64E94EC8313F8D6C25067C8BE014C06ECB3AE2DCBDF606ACE8`.
 - Installer SHA-256: `570176F3F9EA62C1699137D27AE79B77EE6BA6ED44FC1106AC8AD39B50CDC06E`.
 
-Das Paket enthält fünf geprüfte Appdateien; inhaltlich ändert sich nur das Plugin. Die vier Hostdateien und die eingebettete Kompatibilität bleiben exakt auf dem geprüften Stand von 0.4.9. Worker- und Spieldateien werden nicht ersetzt. Der Installer verlangt beendetes ETS2LA samt Hilfsprozess und erstellt eine geprüfte Sicherung. Keine Installation oder Fahrtabnahme ist erfolgt.
+Das Paket enthält fünf geprüfte Appdateien; inhaltlich ändert sich nur das Plugin. Die vier Hostdateien und die eingebettete Kompatibilität bleiben exakt auf dem geprüften Stand von 0.4.9. Worker- und Spieldateien wurden nicht ersetzt. Der Installer verlangte beendetes ETS2LA samt Hilfsprozess und erstellte eine geprüfte Sicherung. Die unabhängige Endprüfung bestätigte fünf Live- und fünf Sicherungsdateien sowie alle 13 unveränderten Workerdateien, Spiel-SDK und InputBridge. Keine Anwendung wurde gestartet; Fahrtabnahme bleibt offen.
 
 17 isolierte Installations-/Rücksetzsimulationen bestehen, einschließlich aller fünf Abbruchpositionen, währenddessen gestarteter Anwendung, Fremdbytes und umgeleiteter Pfade. Die echte Paketprüfung gegen die laufende Installation war ausschließlich lesend und bestand ebenfalls.
 
-Für die nächste Prüfung: erst im sicheren Stand und bei geschlossener App installieren, anschließend geladene Version, Parkneutralisierung und manuelle Übernahme prüfen. Danach den tatsächlichen Katalog-Wiederanlauf und die Ausgabealter beobachten. Auflieger-Nachlauf, Hintergrundpedale und die übrigen offenen Punkte bleiben in [WORKLIST.md](WORKLIST.md) aufgeführt.
+Für die nächste Prüfung: geladene Version, Parkneutralisierung und manuelle Übernahme im Stand prüfen. Danach den tatsächlichen Katalog-Wiederanlauf und die Ausgabealter beobachten. Auflieger-Nachlauf, Hintergrundpedale und die übrigen offenen Punkte bleiben in [WORKLIST.md](WORKLIST.md) aufgeführt.
