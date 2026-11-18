@@ -4,7 +4,7 @@ Stand: 18. November 2026. Auftrag: alle offenen Themen nacheinander bearbeiten, 
 
 0.4.6 ist installiert (SHA-256 AAF69631EE06881340EEB89F58F79D2B0F4382FEE35CCDFA6B11E241608D838F), aber noch nicht im Spiel geprüft. Maßgeblich für den Einbau ist `outputs/Mautassistent-0.4.6-validation.json` im Arbeitsverzeichnis, nicht die älteren Sitzungsnotizen.
 
-0.4.7 ist als Kandidat gebaut: 233 Integration, 100 Kernlogik und 304 tatsächliche Hostprüfungen bestanden. InputBridge: 38 native Prüfungen plus Diagnosevertrag. Endreview wegen Agenten-Nutzungslimit noch offen; **nicht installiert und kein Gesamtabschluss**. Details: [REVIEW-0.4.7.md](REVIEW-0.4.7.md).
+0.4.7 ist als Kandidat gebaut: 233 Integration, 100 Kernlogik und 304 tatsächliche Hostprüfungen bestanden. InputBridge: 38 native Prüfungen plus Diagnosevertrag. Endreview noch offen; **nicht installiert und kein Gesamtabschluss**. Details: [REVIEW-0.4.7.md](REVIEW-0.4.7.md).
 
 | Thema | Konkrete Arbeit / Abnahme | Zustand |
 | --- | --- | --- |

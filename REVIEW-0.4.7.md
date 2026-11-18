@@ -1,6 +1,6 @@
 # 0.4.7 – gemeinsamer Routenentscheid und klare Vorschauzustände
 
-Stand: 18. November 2026. **Geprüfter Arbeitskandidat, nicht installiert. Der Gesamtauftrag ist nicht abgeschlossen.** Die abschließende unabhängige Gegenprüfung wurde durch ein Nutzungslimit der Review-Agenten unterbrochen. Die bereits gemeldeten Gegenfälle wurden bearbeitet; eine abschließende Freigabe wird daraus nicht abgeleitet.
+Stand: 18. November 2026. **Geprüfter Arbeitskandidat, nicht installiert. Der Gesamtauftrag ist nicht abgeschlossen.** Die abschließende unabhängige Gegenprüfung steht noch aus. Die bereits gemeldeten Gegenfälle wurden bearbeitet; eine abschließende Freigabe wird daraus nicht abgeleitet.
 
 ## Änderungen und Gegenfälle
 
@@ -24,6 +24,7 @@ Kein Fokus-Hook und keine Veränderung des alten Befehlslayouts. Dieses Layout e
 - 304 Prüfungen mit den tatsächlichen gepinnten ETS2LA-Ausgabebibliotheken und dem neuen Plugin: bestanden, ohne Livekanäle oder Spielausgabe.
 - 38 native InputBridge-Assertions einschließlich paralleler Callback-Writer und nativer → Python-Diagnosevertrag: bestanden.
 - Paket- und eingebettete Hostmanifestprüfung: bestanden. Installation ist im vorbereiteten Skript bis zum ausstehenden Endreview gesperrt.
+- [GitHub-Prüflauf für diesen Kandidaten](https://github.com/Phobia943/ets2la-toll-assistant/actions/runs/44280004565): Kernlogik, Aufnahmeauswertung sowie native Geometrie-/Eingabetests bestanden.
 
 Plugin-SHA256: `8FD5297421DDBA2FE5A3FC3A6AD70E6BD79225AA294CC4C7B36EFBC9C3857611`.
 
