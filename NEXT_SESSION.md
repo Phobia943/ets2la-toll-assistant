@@ -1,5 +1,11 @@
 # Nächste Sitzung
 
+## Neuester Kandidat: 0.4.10, live weiterhin 0.4.9
+
+0.4.10 ist gebaut und offline geprüft, noch nicht installiert. Es beseitigt die belegte Wiederholung vollständiger Modell-/Hookup-Katalogladungen nach leerer Queue und sichert Quellenwechsel sowie unvollständige Definitionen ab. Kandidat, Installer und Nachweise stehen in [REVIEW-0.4.10.md](REVIEW-0.4.10.md). Kein Ersatz der Fahrregelung und keine verlängerten Ausgabegrenzen.
+
+Die 0.4.9-Fahrt zeigte um 13:51 und 13:56 MEZ kurze technische Ausgabeausfälle. Beim ersten fehlte vor allem der nächste Tickstart, beim zweiten alterten beide Ausgaben. Gültige Route und Pedalempfang unterscheiden dies vom Kreuzungsfehler. Die spätere Laufzeitaufnahme belegt starke Kataloglast, enthält aber keinen der ursprünglichen Ausfälle. Kausalität bleibt offen; nicht als behoben melden. Die bisherige Fahrt wurde nicht verändert. Vor Einbau erneut sicheren Stand und beendetes ETS2LA feststellen; danach Start, Parken und manuelle Übernahme prüfen.
+
 ## Maßgeblicher Stand am 18. November: 0.4.9 installiert und geladen, Spielabnahme offen
 
 0.4.9 wurde um 13:45 MEZ nach beendeter App samt Worker installiert. Plugin-SHA 00F6280BF75BB93F05A6D805E4A4BA5DBAA30F822F89FA8AE0840BD02BC2DEB0. Alle fünf Live- und Sicherungsdateien stimmen; Spiel und Workerdateien wurden nicht verändert, keine Anwendung wurde gestartet. Die folgenden Fahrbefunde stammen noch aus 0.4.8. Der Nutzer hat den Test inzwischen gestartet und die weitere Fahrtbeobachtung beauftragt. Parkneutralisierung über 40 Sekunden und tatsächliche Gas-/Bremswirkung in der Vordergrundfahrt sind belegt. Die unmittelbar danach berichtete Controllerübernahme ist in der betreffenden Aufnahme nicht eindeutig enthalten; nicht als unabhängig bestätigten Testabschluss zählen. Moderne Pedalausgabe bleibt false, Hintergrundvergleich nicht durchgeführt.

@@ -20,9 +20,12 @@ public sealed class TollModelEvidence
     readonly Func<bool>? readSpecialJob;
     readonly Func<ModelRequest,ModelInspection>? inspect;
     readonly Func<(float Height,float Width)>? readProfile;
+    readonly Func<IFileSystem,string[]?> archivePaths;
+    readonly Func<string[],IModelAssets> openAssets;
     readonly object sync=new();
     IFileSystem? files;
     string[]? archives;
+    DefinitionGeneration definitions=new();
     readonly Dictionary<ModelKey,Entry> cache=[];
     readonly Queue<Job> pending=[];
     bool worker;
@@ -32,7 +35,30 @@ public sealed class TollModelEvidence
         public ModelInspection? Result;
         public readonly object Diagnostic=new{revision=Interlocked.Increment(ref nextRevision),key.Model,key.Variant,key.Parts,key.Height,key.Width,key.GeometryStamp};
     }
-    sealed record Job(IFileSystem Source,ModelRequest Request,Entry Entry);
+    sealed record Job(DefinitionGeneration Definitions,ModelRequest Request,Entry Entry);
+    sealed record DefinitionCatalog(IReadOnlyDictionary<string,string> Models,
+        IReadOnlySet<string> NonSolid,IReadOnlyDictionary<string,Unit> Hookups);
+    // Only detached definition data survives an idle worker. Archive readers
+    // and mutable geometry remain owned by each worker batch. Jobs retain
+    // their source generation, so old work cannot populate a new source cache.
+    sealed class DefinitionGeneration
+    {
+        readonly object sync=new();
+        DefinitionCatalog? cached;
+        public DefinitionCatalog Read(IModelAssets assets)
+        {
+            lock(sync) {
+                if(cached!=null)return cached;
+                var models=ReadModels(assets.Files);
+                var (nonSolid,hookups)=ReadHookupDefinitions(assets);
+                var result=new DefinitionCatalog(models,nonSolid,hookups);
+                // Both loads must finish. A missing file could contain a
+                // conflicting definition, so a partial catalog grants nothing.
+                cached=result;
+                return result;
+            }
+        }
+    }
     internal sealed record ModelRequest(string Model,string Variant,string[] Parts,bool SpecialJob,PrefabDescriptor Descriptor,string[] Archives,
         float Height=TollOptions.StandardLaneHeight,float Width=TollOptions.StandardLaneWidth);
     public sealed record ModelInspection(IReadOnlyDictionary<int,TollPayment> Payments,bool[] BlockedCurves)
@@ -56,8 +82,10 @@ public sealed class TollModelEvidence
 
     public TollModelEvidence(Func<IFileSystem?> readFiles,Func<bool>? readSpecialJob=null,Func<(float Height,float Width)>? readProfile=null)
         :this(readFiles,readSpecialJob,null,readProfile) { }
-    internal TollModelEvidence(Func<IFileSystem?> readFiles,Func<bool>? readSpecialJob,Func<ModelRequest,ModelInspection>? inspect,Func<(float Height,float Width)>? readProfile=null)
-    {this.readFiles=readFiles;this.readSpecialJob=readSpecialJob;this.inspect=inspect;this.readProfile=readProfile;}
+    internal TollModelEvidence(Func<IFileSystem?> readFiles,Func<bool>? readSpecialJob,Func<ModelRequest,ModelInspection>? inspect,Func<(float Height,float Width)>? readProfile=null,
+        Func<IFileSystem,string[]?>? archivePaths=null,Func<string[],IModelAssets>? openAssets=null)
+    {this.readFiles=readFiles;this.readSpecialJob=readSpecialJob;this.inspect=inspect;this.readProfile=readProfile;
+        this.archivePaths=archivePaths??IndependentAssets.SnapshotPaths;this.openAssets=openAssets??(paths=>new IndependentAssets(paths));}
 
     public IReadOnlyDictionary<int,TollPayment> Read(ParsedPrefab prefab)
     {
@@ -141,7 +169,12 @@ public sealed class TollModelEvidence
         var current=readFiles();var descriptor=prefab.Descriptor;
         if(current==null||descriptor==null)return null;
         lock(sync) {
-            if(!ReferenceEquals(current,files)) {files=current;archives=inspect==null?IndependentAssets.SnapshotPaths(current):[];cache.Clear();}
+            if(!ReferenceEquals(current,files)) {
+                // Snapshot first: a failed source change cannot tag old
+                // archives, definitions or certificates as the new source.
+                var nextArchives=inspect==null?archivePaths(current):[];
+                files=current;archives=nextArchives;cache.Clear();definitions=new();
+            }
             if(archives==null)return null;
             var parts=prefab.Prefab.AdditionalParts.Select(p=>p.ToString()).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
             var profile=readProfile?.Invoke()??(TollOptions.StandardLaneHeight,TollOptions.StandardLaneWidth);
@@ -178,7 +211,7 @@ public sealed class TollModelEvidence
             foreach(var signal in descriptor.Semaphores)
                 copy.Semaphores.Add(new(){SemaphoreId=signal.SemaphoreId,Position=signal.Position});
             var entry=new Entry(key);cache.Add(key,entry);
-            pending.Enqueue(new(current,new(key.Model,key.Variant,parts,key.SpecialJob,copy,archives,key.Height,key.Width),entry));
+            pending.Enqueue(new(definitions,new(key.Model,key.Variant,parts,key.SpecialJob,copy,archives,key.Height,key.Width),entry));
             if(!worker) {worker=true;ThreadPool.QueueUserWorkItem(_=>RunWorker());}
             // A larger completed corridor can safely prove a smaller one.
             // Still schedule the exact smaller profile: a blocked larger box
@@ -214,8 +247,8 @@ public sealed class TollModelEvidence
 
     void RunWorker()
     {
-        IndependentAssets? owned=null;IFileSystem? source=null;Dictionary<string,string>? models=null;HashSet<string>? nonSolid=null;
-        Dictionary<string,Unit>? tollUnits=null;
+        IModelAssets? owned=null;DefinitionGeneration? source=null;IReadOnlyDictionary<string,string>? models=null;IReadOnlySet<string>? nonSolid=null;
+        IReadOnlyDictionary<string,Unit>? tollUnits=null;
         StaticHookupGeometry? childGeometry=null;
         try {
             while(true) {
@@ -225,15 +258,18 @@ public sealed class TollModelEvidence
                 try {
                     if(inspect!=null)result=inspect(job.Request);
                     else {
-                        if(!ReferenceEquals(source,job.Source)) {
-                            owned?.Dispose();owned=new(job.Request.Archives);source=job.Source;models=ReadModels(owned.Files);
-                            (nonSolid,tollUnits)=ReadHookupDefinitions(owned);
+                        if(!ReferenceEquals(source,job.Definitions)) {
+                            owned?.Dispose();owned=null;source=null;
+                            owned=openAssets(job.Request.Archives);
+                            var catalog=job.Definitions.Read(owned);
+                            models=catalog.Models;nonSolid=catalog.NonSolid;tollUnits=catalog.Hookups;
                             childGeometry=new(owned.Files,tollUnits,nonSolid);
+                            source=job.Definitions;
                         }
                         var request=job.Request;
                         if(!models!.TryGetValue(request.Model,out var pmd))result=Reject("Mautmodell fehlt im Definitionskatalog: "+request.Model);
                         else {
-                            var model=Model.Open(pmd,owned!.Files);
+                            var model=owned!.ReadModel(pmd);
                             childGeometry!.BeginInspection();
                             result=InspectModel(request.Descriptor,model,request.Variant,request.Parts,
                                 owned.Files.ReadAllBytes(Path.ChangeExtension(pmd,".pmg")),request.SpecialJob,nonSolid,tollUnits,childGeometry.Read,request.Height,request.Width,()=>childGeometry.Movers)
@@ -368,12 +404,14 @@ public sealed class TollModelEvidence
         }
         return true;
     }
-    static (HashSet<string>,Dictionary<string,Unit>) ReadHookupDefinitions(IndependentAssets assets)
+    static (HashSet<string>,Dictionary<string,Unit>) ReadHookupDefinitions(IModelAssets assets)
     {
         var known=new Dictionary<string,bool>(StringComparer.Ordinal);
         var tolls=new Dictionary<string,Unit>(StringComparer.Ordinal);
         foreach(var file in assets.FilesBelow("/unit/hookup").Where(p=>p.EndsWith(".sii",StringComparison.Ordinal))) {
-            SiiFile definitions;try {definitions=SiiFile.Open(file,assets.Files);}catch {continue;}
+            SiiFile definitions;
+            try {definitions=SiiFile.Open(file,assets.Files);}
+            catch(Exception ex) {throw new InvalidDataException("Hookup-Katalog unvollständig: "+file,ex);}
             foreach(var unit in definitions.Units) {
                 bool harmless=IsNonSolidHookup(unit);
                 known[unit.Name]=harmless && (!known.TryGetValue(unit.Name,out bool previous)||previous);

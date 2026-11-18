@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.4.10 – Katalogwiederverwendung, Kandidat noch nicht installiert
+
+- Behält vollständig geladene Modell- und Hookup-Kataloge über leere Arbeitswarteschlangen hinweg, gebunden an die jeweilige Dateisystemgeneration. Archive und Modellgeometrie bleiben getrennt verwaltet.
+- Korrigiert einen teilweise übernommenen Quellenwechsel bei fehlgeschlagener Archivabfrage. Unlesbare Hookup-Dateien dürfen keinen Teilkatalog mit möglicherweise falscher Zahlart freigeben.
+- 260 Integrationsprüfungen und 307 isolierte Host-/Plugin-Assertions bestehen. Keine Änderung von Ausgabealtergrenzen oder Fahrregelung. Die Ursache der zusätzlich aufgezeichneten 164-ms-Ausgabepausen ist noch offen. [Befund und Grenzen](REVIEW-0.4.10.md).
+
 ## 0.4.9 – Kreuzungsfix installiert, Spielabnahme offen
 
 - Korrigiert die native Prefab-Graphsuche: nur gerichtete Nachfolgeverbindungen, keine Mischung mit Rückverbindungen. Gültige Alternativen bleiben erhalten; reale fehlerhafte Kreuzungsroute im Gegenlauf ausgeschlossen.

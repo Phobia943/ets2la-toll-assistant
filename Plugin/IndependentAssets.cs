@@ -5,7 +5,14 @@ using TruckLib.HashFs;
 namespace MautAssistent;
 
 /// <summary>Own archive streams: native HashFS readers seek a shared stream.</summary>
-internal sealed class IndependentAssets : IDisposable
+internal interface IModelAssets : IDisposable
+{
+    IFileSystem Files {get;}
+    IEnumerable<string> FilesBelow(string root);
+    TruckLib.Models.Model ReadModel(string path)=>TruckLib.Models.Model.Open(path,Files);
+}
+
+internal sealed class IndependentAssets : IModelAssets
 {
     readonly List<IDisposable> readers=[];
     public IFileSystem Files {get;}
