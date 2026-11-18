@@ -23,7 +23,7 @@ public sealed partial class TollPlugin
     bool throttleDeliveryWarningShown;
     public string SpeedControlStatus {get {lock(sync) {
         if(!State.EnableAssists||longitudinalSnapshot is not { } sample)return "Eigene Geschwindigkeitsregelung ausgeschaltet. Start mit F8; Spieltempomat ausgeschaltet lassen.";
-        if(sample.Output.ThrottleDeliveryMissing)return "Gaseingang fehlt: Beschleunigung ausgesetzt. Ins Spiel wechseln, manuell übernehmen und erst danach neu mit F8 starten.";
+        if(sample.Output.DeliveryMissing)return "Pedalempfang unterbrochen: Gas gesperrt, aktuelle Bremsgrenzen bleiben aktiv. Ins Spiel wechseln, mit Bremse/F9 übernehmen und erst danach neu mit F8 starten.";
         string action=sample.Output.Holding?"Halten":sample.Output.Brake>0?"Bremsen":sample.Output.Throttle>0?"Beschleunigen":"Rollen";
         return $"Eigene Regelung: Ziel {sample.Input.TargetSpeed*3.6:F0} km/h · angefordert: {action}.";
     }}}
@@ -129,7 +129,7 @@ public sealed partial class TollPlugin
                     (dynamics==null||simulationDynamics.Read(clock.Elapsed.TotalSeconds,Stopwatch.GetTimestamp()) is not { } currentDynamics||
                     currentDynamics.Origin!=dynamics.Value.Origin))return;
                 if(result.Fault) {
-                    Disarm(result.DeliveryMissing?"Pedalbefehle werden im Spiel nicht wirksam – manuell übernehmen.":"Eigene Geschwindigkeitsregelung: "+result.Reason);
+                    Disarm("Eigene Geschwindigkeitsregelung: "+result.Reason);
                     return;
                 }
                 if(result.ManualRequired) {
@@ -167,12 +167,12 @@ public sealed partial class TollPlugin
         longitudinalSnapshot=new(DateTimeOffset.UtcNow,issuedAt,epoch,telemetryAt,input,result,speedBounds.ToArray(),published){
             TrafficEvidence=longitudinalTrafficEvidence,DynamicsOrigin=dynamics?.Origin,InputContext=inputContextSnapshot,
             InputSample=deliverySample,InputDiagnosis=deliverySample==null?null:GameInputDiagnosis.Evaluate(deliverySample,inputContextSnapshot,Stopwatch.GetTimestamp(),Stopwatch.Frequency)};
-        if(!result.ThrottleDeliveryMissing)throttleDeliveryWarningShown=false;
+        if(!result.DeliveryMissing)throttleDeliveryWarningShown=false;
         else if(published&&!throttleDeliveryWarningShown) {
             throttleDeliveryWarningShown=true;
             _=Task.Run(()=> {
                 if(!State.EnableAssists||CaptureLongitudinalEpoch()!=epoch)return;
-                try {notify("Gaseingang fehlt", "Das Spiel meldet den angeforderten Gaseingang nicht. Beschleunigung ist ausgesetzt; bitte ins Spiel wechseln und manuell übernehmen. Daraus allein wird keine Notbremsung ausgelöst.");}
+                try {notify("Pedalempfang unterbrochen", "Das Spiel übernimmt die Pedalbefehle nicht zuverlässig. Gas ist gesperrt; Bremsgrenzen der aktuellen Fahrsituation bleiben wirksam. Ins Spiel wechseln, mit Bremse/F9 übernehmen und erst danach neu mit F8 starten. Der Empfangsausfall allein löst keine Notbremsung aus.");}
                 catch { /* A failed notification cannot alter driving output. */ }
             });
         }

@@ -79,8 +79,8 @@ public static class LongitudinalControllerTests
                 input=branch switch{0=>input with{PlannedHold=true,StopIdentity="held-gate"},1=>input with{Emergency=true},_=>input with{AccelerationSafetyLimit=-7}};
                 failed=c.Step(input);
             }
-            check(failed!.DeliveryMissing&&failed.Fault&&failed.Throttle==0&&failed.Brake>0,
-                "Unapplied brake feedback is diagnosed in every hold/full-brake branch: "+branch);
+            check(failed!.DeliveryMissing&&failed.BrakeDeliveryMissing&&!failed.Fault&&failed.Throttle==0&&failed.Brake>0,
+                "Missing logical brake receipt preserves current hold/full-brake needs without inventing a fault latch: "+branch);
         }
     }
 

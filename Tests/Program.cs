@@ -51,6 +51,7 @@ void Run()
     void Assert(bool v,string message="Assertion failed") {if(!v)throw new Exception(message);}
     Check("Own longitudinal controller preserves safety, epochs and pedal ownership",()=>LongitudinalControllerTests.SafetyAndOwnership(Assert));
     Check("Own longitudinal controller coasts, holds, resumes and rejects missing delivery",()=>LongitudinalControllerTests.CoastStopsAndFeedback(Assert));
+    Check("Pedal receipt loss cannot invent an emergency or replay expired braking",()=>DeliveryInterruptionReviewTests.Run(Assert));
     Check("Own longitudinal controller drives loaded and downhill vehicle simulations",()=>LongitudinalControllerTests.Dynamics(Assert));
     Check("Own traffic controller separates lanes, levels, stopped traffic and closing vehicles",()=>TrafficSpeedTests.Run(Assert));
     Check("Independent longitudinal review rejects oncoming and repeated-route geometry errors",()=>OwnLongitudinalReviewTests.TrafficGeometry(Assert));

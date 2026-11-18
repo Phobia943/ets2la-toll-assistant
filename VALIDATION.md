@@ -1,5 +1,11 @@
 # Fahrnachweis
 
+## 0.4.5 – Installiert, Pedal- und Lenkvorfälle getrennt
+
+218 Integrationsgruppen, 100 Logikgruppen und 304 tatsächliche Plugin-/Hostassertionen bestehen. Kritischer Gegenreview und Installerprüfung bestanden. Die eine ersetzte Plugin-Datei, ihre Sicherung und die unveränderten vier Hostdateien wurden nach dem Einbau unabhängig geprüft. Keine Anwendung gestartet; neuer Live-Nachweis offen. [Details](REVIEW-0.4.5.md).
+
+Die zwei Pedalempfangsausfälle nach längerem Heraustabben sind aufgezeichnet. Der neue Code lässt daraus allein keine technische Notbremsverriegelung entstehen, hält aktuelle Bremsgrenzen und sperrt Gas bis zur ausdrücklichen Übernahme und zum Neustart. Gezielte synthetische Fälle reproduzieren die gemessenen Bremsanforderungsgrößen, nicht sämtliche Zwischenframes der Fahrt. Der spätere Ausfall frischer Lenkbefehle bleibt ein separater offener Befund; die nachträgliche App-Pausemeldung ist kein Beleg seiner Ursache.
+
 ## 0.4.4 – Installiert, automatische Zahlung noch im Spiel zu prüfen
 
 217 Integrationsgruppen, 99 Logikgruppen, 299 isolierte Host-/Produktassertionen, 70 Aufnahmeprüfungen und drei Inventurtests bestehen. Kritischer Code- und Installerreview abgeschlossen. Alle fünf Paketdateien und die fünf Sicherungen sind nach dem Einbau unabhängig per SHA256 bestätigt. Keine Anwendung gestartet; Spiel-SDK, Fahrzeugmessung und Pedaleinstellung unverändert. [Konkrete Nachweise und Grenzen](REVIEW-0.4.4.md).

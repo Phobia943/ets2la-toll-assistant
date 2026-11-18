@@ -512,6 +512,47 @@ internal static class LongitudinalPluginReplay
         Check(gas()==0&&brake()==0&&(bool)resumed.GetType().GetProperty("ThrottleDeliveryMissing")!.GetValue(resumed)!&&
             !(bool)resumed.GetType().GetProperty("Fault")!.GetValue(resumed)!,
             "Actual plugin pause/resume cannot silently clear the existing propulsion suspension even when received/effective gas recovers");
+        // Real Tick/host regression: missing brake receipts must keep producing
+        // normal commands. Run the actual 150ms producer watchdog throughout,
+        // not just a pure controller assertion that could hide a replacement
+        // emergency caused by stopped publication.
+        Restore();Set(plugin,"speed",15d);Set(plugin,"observedAcceleration",0d);
+        Set(plugin,"readLongitudinalTraffic",injectedTraffic);
+        traffic=Pure("TrafficSpeedDecision",-1.1f,false,"Authored current scene brake bound",null,null);
+        bool ordinaryContinues=true,steeringContinues=true;
+        void ReceiptGapTick() {
+            PedalPhysics(.29f,.29f);Send("LaneAssist.SteeringCorrection",0,.2f);Tick();RawStore(OwnMessage());
+            Set(plugin,"monitorSteering",true);Set(plugin,"steeringMonitoringLive",true);
+            Set(plugin,"requireHostCompatibility",true);
+            try {type.GetMethod("CheckLongitudinalOutput",All)!.Invoke(plugin,null);}
+            finally {Set(plugin,"requireHostCompatibility",false);}
+            frame(false);
+            ordinaryContinues&=state.GetType().GetProperty("EnableAssists")!.GetValue(state) is true&&
+                !(bool)Get(plugin,"faultBrake")!.GetType().GetProperty("Latched")!.GetValue(Get(plugin,"faultBrake"))!;
+            steeringContinues&=steering()>.19;
+        }
+        for(int i=0;i<35;i++){ReceiptGapTick();Thread.Sleep(50);}
+        var brakeMissing=OutputNow();
+        Check(ordinaryContinues&&steeringContinues&&gas()==0&&brake()>0&&brake()<1&&
+            (bool)brakeMissing.GetType().GetProperty("BrakeDeliveryMissing")!.GetValue(brakeMissing)!,
+            "Over1.7s of missing brake receipts preserve real Tick publication, healthy steering and the active150ms watchdog without technical fault braking");
+        traffic=Pure("TrafficSpeedDecision",float.NaN,true,"Authored brake reason removed",null,null);
+        ReceiptGapTick();
+        Check(gas()==0&&brake()==0&&ordinaryContinues&&steeringContinues,
+            "Removing the actual scene brake reason during receipt loss clears the physical legacy brake without replaying an old request");
+        frame(true);Check(modernPedal()==0&&steering()>.19,
+            "Receipt loss plus a now-clear scene is neutral at modern pedals while native lane steering remains available");
+        traffic=Pure("TrafficSpeedDecision",-6f,false,"Authored new immediate game hazard",null,null);
+        ReceiptGapTick();
+        Check(gas()==0&&brake()==1&&ordinaryContinues,
+            "A new current game hazard still reaches full physical braking during a delivery warning without a technical fault latch");
+        traffic=Pure("TrafficSpeedDecision",float.NaN,true,"Authored immediate hazard removed",null,null);
+        ReceiptGapTick();
+        Check(gas()==0&&brake()==0&&ordinaryContinues,
+            "The current hazard ending removes full brake immediately despite continuing receipt warnings");
+        Set(plugin,"monitorSteering",false);Set(plugin,"steeringMonitoringLive",false);
+        type.GetMethod("ResetLongitudinalWatchdog",All)!.Invoke(plugin,null);
+        Set(plugin,"readLongitudinalTraffic",null);Set(plugin,"speed",5d);
         // The same controller still has its propulsion-suspended state. Add a
         // genuine directed closed-gate path, not a precomputed TollDecision.
         Member(curve,"EndPosition",new Vector3(0,0,-70));Member(curve,"Length",70f);Member(curve,"SemaphoreId",10);

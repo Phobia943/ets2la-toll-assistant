@@ -1,5 +1,12 @@
 # Änderungen
 
+## 0.4.5 – Pedalempfangsstörung ohne technische Notbremsverriegelung
+
+- Fehlender logischer Pedalempfang sperrt Gas und meldet die Störung, ohne allein einen Fehler-Vollbremskanal zu erzeugen oder gesunde Lenkung abzuschalten. Aktuelle Gefahren-, Kurven-, Verkehrs-, Tor- und Haltegrenzen bleiben erhalten.
+- Trennt logischen Bremseneingang von effektiver Bremswirkung und verwirft während der Empfangssperre alte Integrator-/Bremszustände. Eine entfallene Anforderung wird beim Zurücktabben nicht nachgeholt.
+- Pause und Parken quittieren die Sperre nicht; manueller Eingriff und bewusster Neustart bleiben erforderlich. Keine behauptete Behebung der Hintergrundübertragung, keine Lockerung der Ausgabe-Watchdogs.
+- [Beobachtete Vorfälle, Gegenprüfungen und separater Lenkausfall](REVIEW-0.4.5.md).
+
 ## 0.4.4 – gebundene Zahlungsinteraktion und Eingabekontext
 
 - Ergänzt eine einmalige automatische Bestätigung an unterstützten manuellen Mautspuren. Stillstand, gerichtete Modellzahlzone, exakte eigene Schranke, aktuelle Route und bestätigter Spielvordergrund sind Voraussetzung. Automatische Abrechnung bleibt die bevorzugte Spurwahl; unbekannte oder am sicheren Haltepunkt unerreichbare Zahlzonen bleiben manuell.

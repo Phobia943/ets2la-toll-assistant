@@ -1,6 +1,14 @@
 # Nächste Sitzung
 
-## Maßgeblicher aktueller Stand: 0.4.4 installiert, Liveprüfung offen
+## Maßgeblicher aktueller Stand: 0.4.5 installiert, Liveprüfung offen
+
+0.4.4 wurde am 18. November gefahren. Zwei Pedalempfangsausfälle nach längerem Heraustabben lösten dessen technische Fehlerbremsung aus. 0.4.5 trennt diese Störung von einer echten Gefahrenanforderung, erhält gesunde Lenkung und aktuelle Bremsgrenzen und entfernt alte gespeicherte Bremsanforderungen. Gas bleibt bis zu manueller Übernahme und bewusstem F8 gesperrt. Nach geprüftem Prozessende wurde die eine Plugin-Datei mit Sicherung ersetzt; Installation und unveränderte Hostdateien sind per SHA256 bestätigt. Keine Anwendung gestartet. [Review, Paketidentität und Prüfungen](REVIEW-0.4.5.md).
+
+Nächster Schritt: Im Stand mit Feststellbremse ETS2LA starten, F8 zunächst auslassen, geladene 0.4.5 und Startbereitschaft prüfen. Dann Aktivierung und Controllerbremse/F9 prüfen. Eine Empfangsstörung wird nicht durch Pause, Parken oder Fokuswiederkehr quittiert; nach manuellem Übernehmen bewusst neu starten. Keine erneute blinde Hintergrundfahrt zum Nachweis der noch ungelösten tatsächlichen Übertragung.
+
+Separater Vorfall 09:19:37: etwa 158 ms ohne Lenkbefehl bei frischer Telemetrie. Die erst nach der Abschaltung erfasste Native-Meldung zur App-Pause ist kein Beleg einer vorherigen Pause. Ursache der Ausgabelücke offen, Watchdog unverändert. Automatisches Bezahlen und vollständige Mautdurchfahrt mit 0.4.4/0.4.5 weiterhin nicht nachgewiesen.
+
+## Vorheriger Installationsstand: 0.4.4
 
 0.4.4 wurde am 17. November mit Sicherung aller fünf ersetzten Dateien installiert und unabhängig gegen das versiegelte Paket geprüft. Spiel und ETS2LA waren geschlossen und wurden nicht automatisch gestartet. Die Fassung ergänzt gebundene einmalige Zahlungsinteraktion, einen unabhängigen dauerhaften Zahlungsschreiber und genaue Fokus-/Pedaldiagnose. 217 Integrationsgruppen, 99 Logikgruppen, 299 Host-/Produktprüfungen, 70 Aufnahmeprüfungen und drei Inventurtests bestehen. Kritischer Gegenreview abgeschlossen. [Paketidentität und Grenzen](REVIEW-0.4.4.md). Nicht aus einem älteren Versionsabschnitt auf den laufenden Stand schließen: Prozess und Datei jeweils neu prüfen.
 

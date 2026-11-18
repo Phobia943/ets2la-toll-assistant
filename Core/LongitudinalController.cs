@@ -15,6 +15,8 @@ public sealed record LongitudinalOutput(float Throttle,float Brake,double Target
     public bool DeliveryMissing {get;init;}
     public bool ThrottleDeliveryMissing {get;init;}
     public bool ThrottleEffectLimited {get;init;}
+    public bool BrakeDeliveryMissing {get;init;}
+    public bool BrakeEffectLimited {get;init;}
     public bool ParkingHold {get;init;}
     public bool ManualRequired {get;init;}
 }
@@ -30,7 +32,7 @@ public sealed class LongitudinalController
     long epoch;
     double filteredAcceleration,accelerationCommand,driveIntegral,brakeIntegral,deliveryMismatch,throttleMismatch;
     float throttle,brake;
-    bool holding,deliveryFault,throttleDeliveryFault,throttleEffectLimited,wasStopping;
+    bool holding,brakeDeliverySuspended,throttleDeliveryFault,throttleEffectLimited,brakeEffectLimited,wasStopping;
     double? coastSince;
     double coastTarget;
     bool coastBlocked;
@@ -41,22 +43,23 @@ public sealed class LongitudinalController
     public void Reset()
     {
         at=null;epoch=0;filteredAcceleration=accelerationCommand=driveIntegral=brakeIntegral=deliveryMismatch=throttleMismatch=0;
-        throttle=brake=0;holding=deliveryFault=throttleDeliveryFault=throttleEffectLimited=wasStopping=false;stopOwner=null;pedalMode=0;
+        throttle=brake=0;holding=brakeDeliverySuspended=throttleDeliveryFault=throttleEffectLimited=brakeEffectLimited=wasStopping=false;stopOwner=null;pedalMode=0;
         coastSince=null;coastTarget=0;coastBlocked=false;
         ParkingHeld=false;
     }
     public void Pause()
     {
-        bool suspended=throttleDeliveryFault;
-        Reset();throttleDeliveryFault=suspended;
+        bool gasSuspended=throttleDeliveryFault,brakeSuspended=brakeDeliverySuspended;
+        Reset();throttleDeliveryFault=gasSuspended;brakeDeliverySuspended=brakeSuspended;
     }
     LongitudinalOutput Neutral(string reason,bool fault=false)
     {Reset();return new(0,0,0,reason,Fault:fault);}
     public LongitudinalOutput Step(LongitudinalInput input)
     {
         var result=StepCore(input);
-        return result with {DeliveryMissing=result.DeliveryMissing||throttleDeliveryFault,
-            ThrottleDeliveryMissing=throttleDeliveryFault,ThrottleEffectLimited=throttleEffectLimited};
+        return result with {DeliveryMissing=result.DeliveryMissing||throttleDeliveryFault||brakeDeliverySuspended,
+            ThrottleDeliveryMissing=throttleDeliveryFault,ThrottleEffectLimited=throttleEffectLimited,
+            BrakeDeliveryMissing=brakeDeliverySuspended,BrakeEffectLimited=brakeEffectLimited};
     }
     LongitudinalOutput StepCore(LongitudinalInput input)
     {
@@ -76,7 +79,7 @@ public sealed class LongitudinalController
         if(input.Emergency) {
             ObserveDelivery(input,dt);
             driveIntegral=brakeIntegral=0;throttle=0;brake=1;accelerationCommand=-MaximumBrakeDeceleration;
-            return new(0,1,accelerationCommand,"Emergency brake requested",Fault:deliveryFault||!input.OutputAvailable){DeliveryMissing=deliveryFault};
+            return new(0,1,accelerationCommand,"Emergency brake requested",Fault:!input.OutputAvailable);
         }
         if(!double.IsFinite(input.Speed)||input.Speed>100||!double.IsFinite(input.Acceleration)||Math.Abs(input.Acceleration)>20||
             !double.IsFinite(input.Pitch)||Math.Abs(input.Pitch)>.35)return Neutral("Invalid control measurement",true);
@@ -93,7 +96,7 @@ public sealed class LongitudinalController
             holding=wasStopping=false;stopOwner=null;pedalMode=0;
         }
         ParkingHeld=parkStand;
-        if(parkStand)return new(0,0,0,"Stationary parking brake: pedals neutral",Fault:deliveryFault){ParkingHold=true};
+        if(parkStand)return new(0,0,0,"Stationary parking brake: pedals neutral"){ParkingHold=true};
         double speed=Math.Max(0,input.Speed);
         filteredAcceleration=first?input.Acceleration:filteredAcceleration+(input.Acceleration-filteredAcceleration)*(1-Math.Exp(-dt/.15));
         if(input.AccelerationSafetyLimit is double invalidLimit&&!double.IsFinite(invalidLimit)||
@@ -114,16 +117,23 @@ public sealed class LongitudinalController
         }
         holding=shouldHold;stopOwner=owner;wasStopping=stopping;
         bool mismatched=ObserveDelivery(input,dt);
+        if(brakeDeliverySuspended||throttleDeliveryFault) {
+            // A transport interruption is not an obstacle. Remove learned and
+            // slew-limited pedal history before evaluating THIS frame's scene
+            // limits; focus return must never replay an expired brake request.
+            driveIntegral=brakeIntegral=accelerationCommand=0;
+            throttle=brake=0;pedalMode=0;
+        }
         bool actualKnown=Pedal(input.ActualThrottle)&&Pedal(input.ActualBrake);
         if(hardLimit<=-MaximumBrakeDeceleration) {
             driveIntegral=brakeIntegral=0;throttle=0;brake=1;accelerationCommand=hardLimit;
-            return new(0,1,hardLimit,"Safety bound requires full braking",Fault:deliveryFault){DeliveryMissing=deliveryFault};
+            return new(0,1,hardLimit,"Safety bound requires full braking");
         }
         if(shouldHold) {
             driveIntegral=brakeIntegral=0;throttle=0;brake=.4f;accelerationCommand=Math.Min(0,hardLimit);
             if(!double.IsFinite(accelerationCommand))accelerationCommand=0;
             if(hardLimit<0)brake=Math.Max(brake,(float)Math.Clamp(-hardLimit/MaximumBrakeDeceleration,0,1));
-            return new(0,brake,accelerationCommand,known?"Planned standstill":"Route unknown: planned standstill",true,deliveryFault){DeliveryMissing=deliveryFault};
+            return new(0,brake,accelerationCommand,known?"Planned standstill":"Route unknown: planned standstill",true);
         }
 
         if(input.StopDistance is double stopDistance) {
@@ -134,7 +144,7 @@ public sealed class LongitudinalController
         }
         if(hardLimit<=-MaximumBrakeDeceleration) {
             driveIntegral=brakeIntegral=0;throttle=0;brake=1;accelerationCommand=hardLimit;
-            return new(0,1,hardLimit,"Stop envelope requires full braking",Fault:deliveryFault){DeliveryMissing=deliveryFault};
+            return new(0,1,hardLimit,"Stop envelope requires full braking");
         }
         double error=target-speed;
         if(target!=coastTarget||speed<=target){coastSince=null;coastBlocked=false;coastTarget=target;}
@@ -149,7 +159,7 @@ public sealed class LongitudinalController
         bool coast=coastCandidate&&!coastBlocked;
         if(coast) {
             throttle=brake=0;driveIntegral=brakeIntegral=deliveryMismatch=0;accelerationCommand=0;pedalMode=0;
-            return new(0,0,0,"Coasting toward soft cruise target",Fault:deliveryFault){Coasting=true,DeliveryMissing=deliveryFault};
+            return new(0,0,0,"Coasting toward soft cruise target"){Coasting=true};
         }
         double desired=Math.Clamp(error*.55,-1.8,MaximumAcceleration);
         // StopDistance caps the speed profile; it must not turn a distant stop
@@ -163,10 +173,10 @@ public sealed class LongitudinalController
         accelerationCommand=Math.Min(comfortable,hardLimit);
         accelerationCommand=Math.Clamp(accelerationCommand,-MaximumBrakeDeceleration,MaximumAcceleration);
 
-        if(deliveryFault) {
+        if(brakeDeliverySuspended) {
             driveIntegral=brakeIntegral=0;throttle=0;
             brake=hardLimit<0?(float)Math.Clamp(-hardLimit/MaximumBrakeDeceleration,.05,1):0;
-            return new(0,brake,Math.Min(0,accelerationCommand),"Applied pedals do not follow the command",Fault:true){DeliveryMissing=true};
+            return new(0,brake,Math.Min(0,accelerationCommand),"Brake input not received: propulsion suspended; current scene braking only");
         }
         double gravity=9.81*Math.Sin(input.Pitch);
         double force=accelerationCommand+gravity;
@@ -212,11 +222,14 @@ public sealed class LongitudinalController
         bool missingThrottle=Pedal(input.ReceivedThrottle)&&throttle>.15f&&input.ReceivedThrottle!.Value<throttle-.15f;
         throttleMismatch=missingThrottle?throttleMismatch+dt:0;
         if(throttleMismatch>=.35)throttleDeliveryFault=true;
-        bool missingBrake=Pedal(input.ActualBrake)&&brake>.15f&&input.ActualBrake!.Value<brake-.15f;
+        brakeEffectLimited=Pedal(input.ActualBrake)&&brake>.15f&&input.ActualBrake!.Value<brake-.15f;
+        // Logical receipt and simulated effect are separate observations for
+        // the brake too. Neither is, by itself, a physical emergency reason.
+        bool missingBrake=Pedal(input.ReceivedBrake)&&brake>.15f&&input.ReceivedBrake!.Value<brake-.15f;
         deliveryMismatch=missingBrake?deliveryMismatch+dt:0;
-        if(deliveryMismatch>=.35)deliveryFault=true;
+        if(deliveryMismatch>=.35)brakeDeliverySuspended=true;
         // Freeze adaptation on either missing input or suppressed effective gas.
-        return missingThrottle||throttleEffectLimited||missingBrake;
+        return missingThrottle||throttleEffectLimited||missingBrake||brakeEffectLimited;
     }
     static bool Pedal(float? value)=>value is >=0 and <=1&&float.IsFinite(value.Value);
     static double Move(double value,double target,double amount)=>target>value?Math.Min(target,value+amount):Math.Max(target,value-amount);

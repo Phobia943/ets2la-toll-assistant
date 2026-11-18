@@ -12,6 +12,7 @@
     <Compile Include="../Tests/SimulationDynamicsTests.cs" Link="SimulationDynamicsTests.cs" />
     <Compile Include="../Tests/ManualPaymentTests.cs" Link="ManualPaymentTests.cs" />
     <Compile Include="../Tests/LongitudinalControllerTests.cs" Link="LongitudinalControllerTests.cs" />
+    <Compile Include="../Tests/DeliveryInterruptionReviewTests.cs" Link="DeliveryInterruptionReviewTests.cs" />
     <Compile Include="../Tests/TrafficSpeedTests.cs" Link="TrafficSpeedTests.cs" />
     <Compile Include="../Tests/OwnLongitudinalReviewTests.cs" Link="OwnLongitudinalReviewTests.cs" />
     <Compile Include="../Tools/Research/PmcEnvelope.cs" Link="Research/PmcEnvelope.cs" />

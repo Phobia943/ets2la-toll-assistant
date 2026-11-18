@@ -141,10 +141,10 @@ public static class OwnLongitudinalReviewTests
             var controller=new LongitudinalController();LongitudinalOutput? result=null;
             for(int i=0;i<80;i++)result=controller.Step(new(1+i*.02,1,true,false,true,full?10:0,0,0,
                 AccelerationSafetyLimit:full?-4.5:null,PlannedHold:!full,ActualThrottle:0,ActualBrake:0,
-                StopIdentity:"unchanged-physical-stop"));
-            check(result?.DeliveryMissing==true&&result.Fault,
-                full?"Unapplied full safety braking is observable even through the early full-brake return":
-                    "Unapplied unchanged hold braking must not reset or bypass delivery monitoring forever");
+                StopIdentity:"unchanged-physical-stop",ReceivedBrake:0));
+            check(result?.BrakeDeliveryMissing==true&&result.DeliveryMissing&&!result.Fault&&result.Brake>0,
+                full?"Unreceived full safety braking stays observable without creating a separate technical fault latch":
+                    "Unreceived unchanged hold braking remains diagnosed and scene-owned without technical escalation");
         }
     }
 

@@ -1,6 +1,8 @@
 # ETS2LA Mautassistent
 
-**0.4.4 ergänzt die automatische Bestätigung an belegten manuellen Zahlspuren und eine genauere Eingabediagnose.** Der Helfer interagiert einmal im bestätigten Stillstand an einer eindeutig zugeordneten Zahlzone und wartet auf die eigene Schrankenöffnung. Nicht erreichbare oder unbekannte Zahlzonen bleiben manuell. Die Fassung ist offline geprüft und lokal installiert; ein Fahrnachweis steht aus. [Umfang und Grenzen](REVIEW-0.4.4.md).
+**0.4.5 ist als Korrektur der Pedal-Notbremsung lokal installiert.** Ausbleibender Pedalempfang, etwa nach einem Fensterwechsel, sperrt Gas und zeigt eine Störung an, erzeugt aber allein keinen verriegelten Fehlerhalt mehr. Aktuelle Bremsgrenzen bleiben wirksam; ein entfallener Bremsgrund wird nicht nachgeholt. Dies behebt nicht die tatsächliche Hintergrundübertragung. [Prüfungen und Grenzen](REVIEW-0.4.5.md).
+
+**Die Funktionen aus 0.4.4 bleiben enthalten: automatische Bestätigung an belegten manuellen Zahlspuren und genauere Eingabediagnose.** Der Helfer interagiert einmal im bestätigten Stillstand an einer eindeutig zugeordneten Zahlzone und wartet auf die eigene Schrankenöffnung. Nicht erreichbare oder unbekannte Zahlzonen bleiben manuell. Ein Nachweis der tatsächlichen Zahlung und vollständigen Durchfahrt steht aus. [Umfang und Grenzen](REVIEW-0.4.4.md).
 
 Die [Ampel- und Physikframekorrekturen aus 0.4.3](REVIEW-0.4.3.md), die [Stillstandsbehandlung aus 0.4.2](REVIEW-0.4.2.md), die [Gasüberwachung aus 0.4.1](REVIEW-0.4.1.md) und die eigene Geschwindigkeitsregelung aus [0.4.0](REVIEW-0.4.0.md) bleiben erhalten. Für den geschützten Zahlungsimpuls benötigt 0.4.4 das zusammengehörige neue Hostpaket.
 
