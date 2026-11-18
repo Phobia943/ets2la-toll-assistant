@@ -1,6 +1,12 @@
-# Lokale Hostanpassung 0.4.0-host-1
+# Lokale Hostanpassung 0.4.9-host-1
 
 Das Werkzeug bereitet geprüfte Kopien von ETS2LA-Komponenten vor. Es installiert und startet nichts. Herstellerbibliotheken, vorbereitete DLLs und private Aufzeichnungen bleiben außerhalb des öffentlichen Repositorys. Die hier beschriebene Prüfung ist isoliert; sie ersetzt keine Fahrt im Spiel.
+
+## Gerichtete Prefab-Suche
+
+Die gepinnte ursprüngliche `TraverseCurveUntilTarget` mischt `PreviousLines` und `NextLines`. Die tatsächliche Interpolation fährt aber jede gespeicherte Kurve von Start nach Ende, auch bei `CurveDirection.Backward`. Die vorbereitete Fassung folgt deshalb ausschließlich geometrisch verbundenen `NextLines`. Diese Änderung wirkt bereits bei der Erzeugung aller Haupt- und Alternativwege; der spätere Kontinuitätsabgleich kann keinen künstlich rückwärts zusammengesetzten Weg mehr aus dieser Quelle auswählen. Richtungsprüfung und Ausgabefristen bleiben unverändert.
+
+`PrefabRoutingReplay` prüft den tatsächlich umgeschriebenen Methodenrumpf einschließlich getrennter Gegenfahrbahnen, fehlender Anschlüsse und innerer Interpolation bei ungleichen Kurvenlängen. Die separate reale Kartenprobe und ihre Aussagegrenzen sind in [REVIEW-0.4.9](../../REVIEW-0.4.9.md) dokumentiert. Dieser Fix behebt weder die Nachlaufkurve eines Aufliegers noch sämtliche anderen möglichen Planungsfehler.
 
 ## Exklusive normale Pedalquelle
 

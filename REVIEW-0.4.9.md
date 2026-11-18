@@ -30,6 +30,8 @@ Kandidat-Plugin SHA-256: `00F6280BF75BB93F05A6D805E4A4BA5DBAA30F822F89FA8AE0840B
 Geprüfter Game-Kandidat SHA-256: `4276FE0CC041422FFCE0CD30561508FB78FA127B745B89EA06F6BC35010C029A`.
 Paketmanifest SHA-256: `29FBD1DF1D5A69C777F13B699E9807125E279FC33CEBCE13EDED129D6252B976`.
 
+Der unabhängig geprüfte Installer tauscht ausschließlich fünf Appdateien nach vollständiger Sicherung aus. 17 isolierte Installations-/Rollback-Simulationen bestehen, einschließlich aller fünf Abbruchpositionen, Prozessneustart, Fremdbytes und umgeleiteter Pfade. Der bestehende Szenenworker wird nur auf unveränderte Identität geprüft; Spieldateien bleiben außerhalb der Schreibmenge. Ein laufendes Spiel ist zulässig, ETS2LA samt Worker muss geschlossen sein. Installer SHA-256: `4F0480ED2D4CFC4D55B72F6E5EEE5D1EBC102FA4942A5A36278E2A5100AB4CCA`. Noch keine Installation durchgeführt.
+
 ## Weitere Beobachtungen und Grenzen
 
 Der 0.4.8-Parktest hielt die Pedale über mehr als 40 Sekunden neutral. In der anschließenden Vordergrundfahrt sind sowohl Gas- als auch Bremswirkung im Spiel belegt. Die gemeldete manuelle Übernahme unmittelbar nach dem Parktest ist in der betreffenden Aufnahme nicht eindeutig enthalten und wird deshalb nicht als unabhängig bestätigter Testabschluss gezählt. Der Nutzer bestätigte den späteren bewussten Start und beauftragte die weitere Beobachtung.
