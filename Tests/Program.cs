@@ -50,6 +50,7 @@ void Run()
     void Check(string name, Action test) { if(args is ["--filter",var filter]&&!name.Contains(filter,StringComparison.OrdinalIgnoreCase))return;try {test(); results.Add("PASS "+name);} catch(Exception ex) {results.Add("FAIL "+name+": "+ex); } }
     void Assert(bool v,string message="Assertion failed") {if(!v)throw new Exception(message);}
 #if INTEGRATION
+    Check("Static road worker resolves installer layout after host shadow copy",()=>StaticRoadWorkerReviewTests.ShadowCopyDirectory(Assert));
     Check("Control tick diagnosis freezes the original blocked producer at pedal failure",()=>ControlTickDiagnosticReviewTests.BlockedProducer(Assert));
     Check("Control tick diagnosis cannot refresh expired decision authority",()=>ControlTickDiagnosticReviewTests.LateDecision(Assert));
     Check("Control tick diagnosis preserves older completion while a newer Tick runs",()=>ControlTickDiagnosticReviewTests.OverlappingTicks(Assert));

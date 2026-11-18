@@ -1,6 +1,9 @@
 using System.Diagnostics;
 using System.Numerics;
 using System.Text;
+using System.Reflection;
+using System.Linq.Expressions;
+using System.Runtime.Loader;
 using MautAssistent;
 using TruckLib;
 using W=MautAssistent.StaticRoadWorkerProtocol;
@@ -52,6 +55,40 @@ internal static class StaticRoadWorkerReviewTests
         check(client.Read(route,Vector3.Zero,40,1)==null&&scheduled==1,"Thread start failures have a bounded retry delay");
         client.Dispose();
         check(client.Read(route,Vector3.Zero,40,1)==null&&scheduled==1,"Disposed client schedules no work");
+    }
+    internal static void ShadowCopyDirectory(Action<bool,string> check)
+    {
+        // Mirror the pinned host: only the plugin assembly is shadow-copied.
+        // No host provider or output class is instantiated in this fixture.
+        string folder=Path.Combine(Path.GetTempPath(),"maut-worker-shadow-"+Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        string copy=Path.Combine(folder,Path.GetFileName(typeof(StaticRoadWorkerClient).Assembly.Location));
+        File.Copy(typeof(StaticRoadWorkerClient).Assembly.Location,copy);
+        var context=new AssemblyLoadContext("worker-shadow-review-"+Guid.NewGuid().ToString("N"),true);
+        context.Resolving+=(_,name)=>AssemblyLoadContext.Default.LoadFromAssemblyName(name);
+        object? instance=null;string oldWorkingDirectory=Directory.GetCurrentDirectory();
+        try {
+            var assembly=context.LoadFromAssemblyPath(copy);
+            var type=assembly.GetType("MautAssistent.StaticRoadWorkerClient",true)!;
+            var ctor=type.GetConstructors(BindingFlags.Instance|BindingFlags.NonPublic).Single();
+            var parameters=ctor.GetParameters();
+            Delegate NullSource(Type factory)=>Expression.Lambda(factory,Expression.Constant(null,factory.GenericTypeArguments[0])).Compile();
+            Directory.SetCurrentDirectory(folder);
+            instance=ctor.Invoke([NullSource(parameters[0].ParameterType),NullSource(parameters[1].ParameterType),null,null,(Action<Action>)(_=>{})]);
+            string actual=(string)type.GetField("directory",BindingFlags.Instance|BindingFlags.NonPublic)!.GetValue(instance)!;
+            check(Path.GetFullPath(actual)==Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"Plugins","StaticRoadWorker")),
+                "A shadow-copied plugin must resolve its packaged helper from the application layout, never the temporary assembly directory");
+            check(!actual.StartsWith(folder,StringComparison.OrdinalIgnoreCase),"The temporary shadow folder has no helper payload authority");
+            check(type.GetField("process",BindingFlags.Instance|BindingFlags.NonPublic)!.GetValue(instance)==null,
+                "Path resolution never starts a worker or gameplay provider");
+        }finally {
+            Directory.SetCurrentDirectory(oldWorkingDirectory);
+            (instance as IDisposable)?.Dispose();context.Unload();
+            // Windows may retain the collectible assembly mapping until GC;
+            // leave only this uniquely named fixture when immediate cleanup
+            // is denied. Never force-delete a loaded or unrelated file.
+            try{File.Delete(copy);Directory.Delete(folder,false);}catch(Exception e) when(e is IOException or UnauthorizedAccessException){}
+        }
     }
     sealed class Marker:IFileSystem
     {

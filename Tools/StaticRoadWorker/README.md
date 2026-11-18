@@ -17,6 +17,8 @@ Build the worker **before** the final plugin build whenever its linked core/pars
 
 Package the 13 manifest-listed files from `Tools/StaticRoadWorker/bin/Release/net10.0/` in a directory named `StaticRoadWorker` immediately beside the installed plugin DLL. PDB files are optional. Do not copy another installation's manifest or use a helper from PATH. The client checks every pinned file and rejects additional DLL, EXE or JSON runtime files, including `runtimeconfig.dev.json`. Missing/changed helpers disable this optional evidence source; they never fall back to parsing meshes in the driving process.
 
+The supported installer layout is `<application base>/Plugins/MautAssistent.dll` with `<application base>/Plugins/StaticRoadWorker/`. The client resolves from `AppContext.BaseDirectory`, not `Assembly.Location`: the reviewed host copies only the plugin DLL to a temporary shadow directory before loading it. The default helper path also does not depend on the launch working directory. This is the packaged installation contract, not a claim that every host discovery path is application-base-relative.
+
 ## Process and evidence contract
 
 - One owned process and one outstanding UTF-8 JSONL request. Requests are at most 128 KiB and replies at most 8 KiB; oversized, pipelined or truncated frames are rejected.

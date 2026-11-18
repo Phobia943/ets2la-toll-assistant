@@ -8,9 +8,11 @@ Unabhängiger Gegenreview der Quellen, Prozessgrenze, Routenbindung, Tickdiagnos
 
 Ein erster vollständiger Integrationslauf wurde irrtümlich gegen die angepasste laufende Hostbibliothek gestartet: 252 Fälle bestanden, zwei Originalhost-Gegenfälle scheiterten. Der unveränderte vollständige Test wurde anschließend mit der dafür vorgesehenen, hashgeprüften Originalhost-Fixture wiederholt und bestand. Der tatsächliche angepasste Host wurde getrennt im versiegelten Host-Replay mit allen 316 Prüfungen kontrolliert.
 
-Plugin-Kandidat: `0D1094C043C60511E2996AD5104704EE0281FB51B11CB73F4AFC714ECA2956F6`.
+Plugin-Kandidat v2: `C9213A67A41F4D174B2921EFF4C35DE05A2A2274208450B0F4BE38A066508340`.
 Optionaler SDK-Messkandidat: `D7C849455AB17BC575D8A3DB87FE0FC34DAD1610043DCBD1ABF52A61242159E0`.
 Das Hilfsprogramm wird vor dem Plugin gebaut und sein vollständiges Manifest eingebettet. Paket-/Installationsprüfung sind ein eigener nachfolgender Schritt.
+
+Der abschließende Einbaureview fand einen realen Ladefehler im ersten, nie installierten Paket: Der gepinnte Host kopiert nur die Plugin-DLL in einen temporären Ordner. Eine Suche relativ zur geladenen DLL hätte dort kein Hilfsprogramm gefunden. v2 verwendet deshalb den festen geprüften Installationspfad `AppContext.BaseDirectory/Plugins/StaticRoadWorker`. Das ist der Vertrag dieses Pakets, keine allgemeine Ermittlung beliebiger Host-Pluginpfade. Die neue Regression lädt tatsächlich eine einzelne Assembly-Kopie in einem eigenen Ladekontext und verändert zusätzlich das Arbeitsverzeichnis. Sie scheiterte vor der Korrektur und besteht danach. Alle sieben Worker-Testgruppen und erneut alle 316 tatsächlichen Hostprüfungen bestehen mit dem v2-Build. Das frühere versiegelte Paket bleibt als verworfen erhalten.
 
 ## Statische Straßenhindernisse
 

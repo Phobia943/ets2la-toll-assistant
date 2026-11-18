@@ -35,7 +35,10 @@ internal sealed class StaticRoadWorkerClient:IStaticRoadChecks,IDisposable
         string? directory=null,Func<IFileSystem,string[]?>? paths=null,Action<Action>? schedule=null)
     {
         this.files=files;this.map=map;this.paths=paths??IndependentAssets.SnapshotPaths;
-        this.directory=directory??Path.Combine(Path.GetDirectoryName(typeof(StaticRoadWorkerClient).Assembly.Location)!,"StaticRoadWorker");
+        // The host shadow-copies only our DLL to Temp/PluginShadow. The
+        // installer-owned helper lives in the application layout, not beside
+        // that temporary assembly. Never depend on the launch working folder.
+        this.directory=directory??Path.Combine(AppContext.BaseDirectory,"Plugins","StaticRoadWorker");
         this.schedule=schedule??(action=>new Thread(()=>action()){IsBackground=true,Name="ETS2LA static scene IPC",Priority=ThreadPriority.BelowNormal}.Start());
     }
     public Result? Read(RouteTrace trace,Vector3 position,double horizon,long manualEpoch)
