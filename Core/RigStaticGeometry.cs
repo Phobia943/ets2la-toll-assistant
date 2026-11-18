@@ -32,6 +32,38 @@ public sealed class RigStaticGeometry
         int half=count/2;return new(min,max,start,0,Build(start,half),Build(start+half,count-half));
     }
     public sealed record CheckResult(bool Clear,double? ConflictAlong,string? Issue,int FaceChecks);
+    // World-space, explicitly active static coll meshes only. A nominal corridor
+    // overlap is an ordinary planned stop candidate, never acute hazard proof.
+    public CheckResult CheckNominal(StaticRoadCorridor corridor,int budget=30000)
+    {
+        if(corridor==null||budget is <1 or >30000)return new(false,null,"Statischer Standardkorridor fehlt",0);
+        int work=0;
+        foreach(var segment in corridor.Segments) {
+            bool Visit(Node node) {
+                if(++work>budget)throw new WorkLimit();
+                if(!Overlap(segment.Minimum,segment.Maximum,node.Minimum,node.Maximum))return false;
+                if(node.Left!=null)return Visit(node.Left)||Visit(node.Right!);
+                Span<Vector3> vertices=stackalloc Vector3[3];
+                Span<Vector3> polygon=stackalloc Vector3[4];
+                for(int i=node.Start;i<node.Start+node.Count;i++) {
+                    if(++work>budget)throw new WorkLimit();
+                    var face=faces[i];
+                    if(!Overlap(segment.Minimum,segment.Maximum,face.Minimum,face.Maximum))continue;
+                    // A collapsed triangle has no physical collision surface.
+                    // The general rig checker retains its existing contract.
+                    if(Vector3.Cross(face.Triangle.B-face.Triangle.A,face.Triangle.C-face.Triangle.A).LengthSquared()<=1e-12f)continue;
+                    vertices[0]=face.Triangle.A;vertices[1]=face.Triangle.B;vertices[2]=face.Triangle.C;
+                    int count=AboveGround(vertices,segment.Ground,polygon);
+                    for(int j=1;j+1<count;j++)
+                        if(TriangleOverlap(segment.Box,0,Vector3.Zero,Vector3.Zero,polygon[0],polygon[j],polygon[j+1]))return true;
+                }
+                return false;
+            }
+            try {if(Visit(tree))return new(false,segment.Along,null,work);}
+            catch(WorkLimit){return new(false,null,"Arbeitsbudget der statischen Standardprüfung erreicht",work);}
+        }
+        return new(true,null,null,work);
+    }
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static CheckResult CheckMovers(RigPredictionResult prediction,IReadOnlyList<ObstacleSphere> movers,Matrix4x4 modelToWorld)
     {

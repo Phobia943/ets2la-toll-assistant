@@ -4,7 +4,9 @@ namespace MautAssistent;
 public sealed partial class TollPlugin
 {
     readonly SteeringFeedGuard pedalFeedGuard=new();
-    internal sealed record PedalFailure(DateTimeOffset Utc,double? CommandAge,long? IssuedAt,long? Epoch,string Reason);
+    internal sealed record PedalFailure(DateTimeOffset Utc,double? CommandAge,long? IssuedAt,long? Epoch,string Reason) {
+        public ControlTickObservation? Producer {get;init;}
+    }
     PedalFailure? pendingPedalFailure,lastPedalFailure;
     bool PedalRequired()=>steeringMonitoringLive&&_IsRunning&&Volatile.Read(ref active)&&State.EnableAssists&&
         !Volatile.Read(ref preview)&&State.DrivingMode!=DrivingMode.LaneAssistOnly&&
@@ -37,7 +39,9 @@ public sealed partial class TollPlugin
                 command=Volatile.Read(ref lastAccCommand);age=PedalProducerAge(command);
                 if(pedalFeedGuard.CheckAge(clock.Elapsed.TotalSeconds,age,PedalRequired())!=SteeringFeedState.Lost)return;
                 var failure=new PedalFailure(DateTimeOffset.UtcNow,age,command?.IssuedTicks,command?.Epoch,
-                    "Eigene Pedalausgabe ausgefallen: keine frischen Gas-/Bremsbefehle.");
+                    "Eigene Pedalausgabe ausgefallen: keine frischen Gas-/Bremsbefehle.") {
+                        Producer=Volatile.Read(ref controlTickObservation)
+                    };
                 State.EnableAssists=false;faultBrake.Trip();
                 Interlocked.Exchange(ref pendingPedalFailure,failure);
             });

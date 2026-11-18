@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><AssemblyName>MautStaticRoadWorker</AssemblyName><Version>0.4.8</Version><EtsRoot Condition="'$(EtsRoot)'==''">D:\ETS2LA\current</EtsRoot></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\Core\*.cs" Link="Core\%(Filename)%(Extension)" />
+    <Compile Include="..\..\Plugin\StaticRoadWorkerProtocol.cs" Link="StaticRoadWorkerProtocol.cs" />
+    <Compile Include="..\..\Plugin\StaticRoadSceneSource.cs" Link="StaticRoadSceneSource.cs" />
+    <Compile Include="..\..\Plugin\StaticRoadModelGeometry.cs" Link="StaticRoadModelGeometry.cs" />
+    <Compile Include="..\..\Plugin\StaticRoadAuxMapReader.cs" Link="StaticRoadAuxMapReader.cs" />
+    <Compile Include="..\..\Plugin\StaticRoadModelRegistry.cs" Link="StaticRoadModelRegistry.cs" />
+    <Compile Include="..\..\Plugin\IndependentAssets.cs" Link="IndependentAssets.cs" />
+    <Reference Include="$(EtsRoot)\TruckLib.dll" />
+    <Reference Include="$(EtsRoot)\TruckLib.Core.dll" />
+    <Reference Include="$(EtsRoot)\TruckLib.Models.dll" />
+    <Reference Include="$(EtsRoot)\TruckLib.Sii.dll" />
+    <Reference Include="$(EtsRoot)\TruckLib.HashFs.dll" />
+    <Reference Include="$(EtsRoot)\RBush.dll" />
+  </ItemGroup>
+</Project>

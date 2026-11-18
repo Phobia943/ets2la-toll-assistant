@@ -4,7 +4,8 @@ param(
  [Parameter(Mandatory)][string]$FmtArchive,
  [Parameter(Mandatory)][string]$Zig,
  [Parameter(Mandatory)][string]$BuildDirectory,
- [string]$CacheDirectory)
+ [string]$CacheDirectory,
+ [switch]$IncludePedalProbe)
 $ErrorActionPreference='Stop'
 foreach($entry in @(
  @($SdkArchive,'D3B13C1904BEF44BAFE8009DB500579A5B473E63F8D99B1143D4F829143E2716'),
@@ -33,10 +34,12 @@ Expand-PinnedArchive $FmtArchive (Join-Path $build 'fmt')
 $source=Join-Path $build 'sdk/plugin-31f1cf1406d03f0d647a10c72887eaab5c2a748e'
 $fmt=Join-Path $build 'fmt/fmt-9ff9c695db8aeadf70eb26498a0e1cdceeeb849a'
 & (Join-Path $PSScriptRoot 'Apply-SdkPatch.ps1') -SdkSource $source
+if($IncludePedalProbe){& (Join-Path $PSScriptRoot '../PedalProbe/Apply-Patch.ps1') -SdkSource $source}
 $version=[IO.File]::ReadAllText((Join-Path $source 'version.hpp.in')).Replace('@PLUGIN_VERSION_MAJOR@','1').Replace('@PLUGIN_VERSION_MINOR@','62').Replace('@PLUGIN_VERSION_PATCH@','0').Replace('@GAME_VERSION_MAJOR@','1').Replace('@GAME_VERSION_MINOR@','62').Replace('@GAME_VERSION_PATCH@','x')
 [IO.File]::WriteAllText((Join-Path $source 'src/version.hpp'),$version,[Text.UTF8Encoding]::new($false))
 $names=@('core.cpp','main.cpp','memory/memory_utils.shared.cpp','memory/virtual/memory_handler.cpp','prism/common.cpp','prism/game_actor.cpp','prism/camera/camera_manager.cpp','prism/controllers/base_ctrl.cpp','prism/controllers/game_ctrl.cpp','prism/navigation/gps_manager.cpp','prism/traffic/game_traffic.cpp','prism/vehicles/game_trailer_actor.cpp','prism/vehicles/game_physics_vehicle.cpp','prism/vehicles/vehicle_shared.cpp','prism/input/input_mix.cpp','processing/traffic.cpp','memory/memory_utils.win32.cpp','processing/ffb/ffb_processor.win32.cpp','maut_scene/SceneSnapshot.cpp')
 $sources=$names|ForEach-Object{Join-Path $source ('src/'+$_)}
+if($IncludePedalProbe){$sources+=Join-Path $source 'src/maut_pedal_probe/Probe.cpp'}
 $output=Join-Path $build 'ets2la_plugin.dll'
 $oldGlobal=$env:ZIG_GLOBAL_CACHE_DIR;$oldLocal=$env:ZIG_LOCAL_CACHE_DIR
 try {

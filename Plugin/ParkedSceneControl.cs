@@ -14,7 +14,7 @@ public sealed partial class TollPlugin
     // this never extends the independent live barrier/scene source deadlines.
     RouteTrace? CurrentMappedCorridor(double now)=>
         (now-lastAcceptedPlanAt is >=0 and <.2 || CurrentRouteUsable(now))?safetyTrace:null;
-    public string ParkedSceneStatus=>sceneStatus+" · "+parkedScene.Status;
+    public string ParkedSceneStatus=>sceneStatus+" · "+parkedScene.Status+" · "+StaticRoadStatus;
     Gate? ApplyBarrierBinding(Gate? gate,BarrierBindingResult binding)
     {
         if(binding.Passed&&router.SelectedBarrier is { } plan&&
@@ -64,7 +64,7 @@ public sealed partial class TollPlugin
             bool? required=modelEvidence.ParkedRequirement(i.prefabPath!.Prefab);
             return required.HasValue||router.CurrentKey?.StartsWith(i.prefabPath.Prefab.Prefab.Uid+":",StringComparison.Ordinal)==true;
         }).ToArray();
-        var extra=new List<ParkedSceneAdmission.Result>();
+        var extra=new List<ParkedSceneAdmission.Result>(EvaluateStaticRoadChecks());
         barrierBinding=ReadBarrierBinding();
         if(barrierBinding.LanePlanned&&!barrierBinding.Passed&&!barrierBinding.LiveBarrierBound&&float.IsFinite(barrierBinding.Decision.MaxAcceleration))
             extra.Add(new(false,barrierBinding.Decision.Phase,Math.Max(0,(barrierBinding.Distance??0)-options.StopOffsetMetres))

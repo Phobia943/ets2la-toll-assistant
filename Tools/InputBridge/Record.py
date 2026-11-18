@@ -14,6 +14,7 @@ import struct
 import time
 
 from ReadStatus import read_existing
+from ReadPedalProbe import read_existing as read_pedal_probe
 
 
 def decode_telemetry(raw):
@@ -78,7 +79,7 @@ def foreground_pid():
     return pid.value
 
 
-def observe():
+def observe(include_pedal_probe=False):
     row = {"utc": dt.datetime.now(dt.timezone.utc).isoformat(), "monotonic": time.perf_counter(),
            "vehicleOutputWritten": False, "issues": []}
     try:
@@ -87,6 +88,12 @@ def observe():
         bridge = {"available": False, "observationError": str(error)}
         row["issues"].append("BridgeUnavailableOrInvalid")
     row["bridge"] = bridge
+    if include_pedal_probe:
+        try:
+            row["pedalWriteProbe"] = read_pedal_probe()
+        except (OSError, ValueError, struct.error) as error:
+            row["pedalWriteProbe"] = {"available": False, "observationError": str(error)}
+            row["issues"].append("PedalWriteProbeUnavailableOrInvalid")
     foreground = foreground_pid()
     row["foregroundPid"] = foreground
     game_pid = bridge.get("processId") if bridge.get("initialized") else None
@@ -115,6 +122,7 @@ if __name__ == "__main__":
     parser.add_argument("output", type=pathlib.Path)
     parser.add_argument("--seconds", type=int, default=60)
     parser.add_argument("--interval", type=float, default=.1)
+    parser.add_argument("--pedal-probe", action="store_true", help="Read optional native write observer")
     args = parser.parse_args()
     if not 1 <= args.seconds <= 600 or not .05 <= args.interval <= 1:
         parser.error("Duration must be 1–600 seconds; interval .05–1 second")
@@ -123,7 +131,7 @@ if __name__ == "__main__":
     samples = 0
     with args.output.open("x", encoding="utf-8") as stream:
         while time.perf_counter()-started < args.seconds:
-            stream.write(json.dumps(observe(), allow_nan=False, separators=(",", ":"))+"\n")
+            stream.write(json.dumps(observe(args.pedal_probe), allow_nan=False, separators=(",", ":"))+"\n")
             stream.flush()
             samples += 1
             time.sleep(args.interval)

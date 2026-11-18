@@ -25,6 +25,8 @@ jobs:
         run: python -m unittest discover -s Tools -p test_toll_history.py
       - name: Check input recording layout and recovery without live channels
         run: python Tools/InputBridge/TestRecord.py
+      - name: Check optional pedal observer decoding without live channels
+        run: python Tools/InputBridge/TestPedalProbe.py
   geometry-protocol:
     runs-on: windows-latest
     steps:
@@ -44,6 +46,11 @@ jobs:
       - name: Build observer and run fake SDK host
         shell: pwsh
         run: ./Native/TruckersMPGeometry/Build.ps1 -Zig "$env:RUNNER_TEMP/zig-x86_64-windows-0.15.2/zig.exe" -Test
+      - name: Check optional pedal write observation on isolated mappings
+        shell: pwsh
+        run: |
+          ./Native/PedalProbe/Test.ps1 -Zig "$env:RUNNER_TEMP/zig-x86_64-windows-0.15.2/zig.exe" -OutputDirectory (Join-Path $env:RUNNER_TEMP 'pedal-probe-tests')
+          python Tools/InputBridge/TestPedalProbe.py (Join-Path $env:RUNNER_TEMP 'pedal-probe-tests/fixture.bin')
       - name: Decode actual native ABI fixture in managed tests
         shell: pwsh
         run: |

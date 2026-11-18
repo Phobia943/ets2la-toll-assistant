@@ -10,6 +10,7 @@ public sealed class FaultBrake(Action<ControlEvent> publish)
     readonly AsyncLocal<long?> operation=new();
     long generation;
     public bool Latched => latched;
+    internal long ControlEpoch=>Interlocked.Read(ref generation);
     public IDisposable BeginOperation()
     {
         var previous=operation.Value;

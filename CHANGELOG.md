@@ -1,13 +1,21 @@
 # Änderungen
 
-## 0.4.7 – installiert, Stand- und Fahrprüfung offen
+## 0.4.8 – Kandidat, Abnahme offen
+
+- Ergänzt positive Hinderniserkennung aus tatsächlichen aktiven Kollisionsmodellen der Straßenkarte. Normale Bremsgrenze statt künstlicher Notbremsverriegelung; unbekannte Daten sind keine Hindernis- oder Freiraumbehauptung.
+- Verlegt Karten-, Modell- und Kollisionsarbeit in einen eigenen geprüften Hilfsprozess. Ergebnisse behalten ihre ursprüngliche 200-ms-Frist und werden bei anderer Spur, Kartenquelle oder manueller Übernahme verworfen. Neu veröffentlichte identische Routen und entfernte Routenschwänze bleiben korrekt zugeordnet.
+- Sichert Pedalfehler samt ursprünglichem Tickstadium dauerhaft. Ausgabegrenzen bleiben unverändert.
+- Optionaler Messbaustein beobachtet vorhandene moderne Pedalschreibvorgänge vor/nach der Ausgabe; keine behauptete Behebung der Hintergrundsteuerung.
+- [Gegenprüfungen, Live-Befunde und verbleibende Abnahme](REVIEW-0.4.8.md).
+
+## 0.4.7 – installiert, zusätzliche Livefehler untersucht
 
 - Vereinheitlicht die am Fahrzeugpunkt geprüfte Route für Geschwindigkeit, offene Mautschranken, Halteboden und Rollen, ohne Sensor- oder Ausgabegrenzen zu verlängern.
 - Unterscheidet eine geprüfte gerade Strecke von fehlender Kurvenvorschau; Wiederherstellung berücksichtigt neu verfügbare Kurven- und Szenengrenzen.
 - Erhält noch nie ausgestellte Zahlungsreservierungen passiv über kurze Unterbrechungen; bereits ausgestellte Versuche bleiben gesperrt.
 - Entfernt wiederholte Vollserialisierung alter Fehlerberichte aus dem laufenden Status.
-- Separater, nicht installierter InputBridge-Kandidat korrigiert den nachgewiesenen Callback-Kontextfehler und ergänzt messbare Eingabediagnose.
-- Unabhängiger Endreview abgeschlossen; am 18. November um 11:04 MEZ mit geprüfter Sicherung installiert. Anwendung nicht gestartet. [Prüfergebnisse und offene Produktgrenzen](REVIEW-0.4.7.md).
+- Separater InputBridge korrigiert den nachgewiesenen Callback-Kontextfehler und ergänzt messbare Eingabediagnose; nach eigenem Gegenreview ebenfalls installiert.
+- Unabhängiger Endreview abgeschlossen; am 18. November um 11:04 MEZ mit geprüfter Sicherung installiert. Anschließend vom Nutzer gestartet und aufgezeichnet. Die Aufnahme belegt weiterhin Hintergrund- und einzelne Ausgabeprobleme. [Prüfergebnisse und offene Produktgrenzen](REVIEW-0.4.7.md).
 
 ## 0.4.6 – gebundene Schranken an Bahnübergängen
 

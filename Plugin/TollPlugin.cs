@@ -94,6 +94,12 @@ public sealed partial class TollPlugin : Plugin
         ()=>GameTelemetry.Current.GetCurrentData().configBool.specialJob,()=>Current?.ReadPlanningProfile()??(float.NaN,float.NaN))) {
         envelopeEvidence=new(()=>ApplicationState.Current.RunningGame?.GetFileSystem());
         railCrossingProfiles=new(()=>ApplicationState.Current.RunningGame?.GetFileSystem());
+        staticRoadWorker=new StaticRoadWorkerClient(()=>ApplicationState.Current.RunningGame?.GetFileSystem(),()=>{
+            var game=ApplicationState.Current.RunningGame;
+            return game==null?null:new StaticRoadSceneSource.MapSelection(
+                game.Type==ETS2LA.Game.GameType.EuroTruckSimulator2?"europe":"usa",
+                ETS2LA.Game.Data.DataSettings.Current.ForceBaseMapName);
+        });
     }
     TollPlugin(TollModelEvidence modelEvidence) : this(() => ApplicationState.Current, Notify,
         output=>Events.Current.Publish(GameOutput.Current.EventString,output),
@@ -111,10 +117,11 @@ public sealed partial class TollPlugin : Plugin
         Func<RouteTrace,Vector3,CurveSpeedProfile>? buildCurveProfile=null,Func<CruiseLimits>? readCruiseLimits=null,bool requireHostCompatibility=false,
         Func<RigRuntimeObservation>? readRigObservation=null,TollModelEvidence? runtimeModels=null,
         Func<ETS2LA.Game.Data.PrefabPath,int,TollRouter.RouteSearch>? findClearRoute=null,
-        Func<TrafficSpeedDecision>? readLongitudinalTraffic=null) {
+        Func<TrafficSpeedDecision>? readLongitudinalTraffic=null,IStaticRoadChecks? staticRoadWorker=null) {
         curvePreview=new(buildCurveProfile);
         this.monitorSteering=monitorSteering;
         this.readLongitudinalTraffic=readLongitudinalTraffic;
+        this.staticRoadWorker=staticRoadWorker;
         this.requireHostCompatibility=requireHostCompatibility;
         this.readRigObservation=readRigObservation;this.modelEvidence=runtimeModels;
         this.readState=readState;this.readAcc=readAcc??FindAcc;this.notify=notify;this.readPayments=readPayments;
@@ -870,6 +877,7 @@ public sealed partial class TollPlugin : Plugin
             phase=decision.Phase, tracked, candidate, pathError=path?.ErrorMessage,
             action=action.ToString(), geometry,routeTracking=safetyTrace?.Diagnose(position),tracking=trackingGuard.LastDirectionFailure,
             steeringFailure=lastSteeringFailure is { } failure&&failure.Reason==reason?failure:null,
+            pedalFailure=lastPedalFailure is { } pedalFailure&&pedalFailure.Reason==reason?pedalFailure:null,
             impact=reason==ImpactReason?lastImpact:null,
             pedalWarning=brakeWarning,
             plannedHoldPedalFloor=holdPedalFloor,vehicleShape=shapeAtFault,vehicleEnvelope=VehicleEnvelopeStatus,
@@ -941,9 +949,14 @@ public sealed partial class TollPlugin : Plugin
         // The producer stamp precedes lock waits, routing and source reads.
         // A delayed tick must never acquire a fresh output lease afterwards.
         long controlIssuedAt=Stopwatch.GetTimestamp();
-        long controlEpoch=CaptureLongitudinalEpoch();
+        long? observedEpoch=null;
+        ObserveControlTick(ControlTickPhase.CapturingEpoch,controlIssuedAt);
+        try {
+        long controlEpoch=CaptureLongitudinalEpoch();observedEpoch=controlEpoch;
+        ObserveControlTick(ControlTickPhase.WaitingForRoute,controlIssuedAt,controlEpoch);
         lock(sync)
         {
+            ObserveControlTick(ControlTickPhase.Preparing,controlIssuedAt,controlEpoch);
             if (!subscribed) return;
             DrainInputFrames();
             RejectUnpreparedStart();
@@ -960,8 +973,11 @@ public sealed partial class TollPlugin : Plugin
             try
             {
                 if(options.DetailedRigProtection&&envelopeEvidence!=null)_=ReadEnvelopeProfile();
+                ObserveControlTick(ControlTickPhase.TollDecision,controlIssuedAt,controlEpoch);
                 UpdateTollDecision(now);
+                ObserveControlTick(ControlTickPhase.Longitudinal,controlIssuedAt,controlEpoch);
                 RunLongitudinal(controlEpoch,controlIssuedAt);
+                ObserveControlTick(ControlTickPhase.ManualPayment,controlIssuedAt,controlEpoch);
                 RunManualPayment(controlEpoch,controlIssuedAt);
             }
             catch(Exception ex)
@@ -972,6 +988,7 @@ public sealed partial class TollPlugin : Plugin
             }
             if (now-lastWrite > 1)
             {
+                ObserveControlTick(ControlTickPhase.Diagnostics,controlIssuedAt,controlEpoch);
                 lastWrite = now;
                 try
                 {
@@ -1058,6 +1075,7 @@ public sealed partial class TollPlugin : Plugin
                 catch(UnauthorizedAccessException) { }
             }
         }
+        } finally {ObserveControlTick(ControlTickPhase.Completed,controlIssuedAt,observedEpoch);}
     }
     public override void OnDisable()
     {
@@ -1069,6 +1087,7 @@ public sealed partial class TollPlugin : Plugin
         {
             vehicleGeometry.Dispose();
             parkedScene.Dispose();
+            staticRoadWorker?.Reset();
             if(active || preview || faultBrake.Latched)State.EnableAssists=false;
             active = false;
             CancelRollingStart();
@@ -1094,5 +1113,5 @@ public sealed partial class TollPlugin : Plugin
             decision = TollDecision.Idle("Plugin ausgeschaltet");
         }
     }
-    public override void Shutdown() { OnDisable();paymentJournal?.Dispose(); if (ReferenceEquals(Current,this)) Current = null; }
+    public override void Shutdown() { OnDisable();(staticRoadWorker as IDisposable)?.Dispose();paymentJournal?.Dispose(); if (ReferenceEquals(Current,this)) Current = null; }
 }

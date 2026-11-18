@@ -50,6 +50,23 @@ void Run()
     void Check(string name, Action test) { if(args is ["--filter",var filter]&&!name.Contains(filter,StringComparison.OrdinalIgnoreCase))return;try {test(); results.Add("PASS "+name);} catch(Exception ex) {results.Add("FAIL "+name+": "+ex); } }
     void Assert(bool v,string message="Assertion failed") {if(!v)throw new Exception(message);}
 #if INTEGRATION
+    Check("Control tick diagnosis freezes the original blocked producer at pedal failure",()=>ControlTickDiagnosticReviewTests.BlockedProducer(Assert));
+    Check("Control tick diagnosis cannot refresh expired decision authority",()=>ControlTickDiagnosticReviewTests.LateDecision(Assert));
+    Check("Control tick diagnosis preserves older completion while a newer Tick runs",()=>ControlTickDiagnosticReviewTests.OverlappingTicks(Assert));
+    Check("Static road worker preserves original authority across equivalent route refreshes",()=>StaticRoadWorkerClientReviewTests.EquivalentRefresh(Assert));
+    Check("Static road worker rejects changed sources routes epochs and expired results",()=>StaticRoadWorkerClientReviewTests.RevocationAndLifecycle(Assert));
+    Check("Static road worker revokes longer in-flight corridors across shorter new requests",()=>StaticRoadWorkerClientReviewTests.InFlightLongerHorizon(Assert));
+    Check("Static road worker original hit progress survives pruning and clears behind the truck",()=>StaticRoadWorkerClientReviewTests.OriginalHitProgress(Assert));
+    Check("Static road worker framed protocol retains original timestamps and identifiers",()=>StaticRoadWorkerReviewTests.FramesAndStamps(Assert));
+    Check("Static road worker launch failure stays unknown without host fallback",()=>StaticRoadWorkerReviewTests.ThreadFailure(Assert));
+    Check("Static road model selection requires an active collision part",()=>StaticRoadModelReviewTests.Run(Assert));
+    Check("Static road source invalidates obsolete map and regional workers",()=>StaticRoadSourceReviewTests.SourceAndRegion(Assert));
+    Check("Static road instances reject conditional layers and unknown flags",()=>StaticRoadSourceReviewTests.InstanceEligibility(Assert));
+    Check("Static road source retries transient failures and revalidates original snapshots",()=>StaticRoadSourceReviewTests.RetryAndFinalRecheck(Assert));
+    Check("Static road auxiliary reads reject incomplete conditional layer data",()=>StaticRoadLayerReviewTests.Run(Assert));
+    Check("Static road registry index preserves model identity without full SII graphs",()=>StaticRoadRegistryReviewTests.Run(Assert));
+    Check("Static road control uses only positive evidence on roads without toll prefabs",()=>StaticRoadControlReviewTests.PositiveAndUnknown(Assert));
+    Check("Static road control rechecks source route and manual override at commit",()=>StaticRoadControlReviewTests.Revocation(Assert));
     Check("Accepted route delay does not create an artificial stop in actual Tick",()=>RouteDecisionIntegration.RecordedDelay(Assert));
     Check("Shared route decisions preserve original deadlines and revocation",()=>RouteDecisionIntegration.Deadlines(Assert));
     Check("Current status never reserializes full historical faults",()=>DiagnosticDeliveryIntegration.CompactFault(Assert));
@@ -64,6 +81,10 @@ void Run()
     Check("Issued payment and revoked sessions never regain payment permission",()=>PaymentReservationReviewTests.IssuedAndSessionRevocation(Assert));
 #endif
     Check("Own longitudinal controller preserves safety, epochs and pedal ownership",()=>LongitudinalControllerTests.SafetyAndOwnership(Assert));
+    Check("Nominal static corridor detects positive surfaces without neighbour or ground phantoms",()=>NominalStaticCorridorReviewTests.Geometry(Assert));
+    Check("Nominal static corridor preserves slopes and world transforms",()=>NominalStaticCorridorReviewTests.GradesAndWorldPose(Assert));
+    Check("Nominal static corridor follows only selected directed route slices",()=>NominalStaticCorridorReviewTests.SelectedRoute(Assert));
+    Check("Nominal static corridor bounds work without inventing collision evidence",()=>NominalStaticCorridorReviewTests.WorkAndUnknown(Assert));
     Check("Own longitudinal controller coasts, holds, resumes and rejects missing delivery",()=>LongitudinalControllerTests.CoastStopsAndFeedback(Assert));
     Check("Pedal receipt loss cannot invent an emergency or replay expired braking",()=>DeliveryInterruptionReviewTests.Run(Assert));
     Check("Own longitudinal controller drives loaded and downhill vehicle simulations",()=>LongitudinalControllerTests.Dynamics(Assert));
