@@ -24,6 +24,7 @@ foreach(var dir in Directory.GetDirectories(Path.Combine(source,"Plugins")))reso
 using var seed=ModuleDefinition.ReadModule(System.Reflection.Assembly.GetExecutingAssembly().Location,new ReaderParameters{AssemblyResolver=resolver});
 var modules=expected.ToDictionary(p=>p.Key,p=>ModuleDefinition.ReadModule(Path.Combine(originals,p.Key),new ReaderParameters{AssemblyResolver=resolver}));
 try {
+    Rewrite.PrefabRouting(modules["ETS2LA.Game.dll"],seed.GetType("MautHostCompatibility.PrefabRoutingTemplate"));
     var output=Rewrite.Output(modules["ETS2LA.Game.dll"],seed.GetType("MautHostCompatibility.OutputTemplate"));
     Rewrite.State(modules["ETS2LA.State.dll"],output);
     var acc=modules["Plugins/tumppi066.adaptivecruisecontrol/AdaptiveCruiseControl.dll"];

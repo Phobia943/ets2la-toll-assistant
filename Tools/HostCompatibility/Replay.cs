@@ -165,6 +165,7 @@ internal sealed class Replay
         foreach(string name in new[]{"OnControlEvent","MautFrame","MautAccept","MautSnapshotDefinition","MautSnapshotVariables","MautPedalsValid"})
             RuntimeHelpers.PrepareMethod(outputType.GetMethod(name,All)!.MethodHandle);
         void Assert(bool ok,string message){if(!ok)throw new Exception(message);checks++;Console.WriteLine("PASS "+message);}
+        PrefabRoutingReplay.Run(gameAsm,Assert);
         void Frame(bool modernOutput=false)=>outputType.GetMethod("MautFrame")!.Invoke(host,[modernOutput]);
         float Gas()=>(float)legacy.GetValueOrDefault(offsets["aforward"]);
         float Brake()=>(float)legacy.GetValueOrDefault(offsets["abackward"]);

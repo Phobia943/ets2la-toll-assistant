@@ -24,6 +24,7 @@ public static class RouteSnapshot
             lane=i.laneIndex,targetLane=i.targetLaneIndex,direction=i.direction.ToString(),
             i.allowedToLaneChange,laneChangeStartFactor=start,laneStateBuildVerified=laneChangeStart!=null,
             prefab=original?.Prefab.Prefab.Uid,
+            curveDirection=original?.CurveDirection.ToString(),
             curves=original?.Curves.Select(c=>original.Prefab.Descriptor?.NavCurves.IndexOf(c)??-1).ToArray(),
             roads=i.item is ETS2LA.Game.Data.ParsedRoadList list?list.Roads.Select(r=>r.Road.Uid).ToArray():
                 i.item is ETS2LA.Game.Data.ParsedRoad road?new[]{road.Road.Uid}:Array.Empty<ulong>()

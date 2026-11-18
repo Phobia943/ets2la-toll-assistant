@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.4.9 – Kreuzungsfix vorbereitet, nicht installiert
+
+- Korrigiert die native Prefab-Graphsuche: nur gerichtete Nachfolgeverbindungen, keine Mischung mit Rückverbindungen. Gültige Alternativen bleiben erhalten; reale fehlerhafte Kreuzungsroute im Gegenlauf ausgeschlossen.
+- Interpolation, Richtungsprüfung und Ausgabefristen unverändert. Zusammengehöriges Komponentenpaket `0.4.9-host-1`; Routenberichte enthalten zusätzlich die native Kurvenrichtung.
+- Auflieger-Nachlauf an Pfosten und TruckersMP-Hintergrundpedale bleiben offen. [Befund und Gegenprüfungen](REVIEW-0.4.9.md).
+
 ## 0.4.8 – Kandidat, Abnahme offen
 
 - Ergänzt positive Hinderniserkennung aus tatsächlichen aktiven Kollisionsmodellen der Straßenkarte. Normale Bremsgrenze statt künstlicher Notbremsverriegelung; unbekannte Daten sind keine Hindernis- oder Freiraumbehauptung.

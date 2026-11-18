@@ -1,10 +1,16 @@
 # Nächste Sitzung
 
-## Maßgeblicher Stand am 18. November: 0.4.8-v2 installiert, Test verschoben
+## Maßgeblicher Stand am 18. November: 0.4.8 läuft, 0.4.9 vorbereitet
 
-0.4.8-v2 ist um 12:23 MEZ nach bestätigtem Schließen beider Anwendungen mit Sicherung installiert. 15 Dateien und ihre vorgesehenen Baselines sind geprüft. Plugin-SHA256: `C9213A67A41F4D174B2921EFF4C35DE05A2A2274208450B0F4BE38A066508340`. Der erste 0.4.8-Kandidat ist wegen eines nachgewiesenen Shadowcopy-Pfadfehlers verworfen und wurde nie installiert. Der Gegenreview des korrigierten Pakets, sieben Workergruppen, erneut 316 tatsächliche Hostprüfungen und zwölf Installationssimulationen bestehen.
+0.4.8-v2 bleibt installiert (Plugin-SHA C9213A67A41F4D174B2921EFF4C35DE05A2A2274208450B0F4BE38A066508340). Der Nutzer hat den Test inzwischen gestartet und die weitere Fahrtbeobachtung beauftragt. Parkneutralisierung über 40 Sekunden und tatsächliche Gas-/Bremswirkung in der Vordergrundfahrt sind belegt. Die unmittelbar danach berichtete Controllerübernahme ist in der betreffenden Aufnahme nicht eindeutig enthalten; nicht als unabhängig bestätigten Testabschluss zählen. Moderne Pedalausgabe bleibt false, Hintergrundvergleich nicht durchgeführt.
 
-Der Nutzer möchte erst später testen. Keine Anwendung wurde für die neue Abnahme gestartet; die beiden bekannten gespeicherten Pedaleinstellungen bleiben `EnableModernOutputForPedals=false`. Ein Parktest liefert bewusst neutrale Pedale und beweist keine Hintergrundübertragung. Die geprüfte Planung für einen späteren kurzen positiven Vergleich steht in [BACKGROUND_INPUT.md](BACKGROUND_INPUT.md). Zuerst geladene Version, Verbindung, Stillstand und manuelle Übernahme feststellen; keine Fahrt oder positive Ausgabe aus alten Bestätigungen ableiten. Der Gesamtauftrag ist offen, insbesondere Hintergrundwirkung, unterschiedliche Ausgabeverzögerungen und reale Maut-/Zahlungs-/Warnphasenabnahme. Details: [REVIEW-0.4.8.md](REVIEW-0.4.8.md), [WORKLIST.md](WORKLIST.md).
+Um 13:17:24 löste ein geometrisch rückwärts springender neuer Kreuzungspfad den Gegenrichtungshalt aus. Native Graphsuche und konkreter Fehlerpfad sind mit der echten Karte reproduziert. 0.4.9 korrigiert die Erzeugung aller Alternativpfade an dieser Quelle, ohne Interpolator oder Schutzgrenzen zu ändern. 255 Pluginprüfungen sowie der isolierte tatsächliche Host-/Pedallauf bestehen; unabhängiger Gegenreview und reale Kartenprobe bestätigen den begrenzten Fix. Details und Paketidentität: [REVIEW-0.4.9.md](REVIEW-0.4.9.md).
+
+Der 0.4.9-Kandidat ist noch NICHT installiert. Für den Austausch der fünf zusammengehörigen Appdateien muss ETS2LA samt Szenenworker geschlossen sein; am Spiel wird nichts ersetzt. Vor jeder Aktion aktuellen Prozess-/Fahrzustand prüfen. Danach geladene Fassung, Parkneutralisierung und Controllerübernahme bestätigen und die Kreuzung erneut prüfen. Keine Fahrtfreigabe aus älteren Bestätigungen ableiten.
+
+Zusätzlich berichtete der Nutzer einen drohenden Pfostenkontakt innen beim Abbiegen. Die genaue Phase liegt in einer 38-sekündigen Aufnahmelücke; zeitgleiche Trailer-/Pfostenpose fehlt. Der normale Routenkorridor enthält keine innere Nachlaufkurve des Aufliegers. Das ist weiterhin offene Produktarbeit, keine durch 0.4.9 behobene Eigenschaft. Nächste Analyse benötigt zusammenhängende Route, Zugmaschinen-/Aufliegerpose und das tatsächliche Hindernis. Nicht pauschal Korridor verbreitern, Geschwindigkeit verringern oder Schutzprüfungen abschalten.
+
+Gesamtauftrag bleibt offen: Aufliegerführung, Hintergrundpedale, weitere native Ausgabefehler und vollständige Maut-/Zahlungs-/Warnphasenabnahme. [Arbeitsliste](WORKLIST.md), [Hintergrundmessplan](BACKGROUND_INPUT.md).
 
 ## Vorheriger Stand: 0.4.7
 

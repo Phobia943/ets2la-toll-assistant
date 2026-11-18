@@ -6,6 +6,16 @@ namespace MautHostCompatibility;
 
 internal static class Rewrite
 {
+    internal static void PrefabRouting(ModuleDefinition module,TypeDefinition template)
+    {
+        var target=module.GetType("ETS2LA.Game.Data.ParsedPrefab")??throw new InvalidDataException("Prefab type missing");
+        var traversal=Method(target,"TraverseCurveUntilTarget");
+        if(!traversal.IsPrivate||traversal.Parameters.Count!=2||
+            traversal.Parameters.Any(p=>p.ParameterType.FullName!="TruckLib.Models.Ppd.NavCurve")||
+            target.Fields.SingleOrDefault(f=>f.Name=="Descriptor")?.FieldType.FullName!="TruckLib.Models.Ppd.PrefabDescriptor")
+            throw new InvalidDataException("Unverified prefab traversal layout");
+        CopyBody(Method(template,"TraverseCurveUntilTarget"),traversal,template,target);
+    }
     internal static MethodDefinition Method(TypeDefinition type,string name)=>type.Methods.Single(m=>m.Name==name);
     internal static void CopyBody(MethodDefinition source,MethodDefinition destination,TypeDefinition template,TypeDefinition target,TypeDefinition? externalOutput=null)
     {

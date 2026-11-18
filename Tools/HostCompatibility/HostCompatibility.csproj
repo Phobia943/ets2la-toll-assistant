@@ -15,6 +15,7 @@
   <Reference Include="$(EtsRoot)/ETS2LA.Settings.dll" Private="false" />
   <Reference Include="$(EtsRoot)/TruckLib.dll" Private="false" />
   <Reference Include="$(EtsRoot)/TruckLib.Core.dll" Private="false" />
+  <Reference Include="$(EtsRoot)/TruckLib.Models.dll" Private="false" />
   <Reference Include="PathLib"><HintPath>../../References/PathLib.dll</HintPath><Private>false</Private></Reference>
   <Reference Include="$(EtsRoot)/Plugins/tumppi066.adaptivecruisecontrol/AdaptiveCruiseControl.dll" Private="false" />
   <Reference Include="$(EtsRoot)/Libraries/tumppi066.pidlib/PIDLib.dll" Private="false" />

@@ -34,7 +34,7 @@ internal sealed partial class OutputTemplate
     public static long MautEpoch;
     public static bool MautAssists;
     public static int MautMode;
-    public const string MautCompatibility="0.4.4-host-1";
+    public const string MautCompatibility="0.4.9-host-1";
     public const string MautLongitudinalChannel="local.mautassistent.longitudinal";
     static string? MautHoldKey;
     static long MautHoldEpoch,MautHoldUntil;
