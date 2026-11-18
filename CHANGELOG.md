@@ -7,6 +7,8 @@
 - 260 Integrationsprüfungen und 307 isolierte Host-/Plugin-Assertions bestehen. Keine Änderung von Ausgabealtergrenzen oder Fahrregelung. Die Ursache der zusätzlich aufgezeichneten 164-ms-Ausgabepausen ist noch offen. [Befund und Grenzen](REVIEW-0.4.10.md).
 - Nach Nutzerstart ist die geladene Fassung bestätigt. Bewusstes F8, 26 Sekunden Parkneutralisierung mit Spielpedalen 0/0 und anschließendes Anfahren sind aufgezeichnet. Die erneute manuelle Übernahme und vollständige Fahrabnahme stehen aus; kein Nachweis einer allgemeinen Fehlerfreiheit oder funktionierender Hintergrundpedale.
 
+Ein späterer Fahrbefund unter 0.4.10 um 14:39 MEZ belegt erneut einen technischen Fehlerhalt durch 174,95 ms alte Pedalausgabe nach bereits aufgehobenem Ampelhalt. Die Katalogoptimierung ist damit keine vollständige Behebung der Ausgabepausen; Laufzeitursache weiter offen.
+
 ## 0.4.9 – Kreuzungsfix installiert, Spielabnahme offen
 
 - Korrigiert die native Prefab-Graphsuche: nur gerichtete Nachfolgeverbindungen, keine Mischung mit Rückverbindungen. Gültige Alternativen bleiben erhalten; reale fehlerhafte Kreuzungsroute im Gegenlauf ausgeschlossen.

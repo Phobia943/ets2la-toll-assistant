@@ -1,5 +1,7 @@
 # ETS2LA Mautassistent
 
+**Neuer Fahrbefund am 18. November, 14:39 MEZ:** Auch unter 0.4.10 trat erneut eine technische Pedalausgabepause mit Fehlerhalt auf. Die zugeordnete Ampel war bereits freigegeben, der Lkw fuhr wieder an. Katalogwiederverwendung allein behebt diese Ausfälle nicht; die genaue Verzögerungsursache bleibt offen.
+
 **0.4.10 ist installiert und geladen; 26 Sekunden Parkneutralisierung und das anschließende Anfahren sind aufgezeichnet.** Die erneute manuelle Übernahme und vollständige Fahrabnahme stehen aus. Vollständige Modell- und Hookup-Kataloge werden zwischen Arbeitsaufträgen wiederverwendet. Die Messung belegt erheblichen wiederholten Parsingaufwand. Zwei weitere Ausgabepausen sind gesichert, ihre genaue Ursache ist damit noch nicht bewiesen oder behoben. Quellenwechsel und unvollständige Definitionen wurden zusätzlich abgesichert. [Änderung, Gegenprüfungen und Grenzen](REVIEW-0.4.10.md).
 
 **Vorheriger Arbeitsstand 0.4.9:** Die Fahrt mit 0.4.8 belegte einen Fehler der nativen Graphsuche: Eine falsche Alternativroute vermischte Vorwärts- und Rückwärtsverbindungen und löste bei grüner Ampel einen Gegenrichtungshalt aus. Der gerichtete Suchfix erhält die gültigen Wege und besteht den Gegenlauf mit der tatsächlichen Karte. Auflieger-Nachlauf an Pfosten, Hintergrundpedale und weitere reale Abnahme bleiben offen. [Befund, Prüfungen und Grenzen](REVIEW-0.4.9.md). Frühere Versionsnotizen sind keine aktuelle Installationsauskunft.

@@ -19,6 +19,8 @@ Historisch wurde 0.4.9 um 13:45 MEZ installiert; die folgenden neuen Fahrbefunde
 | Bahnübergänge | 0.4.6: profilgebundene offene Schranken. Warnphase vor Bewegung und unbekannte/geschlossene Zustände gezielt prüfen, danach echte Durchfahrt. | Implementiert, Warnphase/Fahrnachweis offen |
 | Baustellen, Schilder, enge Kurven | Gerade/fehlende Vorschau getrennt. Zusätzliche tatsächliche coll-Straßenmodelle in isoliertem Prozess; historische Baustellenprobe positiv, Originalfristen/Spurwechsel/F9/Prozessausfall geprüft. Kein vollständiger Gespannnachweis und keine automatische Hindernisumfahrung. | Zusätzliche Quelle implementiert und gegengeprüft; Fahrabnahme und enge nicht nachfahrbare Routen offen |
 
+Neuer Nachweis unter 0.4.10 um 14:39 MEZ: Nach aufgehobenem Ampelhalt und erneutem Anfahren führte eine 174,95-ms-Pedalausgabepause wieder zum Fehlerhalt. Die Katalogoptimierung beseitigt diese Ausfallklasse nicht vollständig. Der verspätete Beginn des nächsten Durchlaufs ist belegt; die genaue Laufzeitursache bleibt zu klären. Details im 0.4.10-Review.
+
 ## Arbeitsregeln
 
 - Erst reproduzieren, dann kleinste passende Änderung, unabhängiger Gegenfall, Tests und vorhandene Aufnahmen.

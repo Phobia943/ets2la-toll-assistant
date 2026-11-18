@@ -34,7 +34,15 @@ Ein Fehler beim Ermitteln einer neuen Archivliste ändert die Quellenfelder nich
 
 Zusätzlich bestehen 307 Assertions am isolierten tatsächlichen Host-/Plugin-Ausgabepfad. Zeitabhängige Schleifen sind darin enthalten; dies sind keine 307 unabhängigen Fahrfälle. Der kritische Gegenreview hat die Generationsbindung, die Fehlerfälle, Paketidentitäten und Beweisgrenzen geprüft.
 
-## Paket
+## Neuer Fahrbefund: Fehlerhalt nach Ampelfreigabe
+
+Um 14:39:01,316 MEZ trat auch unter 0.4.10 eine technische Pedalausgabepause auf. Der Nutzer meldete eine Bremsung an einer grünen Ampel. Die gesicherte Aufnahme trennt den zuvor geplanten Signalhalt vom erneuten Fehlerhalt: Ab 14:38:56,138 meldete der zugeordnete SDK-Actor den freigegebenen Zustand 8; StopIdentity entfiel, die Bremse wurde gelöst und Gas ausgegeben. Alle 73 folgenden gespeicherten Motionbilder bis zum Fehler enthalten eine Bremsanforderung von null. Der nächste begrenzende Actor lag über 253 m voraus und führte ebenfalls nicht zu einer aktuellen Bremsanforderung. Die Aufnahme beweist die vom Code zugeordnete Signalquelle, nicht unabhängig die visuelle Ampelzuordnung.
+
+Beim Fehler war der letzte akzeptierte Pedalbefehl 174,95 ms alt. Der Fehlerauszug nennt 9,33 km/h; die 3,5 km/h aus der späteren Statuslogzeile sind nicht das Tempo am Auslösezeitpunkt. Zwischen dem Abschluss des vorherigen Durchlaufs und dem Beginn des nächsten lagen 158,78 ms. Beim Auslösen war der neue Durchlauf erst 1,19 ms und seine Phase `Preparing` erst 0,71 ms alt. Die gültige Route, frische Telemetrie und der tatsächlich empfangene vorherige Gasbefehl widersprechen einem zu diesem Zeitpunkt fortbestehenden Ampel-Bremsbefehl. Die genaue Ursache der Ausgabepause bleibt offen.
+
+Lokale Sicherung: `outputs/incident-0410-green-20261118-133901Z/last-fault.json`, SHA-256 `E4E775279121147FF447FFC7FB2093A94778028C84A98236942B9E4E0EBA61E2`. Der kritische Gegenreview bestätigt die getrennten Phasen. Die laufende Fahrt wurde nicht verändert. Dieser Vorfall widerlegt eine allgemeine Behebung der Ausgabeausfälle durch die Katalogoptimierung; deren unabhängig gemessener Leistungsgewinn bleibt bestehen.
+
+## Paketidentität
 
 - Plugin SHA-256: `952AB9555E4FE77051FD9ED2184254C52A94BDA63FCECFAA606B2C8B56C44BB7`.
 - Paketmanifest SHA-256: `CCE7448254BE3B64E94EC8313F8D6C25067C8BE014C06ECB3AE2DCBDF606ACE8`.
