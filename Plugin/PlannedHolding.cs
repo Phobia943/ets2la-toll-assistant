@@ -17,7 +17,8 @@ public sealed partial class TollPlugin
         var result=approachStop.Step(router.StopKey!,speed,remaining);
         double now=clock.Elapsed.TotalSeconds;
         bool permitted=faultBrake.OperationCurrent&&_IsRunning&&active&&!preview&&State.EnableAssists&&State.DrivingMode!=DrivingMode.LaneAssistOnly&&
-            !faultBrake.Latched&&!brakeHeld&&!paused&&now>=takeoverUntil&&SensorsFresh(now)&&now-pathAt<.2&&
+            !faultBrake.Latched&&!brakeHeld&&!paused&&now>=takeoverUntil&&SensorsFresh(now)&&
+            (now-pathAt is >=0 and <.2||CurrentRouteUsable(now))&&
             approachStop.Holding&&approachStop.StopKey==router.StopKey;
         holdPedalFloor=holdBrake.Step(router.StopKey!,now,speed,remaining,permitted);
         return result;
@@ -32,7 +33,8 @@ public sealed partial class TollPlugin
         if(CurrentParkingStandstill()){SuspendNormalHoldsForParking(epoch,issuedAt);return;}
         double now=clock.Elapsed.TotalSeconds;
         float floor=_IsRunning&&active&&!preview&&State.EnableAssists&&!faultBrake.Latched&&!brakeHeld&&
-            !paused&&now>=takeoverUntil&&driveAction==DriveAction.Drive&&SensorsFresh(now)&&now-pathAt<.2&&
+            !paused&&now>=takeoverUntil&&driveAction==DriveAction.Drive&&SensorsFresh(now)&&
+            (now-pathAt is >=0 and <.2||CurrentRouteUsable(now))&&
             State.DrivingMode!=DrivingMode.LaneAssistOnly?Math.Max(holdPedalFloor,scenePedalFloor):0;
         PublishPlannedHold(epoch,floor>0?"planned-combined":null,floor,issuedAt);
     }

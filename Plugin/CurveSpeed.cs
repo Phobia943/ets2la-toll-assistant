@@ -4,6 +4,7 @@ public sealed partial class TollPlugin
 {
     readonly CurvePreview curvePreview;
     CurveSpeedDecision? curveDecision;
+    bool curvePreviewReady;
     public string CurveStatus {get {lock(sync) {
         if(curveDecision is not { } curve||!float.IsFinite(curve.MaxAcceleration))return "";
         return $"Kurvenvorschau: jetzt {curve.AllowedSpeed*3.6:F0} km/h · Kurve in {Math.Max(0,curve.CurveDistance):F0} m mit "+
@@ -18,12 +19,13 @@ public sealed partial class TollPlugin
     }
     float LimitForCurve(float existing)
     {
-        curveDecision=null;
+        curveDecision=null;curvePreviewReady=false;
         if(!options.CurvePreviewEnabled||safetyTrace is not { } trace)return existing;
         RequestCurvePreview(trace);
         bool brisk=options.BriskOpenRoads&&!controller.Tracking&&!router.StopBoundary.HasValue&&!router.HasShortChange&&
             !trace.EndsAtGap&&!(candidate is { } gate&&gate.Distance<=controller.ApproachHorizon(speed));
-        curveDecision=curvePreview.Read(trace,position,RequiredCurveCoverage)?.Evaluate(position,speed,options.ComfortableDeceleration,brisk);
+        var profile=curvePreview.Read(trace,position,RequiredCurveCoverage);
+        curvePreviewReady=profile!=null&&profile.TryEvaluate(position,speed,options.ComfortableDeceleration,brisk,out curveDecision);
         if(curveDecision is not {MaxAcceleration:var limit}||!float.IsFinite(limit))return existing;
         return float.IsFinite(existing)?Math.Min(existing,limit):limit;
     }

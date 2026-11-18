@@ -9,6 +9,11 @@ public sealed partial class TollPlugin
     bool sceneStopping;
     string sceneStatus="Parkfahrzeug-Prüfung noch nicht benötigt.";
     BarrierBindingResult? barrierBinding;
+    // Initial OnPath validation can precede the first supervisor sample. Later
+    // ticks use the same freshly checked corridor as the speed controller;
+    // this never extends the independent live barrier/scene source deadlines.
+    RouteTrace? CurrentMappedCorridor(double now)=>
+        (now-lastAcceptedPlanAt is >=0 and <.2 || CurrentRouteUsable(now))?safetyTrace:null;
     public string ParkedSceneStatus=>sceneStatus+" · "+parkedScene.Status;
     Gate? ApplyBarrierBinding(Gate? gate,BarrierBindingResult binding)
     {
@@ -35,7 +40,7 @@ public sealed partial class TollPlugin
         double now=clock.Elapsed.TotalSeconds;
         var plan=router.SelectedBarrier;
         if(plan!=null&&path?.PlannedPath.Any(i=>i.prefabPath?.Prefab.Prefab.Uid==plan.PrefabUid)!=true)plan=null;
-        return BarrierBinding.Check(plan,now-lastAcceptedPlanAt<.2?safetyTrace:null,position,speed,gates,
+        return BarrierBinding.Check(plan,CurrentMappedCorridor(now),position,speed,gates,
             SensorsFresh(now)&&now-gatesAt<.2,options);
     }
     static readonly FieldInfo? trafficAt=typeof(GameOutput).GetField("MautTrafficAt"),
@@ -97,7 +102,8 @@ public sealed partial class TollPlugin
         // tracking emergency. The driver can always cancel using brake/F9.
         float limit=checks.Select(c=>c.AccelerationLimit??SceneStopPolicy.PlannedLimit(speed,c.StopDistance)).Min();
         bool permitted=faultBrake.OperationCurrent&&_IsRunning&&active&&!preview&&State.EnableAssists&&!faultBrake.Latched&&!brakeHeld&&!paused&&
-            SensorsFresh(clock.Elapsed.TotalSeconds)&&clock.Elapsed.TotalSeconds-pathAt<.2&&
+            SensorsFresh(clock.Elapsed.TotalSeconds)&&
+            (clock.Elapsed.TotalSeconds-pathAt is >=0 and <.2||CurrentRouteUsable(clock.Elapsed.TotalSeconds))&&
             State.DrivingMode!=ETS2LA.State.DrivingMode.LaneAssistOnly;
         // Hold progress is measured against the truck's fixed physical pose,
         // never a recomputed target/body distance or a changing motion reserve.

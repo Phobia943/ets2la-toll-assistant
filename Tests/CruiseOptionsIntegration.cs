@@ -8,12 +8,14 @@ public static class CruiseOptionsIntegration
     const BindingFlags Hidden=BindingFlags.Instance|BindingFlags.NonPublic;
     public static void Cruise(Action<bool,string> assert)
     {
-        var reference=new RollingStartIntegration.Fixture();var currentPath=reference.Plan()!;
-        reference.Set("path",currentPath);reference.Fresh();
+        var reference=new RollingStartIntegration.Fixture();reference.F8();reference.Probe();reference.Fresh();reference.Plugin.Tick();
+        var currentPath=reference.Get<PathLib.PlannedPathData>("path");
         assert((bool)reference.Call("NativeCoastPathKnown",currentPath)!&&!(bool)reference.Call("NativeCoastPathKnown",reference.Plan())!,
             "Only the actual current route instance may authorize a native no-limit result, not a geometrically identical old route");
         reference.Set("pathAt",-100d);
+        reference.Call("SafetyWatchdog",reference.Now);
         assert(!(bool)reference.Call("NativeCoastPathKnown",currentPath)!,"An old same-reference route also loses coasting eligibility");
+        reference.F9();reference.Call("StopDiagnostics");
         var f=new RollingStartIntegration.Fixture();f.State.DesiredSpeed=80/3.6f;f.F8();f.Probe();
         f.Call("ApplyCruiseStartPreference");
         assert(f.State.DesiredSpeed<23,"Short unverified preview cannot immediately set 100 km/h");

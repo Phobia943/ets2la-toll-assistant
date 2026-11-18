@@ -1,5 +1,14 @@
 # Änderungen
 
+## 0.4.7 – Arbeitskandidat, noch nicht freigegeben
+
+- Vereinheitlicht die am Fahrzeugpunkt geprüfte Route für Geschwindigkeit, offene Mautschranken, Halteboden und Rollen, ohne Sensor- oder Ausgabegrenzen zu verlängern.
+- Unterscheidet eine geprüfte gerade Strecke von fehlender Kurvenvorschau; Wiederherstellung berücksichtigt neu verfügbare Kurven- und Szenengrenzen.
+- Erhält noch nie ausgestellte Zahlungsreservierungen passiv über kurze Unterbrechungen; bereits ausgestellte Versuche bleiben gesperrt.
+- Entfernt wiederholte Vollserialisierung alter Fehlerberichte aus dem laufenden Status.
+- Separater, nicht installierter InputBridge-Kandidat korrigiert den nachgewiesenen Callback-Kontextfehler und ergänzt messbare Eingabediagnose.
+- [Prüfergebnisse, noch ausstehender Endreview und offene Produktgrenzen](REVIEW-0.4.7.md).
+
 ## 0.4.6 – gebundene Schranken an Bahnübergängen
 
 - Ordnet die sichtbaren Schranken über die tatsächlichen Semaphore-Profile und deren `id_map` dem Routencontroller zu. Der zentrale Kartenpunkt wird nicht mehr als fehlende Ampel behandelt, wenn alle zugehörigen Schranken aktuell offen gemeldet werden.

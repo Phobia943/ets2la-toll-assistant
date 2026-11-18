@@ -14,6 +14,24 @@ public sealed record DriveRecording(DriveCheckpoint InitialState, DriveSample[] 
 /// <summary>Decides whether the host can continue driving. Toll behaviour is a separate speed constraint.</summary>
 public sealed class DriveSupervisor(DriveCheckpoint initialState = default)
 {
+    // Supervision and pedal control share the same accepted route. Reading a
+    // sampled decision never renews its original observation age.
+    public static bool RouteUsable(DriveSample sample, double now)
+    {
+        var frame = sample.Frame;
+        double elapsed = now - frame.Time, age = frame.RouteAge + elapsed;
+        if (!double.IsFinite(elapsed) || elapsed < 0 || elapsed >= .2 ||
+            !double.IsFinite(age) || age < 0 || !frame.TelemetryFresh || frame.Paused ||
+            !frame.Enabled) return false;
+        return sample.Action switch
+        {
+            DriveAction.Drive => frame.Route == RouteFeed.Valid && frame.DecisionReady &&
+                age < (frame.CanRecover ? .5 : 1),
+            DriveAction.Recover => frame.CanRecover &&
+                (frame.Route == RouteFeed.Valid && age < 1 || frame.Route == RouteFeed.PlannerPaused && age < .2),
+            _ => false
+        };
+    }
     double? started = initialState.Started;
     double? interrupted = initialState.Interrupted;
     double? stableSince = initialState.StableSince;
@@ -69,7 +87,8 @@ public sealed class DriveSupervisor(DriveCheckpoint initialState = default)
         // Only begin the early slowdown when the current corridor supports it.
         // Keep the existing one-second route limit in a critical approach.
         double freshUntil = frame.CanRecover ? .5 : 1;
-        bool ready = frame.Route == RouteFeed.Valid && frame.DecisionReady && frame.RouteAge < freshUntil;
+        bool ready = frame.Route == RouteFeed.Valid && frame.DecisionReady &&
+            double.IsFinite(frame.RouteAge) && frame.RouteAge >= 0 && frame.RouteAge < freshUntil;
         if (!drove)
         {
             if (ready)

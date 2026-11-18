@@ -69,9 +69,16 @@ public sealed partial class TollPlugin
             throw new InvalidOperationException("Abgang noch nicht gespeichert");
         paymentVisits.Remove(gate);paymentDepartures.Remove(gate);
     }
-    void CancelPaymentReservation()
+    void CancelPaymentReservation(bool preserveUnissued=false)
     {
         if(paymentReservation is { } request) {
+            // A durable reservation is storage only, not input authority. A
+            // brief gap before the FIRST issued intent may retain the same
+            // token. The guard/lease and stopped window are revoked below by
+            // the caller. Issued, consumed or explicitly cancelled attempts
+            // never regain permission from focus/source recovery.
+            if(preserveUnissued&&!request.Cancelled&&paymentAttempt==0&&manualPayment!=null&&
+                !manualPayment.ConsumedGateIds.Contains(request.Key.GateIdentity))return;
             paymentReservation=request with{Cancelled=true};
             manualPayment?.RestoreConsumed([request.Key.GateIdentity]);
         }
@@ -126,14 +133,18 @@ public sealed partial class TollPlugin
         else {paymentDepartures.Clear();paymentDepartureFrame=null;}
         if(!enabled||frame==null||!SensorsFresh(now)||now-pathAt>=.2||path is not {HasError:false}||
             Volatile.Read(ref paymentPathGeneration)!=appliedRoute) {
-            CancelPaymentReservation();manualPayment.Cancel();CancelPaymentOutput(epoch);return;
+            bool sameSession=paymentReservation is not { } request||request.Epoch==epoch&&request.SourceEpoch==gatesSourceEpoch;
+            CancelPaymentReservation(preserveUnissued:enabled&&sameSession);
+            manualPayment.Cancel();CancelPaymentOutput(epoch);return;
         }
         paymentRouteZone=router.ManualPaymentZone(options.StopOffsetMetres);
         if(paymentRouteZone is not { } zone) {
             if(router.SelectedGate is int selected&&router.PaymentFor(selected)==TollPayment.Manual)
                 paymentStatus="Zahlzone am sicheren Haltepunkt nicht eindeutig bestätigt. Bitte mit F9 übernehmen und manuell bezahlen.";
             else paymentStatus="Automatische Zahlungsbestätigung wartet auf eine bestätigte manuelle Mautspur.";
-            CancelPaymentReservation();manualPayment.Cancel();CancelPaymentOutput(epoch);return;
+            bool sameSession=paymentReservation is not { } request||request.Epoch==epoch&&request.SourceEpoch==gatesSourceEpoch;
+            CancelPaymentReservation(preserveUnissued:sameSession);
+            manualPayment.Cancel();CancelPaymentOutput(epoch);return;
         }
         var live=TollSignals.ReadLive(gates,zone.GateId,zone.Anchor);
         bool bound=barrierBinding?.LiveBarrierBound==true&&live!=null&&barrierBinding.LiveGate?.Key==RouteMatcher.Key(live)&&
@@ -143,8 +154,11 @@ public sealed partial class TollPlugin
         bool foreground=context.IsFreshGameForeground(Stopwatch.GetTimestamp(),Stopwatch.Frequency);
         bool eligible=foreground&&bound&&frame.Active&&!frame.Paused&&state==BarrierState.Closed&&
             Math.Abs(frame.Speed)<=.1&&zone.Zone.Contains(frame.Position,TrackingGuard.TruckForward(frame.Heading));
-        if(paymentReservation is { } oldRequest&&(oldRequest.Epoch!=epoch||oldRequest.SourceEpoch!=gatesSourceEpoch||
-            oldRequest.Key!=zone.Zone.Key||!eligible))CancelPaymentReservation();
+        if(paymentReservation is { } oldRequest) {
+            if(oldRequest.Epoch!=epoch||oldRequest.SourceEpoch!=gatesSourceEpoch||oldRequest.Key!=zone.Zone.Key)
+                CancelPaymentReservation();
+            else if(!eligible)CancelPaymentReservation(preserveUnissued:true);
+        }
         if(eligible&&!manualPayment.ConsumedGateIds.Contains(zone.Zone.Key.GateIdentity)) {
             if(paymentReservation==null||paymentReservation.Key.GateIdentity!=zone.Zone.Key.GateIdentity) {
                 string token=Guid.NewGuid().ToString("N");

@@ -5,6 +5,33 @@ using MautAssistent;
 
 public static class DiagnosticDeliveryIntegration
 {
+    public static void CompactFault(Action<bool,string> assert)
+    {
+        using var written=new ManualResetEventSlim();string? status=null,fullFault=null;
+        var f=new RollingStartIntegration.Fixture(writeDiagnostic:(name,text)=>{
+            if(Path.GetFileName(name)=="last-fault.json")fullFault=text;
+            if(Path.GetFileName(name)=="status.json"){status=text;written.Set();}
+        });
+        f.F8();f.Probe();f.Fresh();f.Call("Disarm","Diagnostic regression");
+        assert(SpinWait.SpinUntil(()=>f.Get<DiagnosticQueue>("diagnostics").IsIdle,TimeSpan.FromSeconds(2)),
+            "The full fault is written independently before recurring status");
+        assert(fullFault?.Contains("driveRecording")==true&&fullFault.Contains("routePlan"),
+            "The separate incident report must keep the original route and drive history");
+        // A historical report may be arbitrarily large. Recurring status must
+        // not traverse it again, even when a property would fail to serialize.
+        f.Set("lastFault",new UnserializableHistory());
+        f.Set("lastWrite",-100d);f.Set("lastMapWrite",0d);f.Fresh();f.Plugin.Tick();
+        try {
+            assert(written.Wait(TimeSpan.FromSeconds(2)),"Status must not serialize the historical report");
+            using var parsed=JsonDocument.Parse(status!);
+            var fault=parsed.RootElement.GetProperty("lastFault");
+            assert(fault.GetProperty("reason").GetString()=="Diagnostic regression"&&
+                fault.GetProperty("report").GetString()=="last-fault.json"&&!fault.TryGetProperty("routePlan",out _),
+                "Recurring status retains a compact incident identity and reference");
+            assert(status!.Length<100_000,"A simple current status must stay bounded independently of incident history size");
+        } finally {f.Call("StopDiagnostics");}
+    }
+    sealed class UnserializableHistory {public string RoutePlan=>throw new Exception("Historical payload was serialized again");}
     public static void BlockedGeometry(Action<bool,string> assert)
     {
         using var entered=new ManualResetEventSlim();using var release=new ManualResetEventSlim();

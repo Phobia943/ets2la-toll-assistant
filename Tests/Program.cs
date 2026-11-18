@@ -49,6 +49,20 @@ void Run()
     var results=new List<string>();
     void Check(string name, Action test) { if(args is ["--filter",var filter]&&!name.Contains(filter,StringComparison.OrdinalIgnoreCase))return;try {test(); results.Add("PASS "+name);} catch(Exception ex) {results.Add("FAIL "+name+": "+ex); } }
     void Assert(bool v,string message="Assertion failed") {if(!v)throw new Exception(message);}
+#if INTEGRATION
+    Check("Accepted route delay does not create an artificial stop in actual Tick",()=>RouteDecisionIntegration.RecordedDelay(Assert));
+    Check("Shared route decisions preserve original deadlines and revocation",()=>RouteDecisionIntegration.Deadlines(Assert));
+    Check("Current status never reserializes full historical faults",()=>DiagnosticDeliveryIntegration.CompactFault(Assert));
+    Check("Completed straight-road curve preview allows actual Tick propulsion",()=>CurveReadinessReviewTests.StraightRoad(Assert));
+    Check("Curve preview distinguishes clear road, finite curve and invalid evaluation",()=>CurveReadinessReviewTests.DistinctOutcomes(Assert));
+    Check("Independent route review preserves recovery braking and takeover",()=>RouteDecisionReviewTests.RecoverAndTakeover(Assert));
+    Check("Independent route review expires retained planner-pause geometry",()=>RouteDecisionReviewTests.BoundedPause(Assert));
+    Check("Independent route review keeps newly completed curve constraints during recovery",()=>RouteDecisionReviewTests.RecoveryUsesCompletedCurve(Assert));
+    Check("Accepted route age does not discard fresh open toll evidence",()=>BarrierDecisionAgeReviewTests.ActualTick(Assert));
+    Check("Accepted route age preserves planned stationary hold and manual release",()=>BarrierDecisionAgeReviewTests.PlannedStationaryHold(Assert));
+    Check("Unissued payment reservation survives only transient eligibility loss",()=>PaymentReservationReviewTests.BeforeFirstIntent(Assert));
+    Check("Issued payment and revoked sessions never regain payment permission",()=>PaymentReservationReviewTests.IssuedAndSessionRevocation(Assert));
+#endif
     Check("Own longitudinal controller preserves safety, epochs and pedal ownership",()=>LongitudinalControllerTests.SafetyAndOwnership(Assert));
     Check("Own longitudinal controller coasts, holds, resumes and rejects missing delivery",()=>LongitudinalControllerTests.CoastStopsAndFeedback(Assert));
     Check("Pedal receipt loss cannot invent an emergency or replay expired braking",()=>DeliveryInterruptionReviewTests.Run(Assert));

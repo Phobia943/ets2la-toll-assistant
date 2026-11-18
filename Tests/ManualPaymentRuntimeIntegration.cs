@@ -16,7 +16,7 @@ using SdkGateType=ETS2LA.Game.SDK.SemaphoreType;
 public static class ManualPaymentRuntimeIntegration
 {
     const BindingFlags Hidden=BindingFlags.Instance|BindingFlags.NonPublic;
-    sealed class Fixture:IDisposable
+    internal sealed class Fixture:IDisposable
     {
         public readonly ApplicationState State=(ApplicationState)RuntimeHelpers.GetUninitializedObject(typeof(ApplicationState));
         public readonly TollPlugin Plugin;

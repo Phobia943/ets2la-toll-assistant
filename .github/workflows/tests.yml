@@ -47,6 +47,14 @@ jobs:
         run: |
           $env:MAUT_GEOMETRY_FIXTURE=(Resolve-Path './Native/TruckersMPGeometry/bin/native-fixture.bin').Path
           dotnet run --project CoreTests -c Release
+      - name: Check compatible input bridge with an isolated fake game
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $sdk=Join-Path $env:RUNNER_TEMP 'scs-sdk-1.16.zip'
+          Invoke-WebRequest 'https://download.eurotrucksimulator2.com/scs_sdk_1_16.zip' -OutFile $sdk
+          if((Get-FileHash -LiteralPath $sdk).Hash -ne '49821E25568F4D7E462135F577F8FEF2AB197326404F2C1DAEF139B8F3DC5E69'){throw 'SCS SDK hash mismatch'}
+          ./Tools/InputBridge/Build.ps1 -Zig "$env:RUNNER_TEMP/zig-x86_64-windows-0.15.2/zig.exe" -SdkArchive $sdk -CacheDirectory (Join-Path $env:RUNNER_TEMP 'input-cache') -Test
       - name: Check parked-scene collector and producer contracts without a game
         shell: pwsh
         run: |

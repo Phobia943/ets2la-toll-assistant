@@ -33,6 +33,7 @@ public sealed partial class TollPlugin : Plugin
     readonly ConnectorHistory connectorHistory = new();
     readonly Queue<(DriveCheckpoint Before, DriveSample Sample)> driveHistory = new();
     DriveAction driveAction;
+    DriveSample? currentDriveSample;
     bool connectorAttempted;
     bool connectorPending;
     bool connectorSeeded;
@@ -72,7 +73,7 @@ public sealed partial class TollPlugin : Plugin
         var shape=vehicleGeometry.Read();
         if(shape!=null)lastEnvelopeShape=shape;
         else if(lastEnvelopeShape is { } previous&&DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()-previous.UtcMs is >=0 and <=300)shape=previous;
-        var ground=clock.Elapsed.TotalSeconds-lastAcceptedPlanAt<.2?safetyTrace:null;
+        var ground=CurrentMappedCorridor(clock.Elapsed.TotalSeconds);
         if(ground==null&&stationaryGround?.Matches(position,headingTurns,speed,ConnectorStart.NavigationKey(readPlanner()),
             envelopeEvidence.AssetIdentity,shape)==true)ground=stationaryGround.Trace;
         return envelopeEvidence.Read(envelopeContext,shape,position,speed,headingTurns,ground);
@@ -180,6 +181,7 @@ public sealed partial class TollPlugin : Plugin
     public int SelectedLane {get {lock(sync)return (previewRouter ?? router).SelectedGate ?? -1;}}
     string? routeFault;
     object? lastFault;
+    object? lastFaultSummary;
     string? warnedStopKey;
     bool preview;
     bool previewCalculating;
@@ -338,6 +340,7 @@ public sealed partial class TollPlugin : Plugin
     }
     void ResetDriving()
     {
+        currentDriveSample=null;
         longitudinal.Reset();
         simulationDynamics.Reset();
         reverseMotion.Reset();
@@ -359,6 +362,7 @@ public sealed partial class TollPlugin : Plugin
 
     DriveAction SafetyWatchdog(double now)
     {
+        currentDriveSample=null;
         using var operation=faultBrake.BeginOperation();
         if(!faultBrake.OperationCurrent)return DriveAction.Idle;
         DrainInputFrames();
@@ -416,7 +420,8 @@ public sealed partial class TollPlugin : Plugin
         var before = supervisor.Checkpoint;
         var action = supervisor.Step(frame);
         if (driveHistory.Count == 512) driveHistory.Dequeue();
-        driveHistory.Enqueue((before, new(frame, action)));
+        currentDriveSample=new(frame,action);
+        driveHistory.Enqueue((before, currentDriveSample.Value));
         driveAction = action;
 
         if (action is DriveAction.RejectStart or DriveAction.EmergencyStop)
@@ -446,6 +451,7 @@ public sealed partial class TollPlugin : Plugin
             // An older callback may acquire sync after a newer one. Revoke
             // payment at every actual path replacement, not only at arrival.
             Volatile.Write(ref paymentAppliedPathGeneration,0);
+            currentDriveSample=null;
             path = data;
             pathAt = clock.Elapsed.TotalSeconds;
             pathReceivedAt=pathAt;
@@ -858,7 +864,9 @@ public sealed partial class TollPlugin : Plugin
         try {shapeAtFault=vehicleGeometry.Read()?.DescribeFor(position,headingTurns);}catch { }
         // Capture before disabling assists: the next path frame otherwise overwrites
         // the actual fault with the generic "Assists are disabled" message.
-        lastFault=new {utc=DateTimeOffset.UtcNow, reason, speedKph=speed*3.6,
+        var faultUtc=DateTimeOffset.UtcNow;
+        lastFaultSummary=new {utc=faultUtc,reason,speedKph=speed*3.6,action=action.ToString(),report="last-fault.json"};
+        lastFault=new {utc=faultUtc, reason, speedKph=speed*3.6,
             phase=decision.Phase, tracked, candidate, pathError=path?.ErrorMessage,
             action=action.ToString(), geometry,routeTracking=safetyTrace?.Diagnose(position),tracking=trackingGuard.LastDirectionFailure,
             steeringFailure=lastSteeringFailure is { } failure&&failure.Reason==reason?failure:null,
@@ -899,10 +907,9 @@ public sealed partial class TollPlugin : Plugin
             if (faultBrake.Latched) return -5f;
             if (RejectUnpreparedStart() || !_IsRunning || State.DrivingMode == DrivingMode.LaneAssistOnly) return float.NaN;
             if (action == DriveAction.AwaitRoute) return -.35f;
-            if (action == DriveAction.Recover) return -.5f;
-            if (action != DriveAction.Drive) return float.NaN;
+            if (action is not (DriveAction.Drive or DriveAction.Recover)) return float.NaN;
             if (decision.RequiresTakeover) { Disarm(decision.Phase); return -5f; }
-            ApplyCruiseStartPreference();
+            if(action==DriveAction.Drive)ApplyCruiseStartPreference();
 
             try
             {
@@ -910,6 +917,11 @@ public sealed partial class TollPlugin : Plugin
                     ? EvaluatePlannedStop(path!).MaxAcceleration
                     : decision.MaxAcceleration;
                 RecordSpeedBound("Toll",limit,decision.TargetSpeed,decision.Phase);
+                // Recovery permits only a bounded slowdown. Still evaluate
+                // current curves and objects below; they may require MORE
+                // braking than that baseline, including a just-ready preview.
+                if(action==DriveAction.Recover)
+                    limit=Minimum(limit,RecordSpeedBound("RouteRecovery",-.5f));
                 if (safetyTrace is { EndsAtGap: true } trace)
                 {
                     float routeLimit = RecordSpeedBound("RouteGap",ApproachStop.BeforeRouteGap(speed, trace.Length - trace.Project(position).Along));
@@ -1013,14 +1025,14 @@ public sealed partial class TollPlugin : Plugin
                         pedalSourceCurrent,
                         impact=lastImpact,
                         pedalWarning=Volatile.Read(ref brakeWarning),
-                        curve=curveDecision,curvePreviewIssue=safetyTrace!=null?curvePreview.ErrorFor(safetyTrace):null,
+                        curve=curveDecision,curvePreviewReady,curvePreviewIssue=safetyTrace!=null?curvePreview.ErrorFor(safetyTrace):null,
                         sdk, paused, pathError=path?.ErrorMessage,
                         gateCount=gates.Count(g=>g.type==SemaphoreType.GATE), options,
                         geometry=(object?)null,manualStopOffset=router.ManualStopOffset(options.StopOffsetMetres),
                         routing=router.Status,preparingAutomaticEntry=router.PreparingAutomaticEntry,
                         planningStopDistance=router.PlanningStopDistance,planningStopKey=router.PlanningStopKey,
                         prefetchIssue=router.PrefetchIssue,manualStopIssue=router.ManualStopIssue,
-                        routeFault,lastFault,previewStatus,routeTransition,
+                        routeFault,lastFault=lastFaultSummary,previewStatus,routeTransition,
                         assists=State.EnableAssists,mode=State.DrivingMode.ToString()
                     };
                     var log = Path.ChangeExtension(DiagnosticPath, ".log");

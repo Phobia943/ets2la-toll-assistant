@@ -67,10 +67,16 @@ public sealed class CurveSpeedProfile
     public CurveSpeedDecision? Evaluate(Vector3 position,double speed,double deceleration)
         =>Evaluate(position,speed,deceleration,false);
     public CurveSpeedDecision? Evaluate(Vector3 position,double speed,double deceleration,bool brisk)
+        =>TryEvaluate(position,speed,deceleration,brisk,out var decision)?decision:null;
+    // A valid straight profile has no limiting curve. That is different from
+    // being unable to evaluate the current vehicle against the profile.
+    public bool TryEvaluate(Vector3 position,double speed,double deceleration,bool brisk,out CurveSpeedDecision? decision)
     {
-        if(!ForwardMotion.TryNormalizeForwardSpeed(speed,out speed)||!double.IsFinite(deceleration)||deceleration is <.5 or >2)return null;
+        decision=null;
+        if(!float.IsFinite(position.X)||!float.IsFinite(position.Y)||!float.IsFinite(position.Z)||
+            !ForwardMotion.TryNormalizeForwardSpeed(speed,out speed)||!double.IsFinite(deceleration)||deceleration is <.5 or >2)return false;
         var projection=route.ProjectForTracking(position);
-        if(projection.Offset>3||Math.Abs(projection.HeightOffset)>2)return null;
+        if(projection.Offset>3||Math.Abs(projection.HeightOffset)>2)return false;
         double bestAllowed=double.PositiveInfinity,bestRadius=0,bestDistance=0,bestCurveSpeed=0,bestAvailable=0,bestLateral=1;
         foreach(var bend in bends) {
             double distance=bend.Along-projection.Along;
@@ -82,9 +88,10 @@ public sealed class CurveSpeedProfile
             bestAllowed=allowed;bestRadius=radius;bestDistance=distance;bestCurveSpeed=curveSpeed;bestAvailable=available;
             bestLateral=lateral;
         }
-        if(!double.IsFinite(bestAllowed))return null;
+        if(!double.IsFinite(bestAllowed))return true;
         float acceleration=bestAllowed>speed+1?float.NaN:(float)Math.Clamp((bestAllowed-speed)*.8,-deceleration,.35);
         double needed=(speed*speed-bestCurveSpeed*bestCurveSpeed)/(2*Math.Max(1,bestAvailable));
-        return new(bestRadius,bestDistance,bestCurveSpeed,bestAllowed,acceleration,needed>deceleration+.1){LateralAcceleration=bestLateral};
+        decision=new(bestRadius,bestDistance,bestCurveSpeed,bestAllowed,acceleration,needed>deceleration+.1){LateralAcceleration=bestLateral};
+        return true;
     }
 }

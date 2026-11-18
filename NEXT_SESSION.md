@@ -1,5 +1,13 @@
 # Nächste Sitzung
 
+## Maßgeblicher Stand am 18. November: 0.4.7 in Arbeit, 0.4.6 installiert
+
+Der Gesamtauftrag „alle offenen Themen umsetzen“ ist weiter offen. 0.4.7 ist gebaut und lokal geprüft (233 Integration, 100 Kernlogik, 304 echte Hostprüfungen). Der separate InputBridge-Kandidat besteht 38 native Prüfungen und den Diagnosevertrag. **Nichts davon ist neu installiert.** Der unabhängige Endreview wurde durch ein Nutzungslimit unterbrochen. Erst diese Prüfung abschließen, dann das vorbereitete Paket freigeben; keine Stand-/Fahrabnahme erfinden. Details und konkrete Beweisgrenzen: [REVIEW-0.4.7.md](REVIEW-0.4.7.md), Reihenfolge: [WORKLIST.md](WORKLIST.md).
+
+0.4.6 wurde bereits am 18. November um 10:08 MEZ mit Sicherung und Hashprüfung installiert. Die folgenden früheren Sitzungsstände sind historische Einträge und dürfen diesen Stand nicht überschreiben. Ob eine Anwendung jetzt läuft, muss vor jedem Eingriff neu geprüft werden.
+
+## Historische Sitzungsnotizen
+
 ## Neuer Kandidat: 0.4.6 – Bahnübergang
 
 0.4.5 wurde am 18. November geladen und während einer dreiminütigen Fahrt beobachtet. Kein neuer Fehlerhalt, keine Pedalempfangsstörung oder Kabinen-/Chassisschadenzunahme in dieser Aufnahme. Ein kurzer Bremsimpuls ging auf 301 ms alte Routendaten zurück; die Regelung verlangt weniger als 200 ms. Diese Verzögerungsursache und der frühere Lenkausfall bleiben offen.

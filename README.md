@@ -1,5 +1,7 @@
 # ETS2LA Mautassistent
 
+**Aktueller Arbeitsstand: 0.4.7 ist vorbereitet und lokal geprüft, noch nicht installiert oder abschließend freigegeben.** Korrigiert widersprüchliche Routenfristen, Bremsen auf bereits geprüften Geraden und verlorene Zahlungsbereitschaft vor dem ersten Versuch. [Nachweise und verbleibende Grenzen](REVIEW-0.4.7.md). Lokal installiert bleibt 0.4.6. Die folgenden Versionsnotizen beschreiben frühere Entwicklungsstände; sie sind keine aktuelle Installationsauskunft.
+
 **0.4.6 korrigiert die Zuordnung offener Bahnübergangsschranken und wird als separates Update vorbereitet.** Die Schranken werden aus dem tatsächlichen Kartenprofil einer Gruppe zugeordnet; alle erwarteten Mitglieder müssen aktuell offen sein. Die laufende 0.4.5 wird während der Fahrt nicht verändert. [Befund und Grenzen](REVIEW-0.4.6.md).
 
 **0.4.5 ist als Korrektur der Pedal-Notbremsung lokal installiert.** Ausbleibender Pedalempfang, etwa nach einem Fensterwechsel, sperrt Gas und zeigt eine Störung an, erzeugt aber allein keinen verriegelten Fehlerhalt mehr. Aktuelle Bremsgrenzen bleiben wirksam; ein entfallener Bremsgrund wird nicht nachgeholt. Dies behebt nicht die tatsächliche Hintergrundübertragung. [Prüfungen und Grenzen](REVIEW-0.4.5.md).

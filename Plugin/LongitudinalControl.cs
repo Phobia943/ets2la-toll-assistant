@@ -47,6 +47,7 @@ public sealed partial class TollPlugin
         if(paused){longitudinal.Pause();simulationDynamics.Reset();return;}
         bool rollback=ObserveReverseMotion(epoch);
         speedBounds.Clear();
+        curvePreviewReady=false;
         float safetyLimit=EvaluateAt(issuedAt,epoch);
         double now=clock.Elapsed.TotalSeconds;
         // Only a derivative from advancing physics frames is evidence. An
@@ -58,8 +59,10 @@ public sealed partial class TollPlugin
             accelerationKnown=dynamics!=null;
             observedAcceleration=dynamics?.Acceleration??0;
         }
-        bool routeKnown=SensorsFresh(now)&&now-pathAt<.2&&safetyTrace!=null&&
-            driveAction is DriveAction.Drive or DriveAction.AwaitRoute or DriveAction.Recover;
+        // EvaluateAt just rechecked tracking at the current pose. Do not turn
+        // that accepted corridor into a zero-speed target at a shorter route
+        // deadline. Recovery's explicit deceleration still applies.
+        bool routeKnown=CurrentRouteUsable(now);
         double target=Math.Max(0,State.DesiredSpeed);
         if(!accelerationKnown) {
             target=Math.Min(target,Math.Max(0,speed));
@@ -83,7 +86,7 @@ public sealed partial class TollPlugin
         if(curveDecision is { } curve)target=Math.Min(target,Math.Max(0,curve.AllowedSpeed));
         // Unknown curvature is not permission to accelerate. The asynchronous
         // profile will replace this temporary zero bound when it is available.
-        if(options.CurvePreviewEnabled&&curveDecision==null) {
+        if(options.CurvePreviewEnabled&&!curvePreviewReady) {
             target=Math.Min(target,Math.Max(0,speed));
             safetyLimit=Minimum(safetyLimit,RecordSpeedBound("CurvePending",-.35f,reason:"Streckenvorschau noch nicht aktuell"));
         }
@@ -178,4 +181,6 @@ public sealed partial class TollPlugin
         }
     }
     static float Minimum(float first,float second)=>float.IsFinite(first)?float.IsFinite(second)?Math.Min(first,second):first:second;
+    bool CurrentRouteUsable(double now)=>safetyTrace!=null&&SensorsFresh(now)&&
+        currentDriveSample is { } sample&&DriveSupervisor.RouteUsable(sample,now);
 }

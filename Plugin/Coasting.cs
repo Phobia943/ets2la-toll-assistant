@@ -10,7 +10,7 @@ public sealed partial class TollPlugin
             double now=clock.Elapsed.TotalSeconds;
             if(!options.CoastOnOpenRoads||!options.CurvePreviewEnabled||!_IsRunning||!active||preview||
                 !State.EnableAssists||State.DrivingMode!=DrivingMode.FullSelfDriving||faultBrake.Latched||
-                brakeHeld||now<takeoverUntil||driveAction!=DriveAction.Drive||!SensorsFresh(now)||now-pathAt>.2||
+                brakeHeld||now<takeoverUntil||driveAction!=DriveAction.Drive||!CurrentRouteUsable(now)||
                 controller.Tracking||router.StopBoundary.HasValue||router.HasShortChange||sceneStopping||router.ClearanceHoldRequested||
                 safetyTrace is not {IdentityKnown:true,EndsAtGap:false} trace||
                 candidate is { } gate&&gate.Distance<=controller.ApproachHorizon(speed))return false;
@@ -28,7 +28,7 @@ public sealed partial class TollPlugin
     bool NativeCoastPathKnown(object evaluated)
     {
         if(!Monitor.TryEnter(sync))return false;
-        try {return ReferenceEquals(path,evaluated)&&path is {HasError:false}&&clock.Elapsed.TotalSeconds-pathAt<=.2;}
+        try {return ReferenceEquals(path,evaluated)&&path is {HasError:false}&&CurrentRouteUsable(clock.Elapsed.TotalSeconds);}
         finally {Monitor.Exit(sync);}
     }
     void DisconnectCoasting()
