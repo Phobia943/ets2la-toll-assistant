@@ -1,6 +1,6 @@
 # 0.4.10 – wiederholte Katalogarbeit entfernen
 
-Stand: 18. November 2026. Nach bestätigtem sicheren Halt und beendeter Assistenz um 14:22 MEZ mit geprüfter Sicherung installiert. Alle fünf Live- und Sicherungsdateien stimmen. Die App blieb beendet; tatsächliches Laden und Fahrprüfung stehen aus. Dies ist eine belegte Leistungsverbesserung, kein Nachweis, dass sämtliche Ausfälle behoben sind.
+Stand: 18. November 2026. Nach bestätigtem sicheren Halt und beendeter Assistenz um 14:22 MEZ mit geprüfter Sicherung installiert. Alle fünf Live- und Sicherungsdateien stimmen. Nach eigenem Nutzerstart sind tatsächliches Laden, Parkneutralisierung und Anfahren aufgezeichnet; erneute manuelle Übernahme und vollständige Fahrabnahme stehen aus. Dies ist eine belegte Leistungsverbesserung, kein Nachweis, dass sämtliche Ausfälle behoben sind.
 
 ## Neue Ausfälle und Beweisgrenzen
 
@@ -44,4 +44,12 @@ Das Paket enthält fünf geprüfte Appdateien; inhaltlich ändert sich nur das P
 
 17 isolierte Installations-/Rücksetzsimulationen bestehen, einschließlich aller fünf Abbruchpositionen, währenddessen gestarteter Anwendung, Fremdbytes und umgeleiteter Pfade. Die echte Paketprüfung gegen die laufende Installation war ausschließlich lesend und bestand ebenfalls.
 
-Für die nächste Prüfung: geladene Version, Parkneutralisierung und manuelle Übernahme im Stand prüfen. Danach den tatsächlichen Katalog-Wiederanlauf und die Ausgabealter beobachten. Auflieger-Nachlauf, Hintergrundpedale und die übrigen offenen Punkte bleiben in [WORKLIST.md](WORKLIST.md) aufgeführt.
+## Erste Liveprüfung nach Nutzerstart
+
+ETS2LA wurde vom Nutzer um 14:25 MEZ gestartet. Zunächst waren die Module ausgeschaltet; im bestätigten Stand wurden Mautassistent, Pathfinding und Lane Assist einzeln aktiviert. Der native ACC blieb aus. Alte Statusdaten von 0.4.9 am Aufnahmebeginn gelten nicht als geladene Version; ab 14:28:16 MEZ enthält die Aufnahme frische 0.4.10-Daten, zunächst mit ausgeschalteter Assistenz. Die Startbereitschaft wurde separat im direkt gelesenen Status um 14:28:56 bestätigt; das Aufnahmeformat enthält dieses Feld nicht.
+
+Der Nutzer bestätigte F8. Von 14:29:23,09 bis 14:29:49,44 MEZ sind 239 Messpunkte über 26,35 Sekunden mit aktiver Assistenz, Feststellbremse, Stillstand und tatsächlichen Spielpedalen 0/0 vorhanden. Die eigene Regelung meldet dabei Parkneutralisierung. Das ist kein 30-Sekunden-Test. Danach wurde die Feststellbremse gelöst und angefahren; bis 14:30:52 sind etwa 50 km/h, tatsächlich empfangenes Gas und kein neuer Fehlerhalt aufgezeichnet. Luftdruck blieb ohne Warnung. Keine eigenen Fahrzeug- oder Fenstereingriffe während der Fahrt.
+
+Lokale Belege: `outputs/stand-0410-20261118-1427.jsonl` und `outputs/stand-0410-20261118-summary.json`. Eine zweite, getrennte Aufnahme von 14:33:45 bis 14:36:45 MEZ enthält 1.623 Messpunkte und 176 Statusbilder, alle mit aktiver 0.4.10. Tempo etwa 34–68 km/h; kein aufgezeichneter Fehlerhalt oder Pedalempfangsfehler, Lenkalter in den Statusbildern höchstens 33,21 ms und keine Luftdruckwarnung. Kabinen- und Chassisschaden blieben unverändert. Sechs Statusbilder melden eingeschränkte Gaswirkung ohne fehlenden logischen Empfang; außerdem ein vorübergehend unlesbarer Status und fünf während des Lesens weitergeschriebene Telemetriesamples. Diese Aufnahme ist daher kein lückenloser Echtzeitnachweis. Belege: `outputs/drive-0410-20261118-1434.jsonl` und zugehörige `-summary.json`; der Dateiname bezeichnet nicht den genauen Startzeitpunkt.
+
+Die Beobachtung belegt weder eine vollständige Mautdurchfahrt noch einen Hintergrundpedalvergleich oder die Ursache früherer Ausgabelücken. Die erneute manuelle Übernahme unter 0.4.10 ist noch zu prüfen. Danach den tatsächlichen Katalog-Wiederanlauf und die Ausgabealter beobachten. Auflieger-Nachlauf, Hintergrundpedale und die übrigen offenen Punkte bleiben in [WORKLIST.md](WORKLIST.md) aufgeführt.

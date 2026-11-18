@@ -1,10 +1,12 @@
 # Nächste Sitzung
 
-## Aktuell installiert: 0.4.10, tatsächliches Laden und Spielprüfung offen
+## Aktuell: 0.4.10 geladen, Parkneutralisierung und Anfahren aufgezeichnet
 
 0.4.10 wurde um 14:22 MEZ nach bestätigtem Halt und beendeter App installiert. Sicherung, fünf Live-Dateien und unveränderte Spiel-/Workerdateien sind unabhängig geprüft. Keine Anwendung wurde gestartet. Es beseitigt die belegte Wiederholung vollständiger Modell-/Hookup-Katalogladungen nach leerer Queue und sichert Quellenwechsel sowie unvollständige Definitionen ab. Kandidat, Installer und Nachweise stehen in [REVIEW-0.4.10.md](REVIEW-0.4.10.md). Kein Ersatz der Fahrregelung und keine verlängerten Ausgabegrenzen.
 
-Die 0.4.9-Fahrt zeigte um 13:51 und 13:56 MEZ kurze technische Ausgabeausfälle. Beim ersten fehlte vor allem der nächste Tickstart, beim zweiten alterten beide Ausgaben. Gültige Route und Pedalempfang unterscheiden dies vom Kreuzungsfehler. Die spätere Laufzeitaufnahme belegt starke Kataloglast, enthält aber keinen der ursprünglichen Ausfälle. Kausalität bleibt offen; nicht als behoben melden. Die bisherige Fahrt wurde nicht verändert. Der Einbau ist abgeschlossen. Nach Nutzerstart zunächst geladene Version, Parken und manuelle Übernahme im Stand prüfen.
+Die 0.4.9-Fahrt zeigte um 13:51 und 13:56 MEZ kurze technische Ausgabeausfälle. Beim ersten fehlte vor allem der nächste Tickstart, beim zweiten alterten beide Ausgaben. Gültige Route und Pedalempfang unterscheiden dies vom Kreuzungsfehler. Die spätere Laufzeitaufnahme belegt starke Kataloglast, enthält aber keinen der ursprünglichen Ausfälle. Kausalität bleibt offen; nicht als behoben melden.
+
+Der Nutzer startete ETS2LA um 14:25 MEZ selbst. Die zunächst ausgeschalteten Module wurden im bestätigten Stand einzeln aktiviert: Mautassistent, Pathfinding und Lane Assist; nativer ACC bleibt aus. Frische 0.4.10 ist ab 14:28:16 in der Aufnahme enthalten; die Startbereitschaft wurde separat im direkt gelesenen Status um 14:28:56 bestätigt. Nach ausdrücklich bestätigtem F8 folgt von 14:29:23 bis 14:29:49 ein 26,35-sekündiger Standabschnitt mit Feststellbremse und Spielpedalen 0/0. Anschließend fährt der Lkw mit aktiver Assistenz; bis zum Aufnahmeende 14:30:52 sind Anfahren bis rund 50 km/h, empfangenes Gas und kein neuer Fehlerhalt aufgezeichnet. Eine getrennte dreiminütige Fahrtaufnahme bis 14:36:45 enthält ebenfalls aktive Assistenz ohne aufgezeichneten Fehlerhalt; kein lückenloser Nachweis über die Zeit zwischen beiden Aufnahmen. Die erneute Controllerübernahme unter 0.4.10 ist noch offen. Während der Fahrt nur lesen; kein Fensterwechsel und keine Änderungen. Details und Grenzen stehen im Review. Nicht den abgeschlossenen Standabschnitt als weiterhin bestehenden Stillstand behandeln.
 
 ## Vorheriger Stand: 0.4.9 installiert und gefahren
 

@@ -1,10 +1,11 @@
 # Änderungen
 
-## 0.4.10 – Katalogwiederverwendung installiert, Spielprüfung offen
+## 0.4.10 – Katalogwiederverwendung geladen, Fahrabnahme offen
 
 - Behält vollständig geladene Modell- und Hookup-Kataloge über leere Arbeitswarteschlangen hinweg, gebunden an die jeweilige Dateisystemgeneration. Archive und Modellgeometrie bleiben getrennt verwaltet.
 - Korrigiert einen teilweise übernommenen Quellenwechsel bei fehlgeschlagener Archivabfrage. Unlesbare Hookup-Dateien dürfen keinen Teilkatalog mit möglicherweise falscher Zahlart freigeben.
 - 260 Integrationsprüfungen und 307 isolierte Host-/Plugin-Assertions bestehen. Keine Änderung von Ausgabealtergrenzen oder Fahrregelung. Die Ursache der zusätzlich aufgezeichneten 164-ms-Ausgabepausen ist noch offen. [Befund und Grenzen](REVIEW-0.4.10.md).
+- Nach Nutzerstart ist die geladene Fassung bestätigt. Bewusstes F8, 26 Sekunden Parkneutralisierung mit Spielpedalen 0/0 und anschließendes Anfahren sind aufgezeichnet. Die erneute manuelle Übernahme und vollständige Fahrabnahme stehen aus; kein Nachweis einer allgemeinen Fehlerfreiheit oder funktionierender Hintergrundpedale.
 
 ## 0.4.9 – Kreuzungsfix installiert, Spielabnahme offen
 
