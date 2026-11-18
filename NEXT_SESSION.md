@@ -1,5 +1,11 @@
 # Nächste Sitzung
 
+## Neuer Kandidat: 0.4.6 – Bahnübergang
+
+0.4.5 wurde am 18. November geladen und während einer dreiminütigen Fahrt beobachtet. Kein neuer Fehlerhalt, keine Pedalempfangsstörung oder Kabinen-/Chassisschadenzunahme in dieser Aufnahme. Ein kurzer Bremsimpuls ging auf 301 ms alte Routendaten zurück; die Regelung verlangt weniger als 200 ms. Diese Verzögerungsursache und der frühere Lenkausfall bleiben offen.
+
+Der anschließende Halt am offenen Bahnübergang ist belegt: zwei offene SDK-Schranken mit ID 0 stehen an PPD-Locators mit ID 1. Das Kartenprofil ordnet beide über `id_map` dem zentralen Controller 0 zu. Bisher suchte die Ampellogik direkt am Controllerpunkt und fand dort keinen Actor. 0.4.6 ergänzt diese Gruppenbindung. Noch nicht installiert oder gefahren; erst nach geschlossenem ETS2LA mit Sicherung austauschen. Danach reale offene/geschlossene Durchfahrt und manuelle Übernahme prüfen. Keine Warnlichtfreiheit aus fehlenden Live-Ampelmeldungen behaupten. [Review](REVIEW-0.4.6.md).
+
 ## Maßgeblicher aktueller Stand: 0.4.5 installiert, Liveprüfung offen
 
 0.4.4 wurde am 18. November gefahren. Zwei Pedalempfangsausfälle nach längerem Heraustabben lösten dessen technische Fehlerbremsung aus. 0.4.5 trennt diese Störung von einer echten Gefahrenanforderung, erhält gesunde Lenkung und aktuelle Bremsgrenzen und entfernt alte gespeicherte Bremsanforderungen. Gas bleibt bis zu manueller Übernahme und bewusstem F8 gesperrt. Nach geprüftem Prozessende wurde die eine Plugin-Datei mit Sicherung ersetzt; Installation und unveränderte Hostdateien sind per SHA256 bestätigt. Keine Anwendung gestartet. [Review, Paketidentität und Prüfungen](REVIEW-0.4.5.md).

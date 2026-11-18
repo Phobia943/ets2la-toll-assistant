@@ -1,5 +1,12 @@
 # Änderungen
 
+## 0.4.6 – gebundene Schranken an Bahnübergängen
+
+- Ordnet die sichtbaren Schranken über die tatsächlichen Semaphore-Profile und deren `id_map` dem Routencontroller zu. Der zentrale Kartenpunkt wird nicht mehr als fehlende Ampel behandelt, wenn alle zugehörigen Schranken aktuell offen gemeldet werden.
+- Liest Profile einschließlich Vererbung und kompatibler Ländervarianten auf eigenen Hintergrund-Dateiströmen. Fehlende oder widersprüchliche Definitionen bleiben unbekannt.
+- Verlangt alle erwarteten Schranken an ihren transformierten Kartenpositionen. Fehlende, bewegte, geschlossene oder widersprüchliche Mitglieder und ausdrücklich erfasste rote Signale verhindern die Freigabe. Wiederholte Kurvenreferenzen erzeugen keine zusätzlichen Haltepunkte innerhalb der Gleise.
+- Keine Änderung der Routenfristen, Lenküberwachung, Pedalausgabe oder Mautzahlung. [Vorfall, Gegenprüfungen und Grenzen](REVIEW-0.4.6.md).
+
 ## 0.4.5 – Pedalempfangsstörung ohne technische Notbremsverriegelung
 
 - Fehlender logischer Pedalempfang sperrt Gas und meldet die Störung, ohne allein einen Fehler-Vollbremskanal zu erzeugen oder gesunde Lenkung abzuschalten. Aktuelle Gefahren-, Kurven-, Verkehrs-, Tor- und Haltegrenzen bleiben erhalten.

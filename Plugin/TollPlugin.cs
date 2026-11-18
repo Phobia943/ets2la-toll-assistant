@@ -92,6 +92,7 @@ public sealed partial class TollPlugin : Plugin
     public TollPlugin() : this(new TollModelEvidence(() => ApplicationState.Current.RunningGame?.GetFileSystem(),
         ()=>GameTelemetry.Current.GetCurrentData().configBool.specialJob,()=>Current?.ReadPlanningProfile()??(float.NaN,float.NaN))) {
         envelopeEvidence=new(()=>ApplicationState.Current.RunningGame?.GetFileSystem());
+        railCrossingProfiles=new(()=>ApplicationState.Current.RunningGame?.GetFileSystem());
     }
     TollPlugin(TollModelEvidence modelEvidence) : this(() => ApplicationState.Current, Notify,
         output=>Events.Current.Publish(GameOutput.Current.EventString,output),
@@ -252,6 +253,7 @@ public sealed partial class TollPlugin : Plugin
     public override void OnEnable()
     {
         _=TrafficSignalEvidence.Prepare();
+        _=railCrossingProfiles?.Read();
         lock(sync)
         {
             if (subscribed) return;

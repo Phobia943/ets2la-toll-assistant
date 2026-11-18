@@ -1,5 +1,7 @@
 # ETS2LA Mautassistent
 
+**0.4.6 korrigiert die Zuordnung offener Bahnübergangsschranken und wird als separates Update vorbereitet.** Die Schranken werden aus dem tatsächlichen Kartenprofil einer Gruppe zugeordnet; alle erwarteten Mitglieder müssen aktuell offen sein. Die laufende 0.4.5 wird während der Fahrt nicht verändert. [Befund und Grenzen](REVIEW-0.4.6.md).
+
 **0.4.5 ist als Korrektur der Pedal-Notbremsung lokal installiert.** Ausbleibender Pedalempfang, etwa nach einem Fensterwechsel, sperrt Gas und zeigt eine Störung an, erzeugt aber allein keinen verriegelten Fehlerhalt mehr. Aktuelle Bremsgrenzen bleiben wirksam; ein entfallener Bremsgrund wird nicht nachgeholt. Dies behebt nicht die tatsächliche Hintergrundübertragung. [Prüfungen und Grenzen](REVIEW-0.4.5.md).
 
 **Die Funktionen aus 0.4.4 bleiben enthalten: automatische Bestätigung an belegten manuellen Zahlspuren und genauere Eingabediagnose.** Der Helfer interagiert einmal im bestätigten Stillstand an einer eindeutig zugeordneten Zahlzone und wartet auf die eigene Schrankenöffnung. Nicht erreichbare oder unbekannte Zahlzonen bleiben manuell. Ein Nachweis der tatsächlichen Zahlung und vollständigen Durchfahrt steht aus. [Umfang und Grenzen](REVIEW-0.4.4.md).

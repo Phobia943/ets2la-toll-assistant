@@ -18,6 +18,7 @@ public sealed partial class TollPlugin
         FreshSource(lease.Traffic)&&FreshSource(lease.Parked)&&FreshSource(lease.Signals)&&FreshSource(lease.Gates)&&
         ownTrafficFrame?.GetValue(null)!=null&&ownParkedFrame?.GetValue(null)!=null&&ownSemaphoreFrame?.GetValue(null)!=null;
     object? longitudinalTrafficEvidence;
+    RailCrossingProfiles? railCrossingProfiles;
     readonly List<object> longitudinalSignalEvidence=[];
     // Immutable copies keep the selected command, its reasons and observed
     // objects together. Host stamps attest successful provider reads, not the
@@ -98,16 +99,20 @@ public sealed partial class TollPlugin
         var signalFrame=ownSemaphoreFrame?.GetValue(null) as Tuple<long,SemaphoreData>;
         if(signalFrame?.Item2?.semaphores==null||!FreshSource(signalFrame.Item1))return new(-.35f,false,"Signalzustände veraltet");
         signalStamp=signalFrame.Item1;
-        return EvaluateTrafficLights(path,safetyTrace,position,signalFrame.Item2.semaphores,router.SelectedBarrier,longitudinalSignalEvidence);
+        return EvaluateTrafficLights(path,safetyTrace,position,signalFrame.Item2.semaphores,router.SelectedBarrier,longitudinalSignalEvidence,railCrossingProfiles?.Read());
     }
     internal static TrafficSpeedDecision EvaluateTrafficLights(PathLib.PlannedPathData path,RouteTrace safetyTrace,Vector3 position,
-        ETS2LA.Game.SDK.Semaphore[] signals,TollBarrierPlan? selectedBarrier,List<object>? observations=null)
+        ETS2LA.Game.SDK.Semaphore[] signals,TollBarrierPlan? selectedBarrier,List<object>? observations=null,
+        IReadOnlyDictionary<string,RailSignalProfile>? railProfiles=null)
     {
         double own=safetyTrace.ProjectForTracking(position).Along;
-        double? stop=null;string? key=null;
+        double? stop=null;string? key=null;string stopReason="Haltende oder unbestätigte Ampel auf der Route";
         foreach(var item in path.PlannedPath.Where(item=>item.prefabPath!=null)) {
         bool ownBarrier=TrafficSignalEvidence.OwnsBarrier(item,selectedBarrier);
-        foreach(var signal in item.prefabPath!.GetSemaphores()) {
+        var mappedSignals=item.prefabPath!.GetSemaphores().ToArray();
+        var crossings=new Dictionary<(uint Id,Vector3 Anchor),RailCrossingDecision?>();
+        var handledCrossings=new HashSet<(uint Id,Vector3 Anchor)>();
+        foreach(var signal in mappedSignals) {
             var mappedType=signal.Semaphore.Type;
             if(mappedType is TruckLib.Models.Ppd.SemaphoreType.ModelOnly or TruckLib.Models.Ppd.SemaphoreType.BarrierManualTimed or
                 TruckLib.Models.Ppd.SemaphoreType.BarrierDistanceActivated or TruckLib.Models.Ppd.SemaphoreType.BarrierGas or
@@ -116,6 +121,30 @@ public sealed partial class TollPlugin
             var start=signal.GetCurveStartWorldCoordinates().Position;
             var projection=safetyTrace.ProjectForTracking(start);
             double distance=projection.Along-own-5;
+            var crossingKey=(signal.Semaphore.SemaphoreId,anchor);
+            if(!crossings.TryGetValue(crossingKey,out var crossing)) {
+                crossing=RailCrossingEvidence.Evaluate(item.prefabPath,signal.Semaphore,railProfiles,signals);
+                crossings[crossingKey]=crossing;
+            }
+            if(crossing!=null) {
+                if(!handledCrossings.Add(crossingKey))continue;
+                // A controller can be referenced by several consecutive nav
+                // curves. Its stop belongs to the approach, not the track exit.
+                projection=mappedSignals.Where(s=>s.Semaphore.SemaphoreId==crossingKey.Item1&&s.GetWorldOrientedPoint().Position==anchor)
+                    .Select(s=>safetyTrace.ProjectForTracking(s.GetCurveStartWorldCoordinates().Position))
+                    .OrderBy(p=>p.Along).First();
+                distance=projection.Along-own-5;
+                if(distance< -2||projection.Offset>2||Math.Abs(projection.HeightOffset)>2||projection.Along>=safetyTrace.Length-.01)continue;
+                if(observations is {Count:<64})observations.Add(new {prefab=item.prefabPath.Prefab.Prefab?.Uid,
+                    id=signal.Semaphore.SemaphoreId,mappedType=mappedType.ToString(),profile=signal.Semaphore.Profile.ToString(),
+                    distance,crossing.Clear,crossing.Reason,expected=crossing.Expected.Select(p=>new{x=p.X,y=p.Y,z=p.Z}),states=crossing.States});
+                if(!crossing.Clear&&(stop==null||Math.Max(0,distance)<stop)) {
+                    stop=Math.Max(0,distance);
+                    key=FormattableString.Invariant($"crossing:{item.prefabPath.Prefab.Prefab?.Uid}:{signal.Semaphore.SemaphoreId}");
+                    stopReason=crossing.Reason;
+                }
+                continue;
+            }
             if(distance< -2||projection.Offset>2||Math.Abs(projection.HeightOffset)>2||projection.Along>=safetyTrace.Length-.01)continue;
             var matches=signals.Where(g=>g.id==signal.Semaphore.SemaphoreId&&Vector3.Distance(g.GetWorldCoordinates(),anchor)<=1).ToArray();
             bool? spawnEnabled=TrafficSignalEvidence.SpawnEnabled(item.prefabPath.Prefab.Prefab);
@@ -136,10 +165,11 @@ public sealed partial class TollPlugin
             if(stop==null||Math.Max(0,distance)<stop) {
                 stop=Math.Max(0,distance);
                 key=FormattableString.Invariant($"light:{signal.Semaphore.SemaphoreId}:{anchor.X:F1}:{anchor.Z:F1}");
+                stopReason="Haltende oder unbestätigte Ampel auf der Route";
             }
         }
         }
         return stop==null?new(float.NaN,true,"Keine haltende Ampel auf der Route"):
-            new(float.NaN,false,"Haltende oder unbestätigte Ampel auf der Route",stop,key);
+            new(float.NaN,false,stopReason,stop,key);
     }
 }

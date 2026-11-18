@@ -1,5 +1,11 @@
 # Fahrnachweis
 
+## 0.4.6 – Bahnübergangskorrektur geprüft, noch nicht installiert
+
+221 Integrationsgruppen, 100 Logikgruppen und 304 isolierte Plugin-/Hostassertionen bestehen. Der kritische Gegenreview und die unabhängige Paket-/Installerprüfung sind abgeschlossen. Die tatsächlichen PPD-Locators und Profile des aufgezeichneten offenen Bahnübergangs werden mit der versiegelten Fassung in beiden Fahrtrichtungen korrekt den SDK-Actors zugeordnet. Dies ist keine neue Durchfahrt; Warnphase, reale geschlossene/offene Passage und manuelle Übernahme bleiben im Spiel zu prüfen. [Details und Paketidentität](REVIEW-0.4.6.md).
+
+Die dreiminütige 0.4.5-Aufnahme zuvor enthält keinen neuen verriegelten Fehlerhalt, aber einen kurzen Bremsimpuls bei veralteter Route und den falschen normalen Signalhalt am Bahnübergang. Diese unterschiedlichen Befunde werden nicht als vollständig behobene Fahrprüfung zusammengefasst.
+
 ## 0.4.5 – Installiert, Pedal- und Lenkvorfälle getrennt
 
 218 Integrationsgruppen, 100 Logikgruppen und 304 tatsächliche Plugin-/Hostassertionen bestehen. Kritischer Gegenreview und Installerprüfung bestanden. Die eine ersetzte Plugin-Datei, ihre Sicherung und die unveränderten vier Hostdateien wurden nach dem Einbau unabhängig geprüft. Keine Anwendung gestartet; neuer Live-Nachweis offen. [Details](REVIEW-0.4.5.md).

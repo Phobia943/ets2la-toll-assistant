@@ -247,6 +247,9 @@ void Run()
     Check("Traffic light instances expose verified spawn flags without defaulting unreadable data to off",()=>TrafficSignalEvidenceTests.InstanceFlags(Assert));
     Check("Unspawned map lights cannot create ghost stops or erase live and canonical barrier evidence",()=>TrafficSignalEvidenceTests.Policy(Assert));
     Check("Actual own Tick uses instance-aware traffic light policy for gas and service brake",()=>TrafficSignalEvidenceTests.TickPolicy(Assert));
+    Check("Rail crossing groups require complete unambiguous remapped live post evidence",()=>RailCrossingEvidenceTests.Binding(Assert));
+    Check("Rail crossing profiles preserve inheritance arrays and country binding semantics",()=>RailCrossingEvidenceTests.Parser(Assert));
+    Check("Rail crossing policy reaches actual Tick without technical fault braking",()=>RailCrossingEvidenceTests.TickPolicy(Assert));
     Check("Actual toll Tick binds open and closed canonical gates independently of the opposite lane",()=>CanonicalGateTickReview.Run(Assert));
     Check("Exit continuation carries a selected toll lane through the next road",()=>RoutingContinuationIntegration.RoadExit(Assert));
     Check("Exit continuation chooses a real directed connector alternative",()=>RoutingContinuationIntegration.ConnectorAlternatives(Assert));
