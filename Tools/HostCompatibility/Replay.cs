@@ -444,6 +444,7 @@ internal sealed class Replay
             activationWrites,()=>outputType.GetMethod("OnControlEvent")!.Invoke(host,[NewNeutralEvent()]));
         if(Environment.GetEnvironmentVariable("MAUT_PLUGIN_CANDIDATE") is {Length:>0} pluginCandidate)
             PluginHoldReplay.Run(pluginCandidate,root,prepared,sandbox,context,gameAsm,stateAsm,host,state,Frame,Gas,Brake,Enable,Epoch,Assert,()=> (float)modern.GetValueOrDefault(13),()=> (float)modern.GetValueOrDefault(0));
+        InputBridgeHostReplay.RunIfRequested(outputType,host,state,legacyMarker,modernMarker,offsets,Assert);
         File.WriteAllText(Path.Combine(prepared,"native-replay.json"),System.Text.Json.JsonSerializer.Serialize(new{checks,passed=true,liveMapsOpened=false,outputThreadsStarted=false,fixtureDirectory=sandbox}));
         Console.WriteLine($"{checks} isolated native replay checks passed; no live maps or output threads.");
     }

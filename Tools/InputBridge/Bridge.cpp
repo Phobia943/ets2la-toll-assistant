@@ -15,16 +15,64 @@ struct InputContext {
 };
 // SDK callbacks outlive scs_input_init. This storage lasts until DLL unload.
 static InputContext input_context{};
+#if defined(MAUT_INPUT_TEST_UNSERIALIZED) && !defined(MAUT_INPUT_TEST_ID)
+#error The deliberately unprotected variant requires isolated test-only maps.
+#endif
 // The event callback is on the game thread, but the activity callback has no
 // matching SDK thread guarantee. Serialize writers and map lifetime together.
+#ifndef MAUT_INPUT_TEST_UNSERIALIZED
 static SRWLOCK callback_lock = SRWLOCK_INIT;
+#endif
 struct CallbackLock {
-    CallbackLock() { AcquireSRWLockExclusive(&callback_lock); }
-    ~CallbackLock() { ReleaseSRWLockExclusive(&callback_lock); }
+    CallbackLock() {
+#ifndef MAUT_INPUT_TEST_UNSERIALIZED
+        AcquireSRWLockExclusive(&callback_lock);
+#endif
+    }
+    ~CallbackLock() {
+#ifndef MAUT_INPUT_TEST_UNSERIALIZED
+        ReleaseSRWLockExclusive(&callback_lock);
+#endif
+    }
 };
 static int64_t now_qpc() { LARGE_INTEGER q{}; QueryPerformanceCounter(&q); return q.QuadPart; }
 static void begin_status(MautInputStatus* s) { InterlockedIncrement(&s->sequence); }
 static void end_status(MautInputStatus* s) { InterlockedIncrement(&s->sequence); }
+
+#ifdef MAUT_INPUT_TEST_ID
+static HANDLE test_event_entered;
+static HANDLE test_event_release;
+static HANDLE test_activity_attempted;
+static HANDLE test_activity_entered;
+static HANDLE test_activity_release;
+static volatile LONG test_hold_next_event;
+static volatile LONG test_hold_next_activity;
+static volatile LONG test_barrier_failed;
+// Called before workers start. No handles or waiting logic exist in production.
+extern "C" __declspec(dllexport) void MautInputBridgeTestArmBarrier(HANDLE entered,HANDLE release,HANDLE attempted,HANDLE active_entered,HANDLE active_release) {
+    CallbackLock lock;
+    test_event_entered=entered;test_event_release=release;test_activity_attempted=attempted;
+    test_activity_entered=active_entered;test_activity_release=active_release;
+    InterlockedExchange(&test_barrier_failed,0);
+    InterlockedExchange(&test_hold_next_event,entered&&release?1:0);
+    InterlockedExchange(&test_hold_next_activity,active_entered&&active_release?1:0);
+}
+extern "C" __declspec(dllexport) unsigned MautInputBridgeTestBarrierFailed() {
+    return static_cast<unsigned>(InterlockedCompareExchange(&test_barrier_failed,0,0));
+}
+static void hold_event_status_for_test() {
+    if(InterlockedCompareExchange(&test_hold_next_event,0,1)!=1)return;
+    SetEvent(test_event_entered);
+    if(WaitForSingleObject(test_event_release,10000)!=WAIT_OBJECT_0)
+        InterlockedExchange(&test_barrier_failed,1);
+}
+static void hold_activity_status_for_test() {
+    if(InterlockedCompareExchange(&test_hold_next_activity,0,1)!=1)return;
+    SetEvent(test_activity_entered);
+    if(WaitForSingleObject(test_activity_release,10000)!=WAIT_OBJECT_0)
+        InterlockedExchange(&test_barrier_failed,1);
+}
+#endif
 
 static void close_maps() {
     CallbackLock lock;
@@ -41,10 +89,17 @@ static void close_maps() {
 }
 
 static SCSAPI_VOID active_callback(const scs_u8_t active, const scs_context_t context) {
+#ifdef MAUT_INPUT_TEST_ID
+    // Signal before taking the lock so the test knows this writer has arrived.
+    if(test_activity_attempted)SetEvent(test_activity_attempted);
+#endif
     CallbackLock lock;
     auto& c = *static_cast<InputContext*>(context);
     if(!c.initialized || !c.status) return;
     begin_status(c.status);
+#ifdef MAUT_INPUT_TEST_ID
+    hold_activity_status_for_test();
+#endif
     c.status->active_known = 1;
     c.status->active = active != 0;
     c.status->active_changes++;
@@ -62,6 +117,9 @@ static SCSAPI_RESULT event_callback(scs_input_event_t* const event, const scs_u3
     begin_status(s);
     s->last_callback_qpc = qpc;
     s->last_callback_flags = flags;
+#ifdef MAUT_INPUT_TEST_ID
+    hold_event_status_for_test();
+#endif
     if(flags & (SCS_INPUT_EVENT_CALLBACK_FLAG_first_in_frame | SCS_INPUT_EVENT_CALLBACK_FLAG_first_after_activation)) {
         c.input_index = 0;
         c.frame_finished = false;
@@ -144,7 +202,13 @@ extern "C" SCSAPI_RESULT scs_input_init(const scs_u32_t version, const scs_input
 }
 extern "C" SCSAPI_VOID scs_input_shutdown() { close_maps(); }
 #ifdef MAUT_INPUT_TEST_ID
-extern "C" __declspec(dllexport) unsigned MautInputBridgeTestMarker() { return 0x54455354; }
+extern "C" __declspec(dllexport) unsigned MautInputBridgeTestMarker() {
+#ifdef MAUT_INPUT_TEST_UNSERIALIZED
+    return 0x4e454741; // NEGA: deliberately broken test-only variant.
+#else
+    return 0x54455354;
+#endif
+}
 #endif
 // SDK shutdown owns cleanup. Never acquire a callback lock under loader lock;
 // process termination reclaims handles even if the SDK cannot call shutdown.

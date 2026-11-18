@@ -55,6 +55,7 @@ static void until(unsigned index, unsigned first_flags=0) {
         if(event.input_index!=i) { fprintf(stderr,"Wrong event index\n"); exit(1); }
     }
 }
+#ifndef MAUT_INPUT_TEST_UNSERIALIZED
 static DWORD WINAPI activity_worker(void*) {
     for(unsigned i=0;i<10000;++i) registered.input_active_callback(static_cast<scs_u8_t>(i%2),registered.callback_context);
     return 0;
@@ -63,11 +64,73 @@ static DWORD WINAPI events_worker(void*) {
     for(unsigned i=0;i<10000;++i) next(SCS_INPUT_EVENT_CALLBACK_FLAG_first_in_frame);
     return 0;
 }
+#endif
+static DWORD WINAPI one_activity_worker(void*) {
+    registered.input_active_callback(0,registered.callback_context);
+    return 0;
+}
+static DWORD WINAPI one_event_worker(void*) {
+    next(SCS_INPUT_EVENT_CALLBACK_FLAG_first_in_frame);
+    return 0;
+}
+static void deterministic_writer_test(HMODULE dll,const MautInputStatus* status) {
+    auto arm=load_export<void(*)(HANDLE,HANDLE,HANDLE,HANDLE,HANDLE)>(dll,"MautInputBridgeTestArmBarrier");
+    auto failed=load_export<unsigned(*)()>(dll,"MautInputBridgeTestBarrierFailed");
+    check(arm&&failed,"Test-only deterministic writer barriers available");
+    HANDLE event_entered=CreateEventA(nullptr,TRUE,FALSE,nullptr);
+    HANDLE event_release=CreateEventA(nullptr,TRUE,FALSE,nullptr);
+    HANDLE activity_attempted=CreateEventA(nullptr,TRUE,FALSE,nullptr);
+    HANDLE activity_entered=CreateEventA(nullptr,TRUE,FALSE,nullptr);
+    HANDLE activity_release=CreateEventA(nullptr,TRUE,FALSE,nullptr);
+    check(event_entered&&event_release&&activity_attempted&&activity_entered&&activity_release,
+        "Deterministic barrier handles created without named live resources");
+    auto before=read_status(status);
+    arm(event_entered,event_release,activity_attempted,activity_entered,activity_release);
+    HANDLE event_thread=CreateThread(nullptr,0,one_event_worker,nullptr,0,nullptr);
+    check(event_thread&&WaitForSingleObject(event_entered,2000)==WAIT_OBJECT_0,
+        "Event writer held after odd sequence and partial status update");
+    check(status->sequence==before.sequence+1&&(status->sequence&1),"First held writer leaves status unpublishable");
+    HANDLE activity_thread=CreateThread(nullptr,0,one_activity_worker,nullptr,0,nullptr);
+    check(activity_thread&&WaitForSingleObject(activity_attempted,2000)==WAIT_OBJECT_0,
+        "Second callback has reached writer lock while first writer is held");
+#ifdef MAUT_INPUT_TEST_UNSERIALIZED
+    check(WaitForSingleObject(activity_entered,2000)==WAIT_OBJECT_0,
+        "NEGATIVE CONTROL: deliberately unprotected second writer enters concurrently");
+    // Both writers remain inside their transactions. The broken reader contract
+    // nevertheless accepts an even sequence and a partly updated event frame.
+    auto invalid_snapshot=read_status(status);
+    check(invalid_snapshot.sequence==before.sequence+2&&!(invalid_snapshot.sequence&1)&&
+        invalid_snapshot.last_callback_qpc>before.last_callback_qpc&&
+        invalid_snapshot.frames_started==before.frames_started&&invalid_snapshot.events_returned==before.events_returned,
+        "NEGATIVE CONTROL reproduced: reader accepts partial snapshot while BOTH writers are held");
+#else
+    check(WaitForSingleObject(activity_entered,250)==WAIT_TIMEOUT&&
+        WaitForSingleObject(activity_thread,0)==WAIT_TIMEOUT,
+        "Protected second writer cannot enter while event transaction is held");
+    check(status->sequence==before.sequence+1&&(status->sequence&1)&&status->active_changes==before.active_changes,
+        "Protected status remains odd and activity unchanged throughout held event write");
+#endif
+    SetEvent(event_release);SetEvent(activity_release);
+    HANDLE workers[2]={event_thread,activity_thread};
+    check(WaitForMultipleObjects(2,workers,TRUE,2000)==WAIT_OBJECT_0&&failed()==0,
+        "Both controlled callbacks finish after explicit release, without barrier timeout");
+    auto after=read_status(status);
+    check(after.sequence==before.sequence+4&&after.active_changes==before.active_changes+1&&
+        after.frames_started==before.frames_started+1&&after.events_returned==before.events_returned+1,
+        "Final counters remain correct in both variants; counters alone cannot prove writer exclusion");
+    arm(nullptr,nullptr,nullptr,nullptr,nullptr);
+    CloseHandle(event_thread);CloseHandle(activity_thread);CloseHandle(event_entered);CloseHandle(event_release);
+    CloseHandle(activity_attempted);CloseHandle(activity_entered);CloseHandle(activity_release);
+}
 int main(int argc,char** argv) {
     check(argc==3,"Test DLL and offline fixture arguments supplied");
     HMODULE dll=LoadLibraryA(argv[1]); check(dll!=nullptr,"Isolated DLL loads");
     auto marker=load_export<unsigned(*)()>(dll,"MautInputBridgeTestMarker");
-    check(marker&&marker()==0x54455354,"Test-only map marker before initialization");
+#ifdef MAUT_INPUT_TEST_UNSERIALIZED
+    check(marker&&marker()==0x4e454741,"Explicit NEGATIVE test-only map marker before initialization");
+#else
+    check(marker&&marker()==0x54455354,"Protected test-only map marker before initialization");
+#endif
     auto init=load_export<decltype(&scs_input_init)>(dll,"scs_input_init");
     auto shutdown=load_export<decltype(&scs_input_shutdown)>(dll,"scs_input_shutdown");
     check(init&&shutdown,"SCS exports present");
@@ -143,6 +206,7 @@ int main(int argc,char** argv) {
     FILE* file=fopen(argv[2],"wb");
     check(file&&fwrite(&fixture,sizeof(fixture),1,file)==1,"Offline native diagnostic fixture written");
     fclose(file);
+#ifndef MAUT_INPUT_TEST_UNSERIALIZED
     auto before_overlap=read_status(status);
     HANDLE workers[2]={CreateThread(nullptr,0,activity_worker,nullptr,0,nullptr),CreateThread(nullptr,0,events_worker,nullptr,0,nullptr)};
     check(workers[0]&&workers[1],"Concurrent callback workers started on isolated maps");
@@ -153,6 +217,8 @@ int main(int argc,char** argv) {
         after_overlap.events_returned==before_overlap.events_returned+10000&&
         after_overlap.sequence==before_overlap.sequence+40000,
         "Activity and event callbacks share serialized status transactions");
+#endif
+    deterministic_writer_test(dll,status);
     shutdown();
     check(!read_status(status).initialized,"Retained read-only observer sees shutdown");
     check(registered.input_event_callback(&event,1,registered.callback_context)==SCS_RESULT_not_found,"Late callback after shutdown emits nothing");
@@ -164,6 +230,10 @@ int main(int argc,char** argv) {
     reject_registration=false;
     check(init(SCS_INPUT_VERSION_1_00,&params)==SCS_RESULT_ok,"Clean reinitialization succeeds after failed registration");
     shutdown(); shutdown(); FreeLibrary(dll);
-    printf("%u isolated input bridge assertions passed. No live maps or game APIs were used.\n",checks);
+#ifdef MAUT_INPUT_TEST_UNSERIALIZED
+    printf("%u NEGATIVE CONTROL assertions passed: original race reproduced in intentionally unsafe TEST-ONLY variant. Not a candidate.\n",checks);
+#else
+    printf("%u protected input bridge assertions passed. No live maps or game APIs were used.\n",checks);
+#endif
     return 0;
 }

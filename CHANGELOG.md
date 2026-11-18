@@ -1,13 +1,13 @@
 # Änderungen
 
-## 0.4.7 – Arbeitskandidat, noch nicht freigegeben
+## 0.4.7 – installiert, Stand- und Fahrprüfung offen
 
 - Vereinheitlicht die am Fahrzeugpunkt geprüfte Route für Geschwindigkeit, offene Mautschranken, Halteboden und Rollen, ohne Sensor- oder Ausgabegrenzen zu verlängern.
 - Unterscheidet eine geprüfte gerade Strecke von fehlender Kurvenvorschau; Wiederherstellung berücksichtigt neu verfügbare Kurven- und Szenengrenzen.
 - Erhält noch nie ausgestellte Zahlungsreservierungen passiv über kurze Unterbrechungen; bereits ausgestellte Versuche bleiben gesperrt.
 - Entfernt wiederholte Vollserialisierung alter Fehlerberichte aus dem laufenden Status.
 - Separater, nicht installierter InputBridge-Kandidat korrigiert den nachgewiesenen Callback-Kontextfehler und ergänzt messbare Eingabediagnose.
-- [Prüfergebnisse, noch ausstehender Endreview und offene Produktgrenzen](REVIEW-0.4.7.md).
+- Unabhängiger Endreview abgeschlossen; am 18. November um 11:04 MEZ mit geprüfter Sicherung installiert. Anwendung nicht gestartet. [Prüfergebnisse und offene Produktgrenzen](REVIEW-0.4.7.md).
 
 ## 0.4.6 – gebundene Schranken an Bahnübergängen
 

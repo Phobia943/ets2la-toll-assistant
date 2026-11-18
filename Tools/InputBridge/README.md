@@ -1,10 +1,10 @@
-# Isolierter Legacy-InputBridge-Kandidat
+# Kompatibler Legacy-Eingabeadapter
 
-Dieser Kandidat behebt einen in der installierten Originaldatei nachgewiesenen Lebensdauerfehler und ergänzt Geräte-/Callback-Diagnose. Er ist **nicht installiert** und belegt keine funktionierenden TruckersMP-Hintergrundpedale. Build und Tests starten weder Spiel noch ETS2LA; die Tests verwenden eigene, zufällige Speichernamen.
+Dieser Adapter behebt einen in der vorherigen Originaldatei nachgewiesenen Lebensdauerfehler und ergänzt Geräte-/Callback-Diagnose. Er wurde am 18. November um 11:17 MEZ nach unabhängigem Review mit geprüfter Originalsicherung installiert. **Die tatsächliche TruckersMP-Hintergrundwirkung ist noch nicht belegt.** Build und Tests starten weder Spiel noch ETS2LA; die Tests verwenden eigene, zufällige Speichernamen.
 
 ## Konkreter Ausgangsbefund
 
-Die installierte `scs_sdk_controller.dll` hat SHA256 `D9FBD5ACE5E76EED70B7E10B78C450B111566AD6AA814DFF65D6244AD23E687E`. `VerifyLegacy.py` liest ausschließlich ihre PE-Datei, ohne sie zu laden:
+Die vorher installierte `scs_sdk_controller.dll` hat SHA256 `D9FBD5ACE5E76EED70B7E10B78C450B111566AD6AA814DFF65D6244AD23E687E`. `VerifyLegacy.py` liest ausschließlich diese Originaldatei beziehungsweise ihre exakte Sicherung, ohne sie zu laden:
 
 - `scs_input_init`, RVA `0x1820`, legt den Kontext auf dem Stack bei `rsp+0x30` an. Ab RVA `0x18aa` schreibt es dessen Adresse in `device.callback_context`; `device` liegt bei `rsp+0x40` und sein Kontextfeld bei `+0x20`.
 - Der registrierte Ereigniscallback, RVA `0x16f0`, dereferenziert diesen Kontext später. Nach Rückkehr aus `scs_input_init` gehört der Speicher nicht mehr diesem Kontext.
@@ -29,7 +29,7 @@ Eine nur begonnene Abfrage bestätigt keine späteren Pedalereignisse. Die Werte
 
 ## Fristen und verbleibende Beweisgrenze
 
-Aktivitäts- und Ereignis-Callbacks sowie das Freigeben ihrer Speicheransichten sind durch dieselbe SRW-Sperre serialisiert. Ein paralleler Writer kann deshalb keine gerade Zwischensequenz vortäuschen. Die SDK-Anmeldung hält diese Sperre nicht, weil sie synchron Callbacks auslösen darf. Im DLL-Einstieg wird keine Sperre genommen; reguläre SDK-Abmeldung räumt auf. Die isolierte Prüfung umfasst 10.000 gleichzeitige Aktivitäts- und 10.000 Ereignisaufrufe. 38 native Assertions und der Diagnosevertrag bestehen; der abschließende unabhängige Review der Serialisierung steht noch aus.
+Aktivitäts- und Ereignis-Callbacks sowie das Freigeben ihrer Speicheransichten sind durch dieselbe SRW-Sperre serialisiert. Ein paralleler Writer kann deshalb keine gerade Zwischensequenz vortäuschen. Die SDK-Anmeldung hält diese Sperre nicht, weil sie synchron Callbacks auslösen darf. Im DLL-Einstieg wird keine Sperre genommen; reguläre SDK-Abmeldung räumt auf. Die isolierte Prüfung umfasst 10.000 gleichzeitige Aktivitäts- und 10.000 Ereignisaufrufe sowie eine deterministisch angehaltene Schreibphase mit Gegenprobe. 47 native Assertions und der Diagnosevertrag bestehen; der abschließende unabhängige Review hat die Fassung für einen beaufsichtigten Standtest freigegeben.
 
 Die bestehenden ursprünglichen Host-Befehlsfristen werden weder erhöht noch neu gestartet. Ein während Inaktivität vom Host gelöschter Befehl wird bei Wiederaktivierung nicht aus einem Adaptercache wiederholt. Das gilt auch für `activate`.
 
@@ -52,6 +52,40 @@ Der Build nutzt den lokal vorhandenen Zig-Compiler und die offizielle SDK-1.16-Z
 
 Der Fake-SDK-Host überprüft vor der Initialisierung einen nur im Testbuild vorhandenen Export. DLL und Host werden mit derselben zufälligen Testkennung kompiliert; sämtliche Eingaben gehen an diese isolierten Testkanäle. Geprüft werden die vollständige ABI-Tabelle, Kontextspeicher nach Rückkehr/Stacküberschreiben, Teilabfragen, unbekannte Aktivität, Aktivitätswechsel, tatsächliche Ereigniswerte, Wiederaktivierung nach Host-Neutralisierung, ungültige Zahlen, Abmeldung, Ablehnung und Neuanmeldung. Der Python-Leser wird gegen einen vom echten nativen Testadapter geschriebenen Diagnoseblock geprüft. Ein ausdrücklicher negativer Test hält fest, dass rohe Legacy-Werte keine beweisbare spielseitige TTL besitzen.
 
+Die Schreiber werden gemeinsam mit der Freigabe ihrer Speicheransichten durch eine kurze SRWLOCK geschützt. Der Build prüft zusätzlich zu je 10.000 konkurrierenden Callback-Aufrufen eine gezielte Zwischenlage: Der Ereigniscallback wartet nach einer ersten Teiländerung bei ungerader Sequenz. Der bereits eingetroffene Aktivitätscallback darf diese Transaktion nicht betreten. Erst nach ausdrücklicher Freigabe laufen beide weiter.
+
+Eine **absichtlich ungeschützte Negativvariante** wiederholt denselben Ablauf. Beide Schreiber werden mitten in ihren Transaktionen angehalten; ohne Sperre ist die Sequenz dabei gerade und der Leser akzeptiert den teilweise aktualisierten Status. Dieser Fehler muss in der Negativprobe tatsächlich nachgewiesen werden. Die korrekten Endzähler beider Varianten reichen ausdrücklich nicht als Synchronisationsbeweis.
+
+Die Negativdatei heißt ausschließlich `bin/InputBridge.UNSAFE-NEGATIVE-TEST.dll`, hat einen eigenen Negativ-Testmarker und eine andere zufällige GUID als die geschützte Test-DLL. Sie ist **kein Kandidat und darf weder installiert noch in ein Produktpaket aufgenommen werden**. Der Präprozessor verweigert die ungeschützte Variante ohne Testkennung. Barrieren, Testmarker und deren Warteaufrufe fehlen im Produktkandidaten; dessen Exporte bleiben auf die beiden SCS-Einstiegspunkte beschränkt.
+
 Die Prüfungen ersetzen weder den TruckersMP-Standnachweis noch die bestehenden Produkt-/Hostregressionen. Installation und Liveversuche gehören nicht zu diesem isolierten Build.
 
-Prüflauf am 18. November 2026: **35 native Assertions und der native/Python-Diagnosevertrag bestanden, Exit 0**. Der nicht geladene Produktkandidat hat SHA256 `76469C162DAB6B95FB412AEF88985124596EB1C7920A937DD75ACCBAAE3C5F92` und exportiert ausschließlich `scs_input_init`/`scs_input_shutdown`. Der zusätzliche Testmarker ist ausschließlich im getrennten Testbuild vorhanden. Der Originalhash und die vollständige ABI-Tabelle wurden danach erneut lesend bestätigt. Der lokale Compiler benötigte für den Zig-CRT-Cache die erhöhte Ausführungsumgebung; alle Ausgaben blieben im Arbeitsbereich, sämtliche Tests in den zufälligen Testkanälen.
+Prüflauf am 18. November 2026: **47 Assertions der geschützten Testvariante und der native/Python-Diagnosevertrag bestanden, Exit 0**. Die getrennte Negativvariante bestand **44 Prüfungen einschließlich der erwarteten Reproduktion des früheren Writerfehlers**, Exit 0; die überlappenden Grundprüfungen werden nicht addiert. Der nicht geladene Produktkandidat hat SHA256 `D92DA97344E33DABA0BC80E3811942DEDBA51C1367DDFC240F9EB0377A628B9B` und exportiert ausschließlich `scs_input_init`/`scs_input_shutdown`. Der Originalhash und die vollständige ABI-Tabelle wurden erneut lesend bestätigt. Der lokale Compiler benötigte für den Zig-CRT-Cache die erhöhte Ausführungsumgebung; alle Ausgaben blieben im Arbeitsbereich, sämtliche Tests in den zufälligen Testkanälen. Diese Änderung wurde lokal geprüft; ein erneuter CI-Lauf ist ein gesonderter Nachweis.
+
+## Bewachter Einbau und Rücksetzen
+
+`Install.ps1` betrifft ausschließlich `scs_sdk_controller.dll`. **Ohne Modusangabe gilt `ValidateOnly`: keine Sicherungs-, temporäre oder Zieldatei wird geschrieben.** Standardziel ist der bisherige ETS2-Pluginordner unter `D:\SteamLibrary\steamapps\common\Euro Truck Simulator 2\bin\win_x64\plugins`; `-GamePluginDirectory` kann ihn ausdrücklich ersetzen. `-ApplicationDirectory` bezeichnet die ETS2LA-Installation, standardmäßig `D:\ETS2LA\current`.
+
+```powershell
+# Ausschließlich lesen und prüfen:
+./Tools/InputBridge/Install.ps1
+
+# Ablehnungsfälle und Rundlauf nur in temporären Workspace-Testordnern:
+./Tools/InputBridge/Test-Install.ps1
+```
+
+Erst der ausdrücklich gewählte Modus `-Mode Install` tauscht die Datei aus. Er verlangt das oben gepinnte Original und genau den Kandidaten `D92DA9…28B9B`. Ein eigener PE-Leser prüft x64-DLL, genau `scs_input_init`/`scs_input_shutdown`, die Produktkanäle und fehlende Testmarker. Die DLL wird dazu nicht geladen. Eine weitere Datei mit einer der beiden Controlleridentitäten im Pluginordner wird als Duplikat abgewiesen. Verknüpfte Zielverzeichnisse und Zieldateien werden nicht verwendet.
+
+Die Prozessliste muss belegen, dass Spiel, TruckersMP und ETS2LA geschlossen sind. Ein fehlgeschlagenes oder leeres Inventar reicht nicht. Der Installer sichert die Zieldatei zunächst als eindeutig benannte `.bin` unter `MautInputBridgeBackups`, schreibt die Sicherung auf den Datenträger und prüft ihren Hash. Eine `.pending`-Datei im Zielordner wird ebenfalls vollständig geschrieben und geprüft. Unmittelbar vor dem atomaren `File.Replace` folgt eine zweite Prozessprüfung. Nachher werden Ziel und Sicherung erneut geprüft. Es entsteht keine zweite `.dll` neben dem Controller; eine abgewiesene Vorbereitung entfernt nur ihre eigene `.pending`-Datei und lässt die geprüfte Sicherung bestehen.
+
+`-Mode Restore -BackupFile <ausdrücklich ausgewählter Originalbackup-Pfad>` ist nur zulässig, wenn die aktuelle Zieldatei exakt der bekannte Kandidat und das Backup exakt das gepinnte Original ist. Auch das Rücksetzen sichert die ersetzte Datei und prüft die Prozesse zweimal. Unbekannte oder bereits anderweitig geänderte Installationen werden nicht überschrieben. Ein Fehler nach erfolgtem Austausch wird ausdrücklich als solcher gemeldet, mit Sicherungspfad; es erfolgt kein unbeaufsichtigter zweiter Austausch.
+
+Installerprüfung am 18. November 2026: **26 Prüfungen bestanden, Exit 0**. Dazu gehören Default-Readonly, falsche Kandidaten/Originale/Backups, beide Test-DLLs, laufende Anwendungen, fehlende Prozessnachweise, Duplikate sowie ein Spielstart zwischen Vorbereitung und Austausch. Ein vollständiger Install→Restore-Rundlauf bestätigte Ziel- und Backuphashes in einem neu angelegten GUID-Testverzeichnis. Die installierte Original-DLL wurde nur gelesen; kein Spiel-/Appprozess wurde gestartet, keine Bibliothek geladen und kein Liveeinbau durchgeführt. Diese Skriptprüfung ersetzt weiterhin weder den echten Host→Bridge-Vertrag noch den TruckersMP-Standnachweis.
+
+## Übertragung lesend aufzeichnen
+
+`python Tools/InputBridge/Record.py <neue-datei.jsonl> --seconds 60` liest nur vorhandene Befehls-, Callback- und Spieltelemetriekanäle. Fehlende oder kurz unvollständige Bridge-Daten werden als Messlücke protokolliert, die Aufnahme läuft weiter. Die 13 Offlineprüfungen in `TestRecord.py` unterscheiden logische und effektive Pedale und prüfen die Erholung nach einem unvollständigen Status.
+
+Die Maps sind keine gemeinsame atomare Aufnahme. Auch Legacy- und Telemetrieblöcke besitzen hier keinen Sequenzvertrag. Der Vordergrundvergleich bezieht sich ausdrücklich nur auf die vom Adapter gemeldete PID; die aktuelle Prozessidentität muss separat bestätigt werden. Ein unveränderter Legacy-Wert erhält keinen künstlichen Ursprungszeitstempel.
+
+Der zusätzliche [Vertragstest mit den gepinnten Hostbibliotheken](../HostCompatibility/INPUT_BRIDGE_REPLAY.md) besteht: 316 Prüfungen insgesamt, darunter zwölf neue bis zum nativen Callback, plus drei gezielte Isolation-Gegenproben. Dieser Offlinepfad ersetzt keine Spiel-/Physikmessung.

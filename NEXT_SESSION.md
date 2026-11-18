@@ -1,8 +1,8 @@
 # Nächste Sitzung
 
-## Maßgeblicher Stand am 18. November: 0.4.7 in Arbeit, 0.4.6 installiert
+## Maßgeblicher Stand am 18. November: 0.4.7 installiert, Fahrnachweis offen
 
-Der Gesamtauftrag „alle offenen Themen umsetzen“ ist weiter offen. 0.4.7 ist gebaut und lokal geprüft (233 Integration, 100 Kernlogik, 304 echte Hostprüfungen). Der separate InputBridge-Kandidat besteht 38 native Prüfungen und den Diagnosevertrag. **Nichts davon ist neu installiert.** Der unabhängige Endreview steht noch aus. Erst diese Prüfung abschließen, dann das vorbereitete Paket freigeben; keine Stand-/Fahrabnahme erfinden. Details und konkrete Beweisgrenzen: [REVIEW-0.4.7.md](REVIEW-0.4.7.md), Reihenfolge: [WORKLIST.md](WORKLIST.md).
+Der Gesamtauftrag „alle offenen Themen umsetzen“ ist weiter offen. 0.4.7 ist gebaut und lokal geprüft (233 Integration, 100 Kernlogik, inzwischen 316 echte Hostprüfungen). Der unabhängige Endreview erteilte die begrenzte Freigabe für Einbau und beaufsichtigte Prüfung. Die Plugin-Datei wurde um 11:04 MEZ mit Sicherung installiert; Version und Hash wurden unabhängig bestätigt. Keine Anwendung wurde gestartet. Der separate InputBridge-Adapter besteht 47 geschützte native Prüfungen und den Diagnosevertrag; die gezielte Negativvariante reproduziert den Writerfehler. Nach eigenem Endreview wurde er um 11:17 MEZ bei weiterhin geschlossenen Anwendungen mit geprüfter Originalsicherung installiert. Die letzte Benutzerfrage bittet um Start von TruckersMP/ETS2LA im Stand, F8 aus, um die echte Übertragung zu messen. Keine Stand-/Fahrabnahme erfinden. Details und konkrete Beweisgrenzen: [REVIEW-0.4.7.md](REVIEW-0.4.7.md), Reihenfolge: [WORKLIST.md](WORKLIST.md).
 
 0.4.6 wurde bereits am 18. November um 10:08 MEZ mit Sicherung und Hashprüfung installiert. Die folgenden früheren Sitzungsstände sind historische Einträge und dürfen diesen Stand nicht überschreiben. Ob eine Anwendung jetzt läuft, muss vor jedem Eingriff neu geprüft werden.
 

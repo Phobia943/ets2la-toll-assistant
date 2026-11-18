@@ -23,6 +23,8 @@ jobs:
         run: ./Tools/Test-TollRecording.ps1
       - name: Check historical evidence inventory
         run: python -m unittest discover -s Tools -p test_toll_history.py
+      - name: Check input recording layout and recovery without live channels
+        run: python Tools/InputBridge/TestRecord.py
   geometry-protocol:
     runs-on: windows-latest
     steps:

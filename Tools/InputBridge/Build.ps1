@@ -45,6 +45,16 @@ try {
         if($LASTEXITCODE){throw 'Input bridge assertions failed'}
         & python (Join-Path $PSScriptRoot 'TestStatus.py') (Join-Path $out 'diagnostic-fixture.bin')
         if($LASTEXITCODE){throw 'Native diagnostic reader contract failed'}
+        # Intentionally broken writer synchronization, compiled ONLY together
+        # with a new GUID test namespace. Never name/package this as a candidate.
+        $negativeDefine='-DMAUT_INPUT_TEST_ID=negative_'+[Guid]::NewGuid().ToString('N')
+        $unsafeDefine='-DMAUT_INPUT_TEST_UNSERIALIZED=1'
+        & $Zig @flags -shared $negativeDefine $unsafeDefine (Join-Path $PSScriptRoot 'Bridge.cpp') (Join-Path $PSScriptRoot 'Bridge.def') -o (Join-Path $out 'InputBridge.UNSAFE-NEGATIVE-TEST.dll')
+        if($LASTEXITCODE){throw 'Negative test-only bridge build failed'}
+        & $Zig @flags $negativeDefine $unsafeDefine (Join-Path $PSScriptRoot 'FakeHostTest.cpp') -o (Join-Path $out 'InputBridgeNegativeTest.exe')
+        if($LASTEXITCODE){throw 'Negative fake SDK host build failed'}
+        & (Join-Path $out 'InputBridgeNegativeTest.exe') (Join-Path $out 'InputBridge.UNSAFE-NEGATIVE-TEST.dll') (Join-Path $out 'negative-diagnostic-fixture.bin')
+        if($LASTEXITCODE){throw 'Negative control failed to reproduce the original writer race'}
     }
     Get-FileHash -LiteralPath (Join-Path $out 'scs_sdk_controller.candidate.dll') | Select-Object Hash,Path
 } finally {
