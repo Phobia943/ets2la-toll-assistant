@@ -1,6 +1,6 @@
 # ETS2LA Mautassistent
 
-**Aktueller Arbeitsstand: 0.4.8 ist als gegengeprüfter Kandidat gebaut; zuletzt installiert und im Spiel aufgezeichnet wurde 0.4.7.** Die neue Fassung ergänzt statische Hindernisprüfung in einem getrennten Hilfsprozess und genaue Ausgabediagnose. 254 Integrationsfälle, 104 Logikfälle und 316 isolierte Hostprüfungen bestehen. Hintergrundbetrieb und weitere reale Abnahme bleiben offen. [Nachweise und verbleibende Grenzen](REVIEW-0.4.8.md). Die folgenden Versionsnotizen beschreiben frühere Entwicklungsstände; sie sind keine aktuelle Installationsauskunft.
+**Aktueller Arbeitsstand: 0.4.8-v2 ist nach unabhängigem Gegenreview mit Sicherung installiert; ihre reale Abnahme steht noch aus.** Die neue Fassung ergänzt statische Hindernisprüfung in einem getrennten Hilfsprozess und genaue Ausgabediagnose. 254 Integrationsfälle, 104 Logikfälle und 316 isolierte Hostprüfungen bestanden vor dem Paketreview; die danach korrigierte Shadowcopy-Auflösung wurde mit sieben Workergruppen und erneut 316 Hostprüfungen abgesichert. Hintergrundbetrieb und weitere reale Abnahme bleiben offen. [Nachweise und verbleibende Grenzen](REVIEW-0.4.8.md). Die folgenden Versionsnotizen beschreiben frühere Entwicklungsstände; sie sind keine aktuelle Installationsauskunft.
 
 **0.4.6 korrigiert die Zuordnung offener Bahnübergangsschranken.** Die Schranken werden aus dem tatsächlichen Kartenprofil einer Gruppe zugeordnet; alle erwarteten Mitglieder müssen aktuell offen sein. [Befund und Grenzen](REVIEW-0.4.6.md).
 

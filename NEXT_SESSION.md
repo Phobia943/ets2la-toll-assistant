@@ -1,6 +1,12 @@
 # Nächste Sitzung
 
-## Maßgeblicher Stand am 18. November: 0.4.7 installiert, Fahrnachweis offen
+## Maßgeblicher Stand am 18. November: 0.4.8-v2 installiert, Test verschoben
+
+0.4.8-v2 ist um 12:23 MEZ nach bestätigtem Schließen beider Anwendungen mit Sicherung installiert. 15 Dateien und ihre vorgesehenen Baselines sind geprüft. Plugin-SHA256: `C9213A67A41F4D174B2921EFF4C35DE05A2A2274208450B0F4BE38A066508340`. Der erste 0.4.8-Kandidat ist wegen eines nachgewiesenen Shadowcopy-Pfadfehlers verworfen und wurde nie installiert. Der Gegenreview des korrigierten Pakets, sieben Workergruppen, erneut 316 tatsächliche Hostprüfungen und zwölf Installationssimulationen bestehen.
+
+Der Nutzer möchte erst später testen. Keine Anwendung wurde für die neue Abnahme gestartet; die beiden bekannten gespeicherten Pedaleinstellungen bleiben `EnableModernOutputForPedals=false`. Ein Parktest liefert bewusst neutrale Pedale und beweist keine Hintergrundübertragung. Die geprüfte Planung für einen späteren kurzen positiven Vergleich steht in [BACKGROUND_INPUT.md](BACKGROUND_INPUT.md). Zuerst geladene Version, Verbindung, Stillstand und manuelle Übernahme feststellen; keine Fahrt oder positive Ausgabe aus alten Bestätigungen ableiten. Der Gesamtauftrag ist offen, insbesondere Hintergrundwirkung, unterschiedliche Ausgabeverzögerungen und reale Maut-/Zahlungs-/Warnphasenabnahme. Details: [REVIEW-0.4.8.md](REVIEW-0.4.8.md), [WORKLIST.md](WORKLIST.md).
+
+## Vorheriger Stand: 0.4.7
 
 Der Gesamtauftrag „alle offenen Themen umsetzen“ ist weiter offen. 0.4.7 ist gebaut und lokal geprüft (233 Integration, 100 Kernlogik, inzwischen 316 echte Hostprüfungen). Der unabhängige Endreview erteilte die begrenzte Freigabe für Einbau und beaufsichtigte Prüfung. Die Plugin-Datei wurde um 11:04 MEZ mit Sicherung installiert; Version und Hash wurden unabhängig bestätigt. Keine Anwendung wurde gestartet. Der separate InputBridge-Adapter besteht 47 geschützte native Prüfungen und den Diagnosevertrag; die gezielte Negativvariante reproduziert den Writerfehler. Nach eigenem Endreview wurde er um 11:17 MEZ bei weiterhin geschlossenen Anwendungen mit geprüfter Originalsicherung installiert. Die letzte Benutzerfrage bittet um Start von TruckersMP/ETS2LA im Stand, F8 aus, um die echte Übertragung zu messen. Keine Stand-/Fahrabnahme erfinden. Details und konkrete Beweisgrenzen: [REVIEW-0.4.7.md](REVIEW-0.4.7.md), Reihenfolge: [WORKLIST.md](WORKLIST.md).
 

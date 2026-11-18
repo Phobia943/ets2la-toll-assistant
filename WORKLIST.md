@@ -2,9 +2,9 @@
 
 Stand: 18. November 2026. Auftrag: alle offenen Themen nacheinander bearbeiten, vorhandene Komponenten vereinfachen und jede wesentliche Änderung kritisch gegenprüfen. Keine pauschale Fertigmeldung aufgrund von Tests allein.
 
-0.4.7 ist die zuletzt installierte und gestartete Fassung (SHA-256 8FD5297421DDBA2FE5A3FC3A6AD70E6BD79225AA294CC4C7B36EFBC9C3857611). Die Stand-/Fahrtaufnahme am 18. November zeigte zusätzliche Ausfälle; ein vollständig erfolgreicher Abnahmetest ist deshalb nicht belegt. Ältere Installationsnotizen sind historische Zustände.
+0.4.8-v2 ist am 18. November um 12:23 MEZ mit Sicherung installiert (SHA-256 C9213A67A41F4D174B2921EFF4C35DE05A2A2274208450B0F4BE38A066508340). Ihre reale Abnahme steht noch aus. Die vorherige Stand-/Fahrtaufnahme mit 0.4.7 zeigte zusätzliche Ausfälle; ein vollständig erfolgreicher Abnahmetest ist deshalb nicht belegt. Ältere Installationsnotizen sind historische Zustände.
 
-Vor dem Einbau von 0.4.7 bestanden 233 Integrations-, 100 Kernlogik- und 316 tatsächliche Hostprüfungen. Der gesonderte InputBridge-Adapter ist nach 47 geschützten Prüfungen, Diagnosevertrag, gezielter Negativprobe und Endreview ebenfalls mit Sicherung installiert. Er hat das Hintergrundproblem im beobachteten Intervall nicht beseitigt. Die nächste Fassung 0.4.8 ergänzt ausgelagerte statische Hindernisprüfung und gezielte Ausgabediagnose. **Gesamtauftrag und reale Abnahme bleiben offen.** Details: [0.4.7](REVIEW-0.4.7.md), [0.4.8](REVIEW-0.4.8.md).
+Vor dem Einbau von 0.4.7 bestanden 233 Integrations-, 100 Kernlogik- und 316 tatsächliche Hostprüfungen. Der gesonderte InputBridge-Adapter ist nach 47 geschützten Prüfungen, Diagnosevertrag, gezielter Negativprobe und Endreview ebenfalls mit Sicherung installiert. Er hat das Hintergrundproblem im beobachteten Intervall nicht beseitigt. Die installierte Fassung 0.4.8 ergänzt ausgelagerte statische Hindernisprüfung und gezielte Ausgabediagnose. Der Nutzer hat den erneuten Spieltest auf später verschoben; die Standard-Pedaleinstellung bleibt deshalb unverändert. **Gesamtauftrag und reale Abnahme bleiben offen.** Details: [0.4.7](REVIEW-0.4.7.md), [0.4.8](REVIEW-0.4.8.md).
 
 | Thema | Konkrete Arbeit / Abnahme | Zustand |
 | --- | --- | --- |

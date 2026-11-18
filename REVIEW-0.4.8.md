@@ -1,6 +1,6 @@
 # Prüfung der nächsten Fassung 0.4.8
 
-Stand: 18. November 2026. In Arbeit; noch nicht installiert. Die produktiv zuletzt geladene Fassung war 0.4.7. Der Gesamtauftrag bleibt offen.
+Stand: 18. November 2026. v2 ist um 12:23 MEZ nach bestätigtem Schließen beider Anwendungen mit Sicherung installiert. Alle 15 installierten Dateien sind geprüft. Reale Abnahme und Gesamtauftrag bleiben offen; die letzte bereits ausgewertete Fahrt gehörte noch zu 0.4.7.
 
 ## Abschluss der lokalen Codeprüfung
 
@@ -10,7 +10,7 @@ Ein erster vollständiger Integrationslauf wurde irrtümlich gegen die angepasst
 
 Plugin-Kandidat v2: `C9213A67A41F4D174B2921EFF4C35DE05A2A2274208450B0F4BE38A066508340`.
 Optionaler SDK-Messkandidat: `D7C849455AB17BC575D8A3DB87FE0FC34DAD1610043DCBD1ABF52A61242159E0`.
-Das Hilfsprogramm wird vor dem Plugin gebaut und sein vollständiges Manifest eingebettet. Paket-/Installationsprüfung sind ein eigener nachfolgender Schritt.
+Das Hilfsprogramm wird vor dem Plugin gebaut und sein vollständiges Manifest eingebettet. Der abschließende unabhängige Paketreview sowie zwölf getrennte Installations-/Rollback-Simulationen bestehen. Der bewachte Installer hat bei geschlossenen Anwendungen ausschließlich die 15 vorgesehenen Dateien installiert und ihre Sicherungen geprüft; Hostbibliotheken und InputBridge blieben unverändert. Der Installer startet keine Anwendung.
 
 Der abschließende Einbaureview fand einen realen Ladefehler im ersten, nie installierten Paket: Der gepinnte Host kopiert nur die Plugin-DLL in einen temporären Ordner. Eine Suche relativ zur geladenen DLL hätte dort kein Hilfsprogramm gefunden. v2 verwendet deshalb den festen geprüften Installationspfad `AppContext.BaseDirectory/Plugins/StaticRoadWorker`. Das ist der Vertrag dieses Pakets, keine allgemeine Ermittlung beliebiger Host-Pluginpfade. Die neue Regression lädt tatsächlich eine einzelne Assembly-Kopie in einem eigenen Ladekontext und verändert zusätzlich das Arbeitsverzeichnis. Sie scheiterte vor der Korrektur und besteht danach. Alle sieben Worker-Testgruppen und erneut alle 316 tatsächlichen Hostprüfungen bestehen mit dem v2-Build. Das frühere versiegelte Paket bleibt als verworfen erhalten.
 
@@ -33,6 +33,10 @@ Die historische Baustellenprobe erkennt weiterhin den Bagger und zwei Materialha
 - 11:40 MEZ: Nach F8 gab es mehrere erfolgreiche eigene Pedalausgaben. Erst danach fehlte ein neuer Abschluss. Ein fehlender allererster Tick ist somit nicht die Ursache. Der dauerhafte Bericht enthielt bisher nicht den vollständigen Auslöser der Pedalwache. Die neue Diagnose bewahrt ihn zusammen mit den ursprünglichen Tickphasen und Zeitpunkten; sie verlängert keine Ausgabeautorität.
 
 Die leichte Laufzeitaufnahme ab 11:35:55 MEZ zeigt keinen neu erfassten 150-ms-GC-Stopp. Der Decoder meldet jedoch einen übergelaufenen Verlustzähler; Vollständigkeit wird daher ausdrücklich nicht behauptet. Die ältere Aufnahme mit Stack-Sampling enthielt viele diagnostisch erzeugte `SuspendOther`-Ereignisse, die keine Speicherbereinigungen beweisen.
+
+Der zusätzliche unabhängige Stellgrenzenreview rekonstruierte 45 gespeicherte Positionen mit den tatsächlichen gepinnten Prefab-/Interpolationsmethoden. Der Abstand am Fehlerpunkt stimmt auf Millimeter mit der Aufnahme überein. Die vorhandene Kurvenverfeinerung reduziert den maximalen proportionalen Anteil zwar von etwa 1,280 auf 1,208, überschreitet die native Grenze aber teilweise früher. Sie ist damit keine ausreichende Behebung. Ein eigener gerader Gegenfall mit 46 Grad Fahrzeugfehlstellung erreicht bereits etwa 1,012: Eine Forderung über 1 beweist allein keine fehlerhafte Route. Umgekehrt macht eine bloße Stellwertbegrenzung keine physisch zu enge Kurve befahrbar.
+
+Historische Filter- und Integratorzustände fehlen. Der Vergleich ist deshalb keine vollständige Regler-/Physikwiederholung. Für die nächste Untersuchung fehlen zusammenhängende native Entscheidungsdaten mit Originalzeit und Steuergeneration, Zielpunkten, rohen/gefilterten Fehlern, beiden Regleranteilen und Summe; für eine vollständige Wiederholung zusätzlich der Vorzustand und die Schrittzeit. Ein möglicher begrenzter Ausgang benötigt eine passende Geschwindigkeitsreaktion und Integrationsbegrenzung. Ein solcher Ersatz ist in 0.4.8 nicht implementiert; bestehende Ausgabefristen und Übernahme bleiben unverändert.
 
 ## Hintergrundbetrieb und verbleibende Abnahme
 
