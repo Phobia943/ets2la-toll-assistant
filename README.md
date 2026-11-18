@@ -1,6 +1,6 @@
 # ETS2LA Mautassistent
 
-**Aktueller Arbeitsstand: 0.4.8 ist installiert; 0.4.9 ist als geprüfter Kreuzungsfix vorbereitet und noch nicht eingebaut.** Die Fahrt mit 0.4.8 belegte einen Fehler der nativen Graphsuche: Eine falsche Alternativroute vermischte Vorwärts- und Rückwärtsverbindungen und löste bei grüner Ampel einen Gegenrichtungshalt aus. Der gerichtete Suchfix erhält die gültigen Wege und besteht den Gegenlauf mit der tatsächlichen Karte. Auflieger-Nachlauf an Pfosten, Hintergrundpedale und weitere reale Abnahme bleiben offen. [Befund, Prüfungen und Grenzen](REVIEW-0.4.9.md). Frühere Versionsnotizen sind keine aktuelle Installationsauskunft.
+**Aktueller Arbeitsstand: 0.4.9 ist mit geprüfter Sicherung installiert und nach Neustart geladen; Spielabnahme steht aus.** Die Fahrt mit 0.4.8 belegte einen Fehler der nativen Graphsuche: Eine falsche Alternativroute vermischte Vorwärts- und Rückwärtsverbindungen und löste bei grüner Ampel einen Gegenrichtungshalt aus. Der gerichtete Suchfix erhält die gültigen Wege und besteht den Gegenlauf mit der tatsächlichen Karte. Auflieger-Nachlauf an Pfosten, Hintergrundpedale und weitere reale Abnahme bleiben offen. [Befund, Prüfungen und Grenzen](REVIEW-0.4.9.md). Frühere Versionsnotizen sind keine aktuelle Installationsauskunft.
 
 **0.4.6 korrigiert die Zuordnung offener Bahnübergangsschranken.** Die Schranken werden aus dem tatsächlichen Kartenprofil einer Gruppe zugeordnet; alle erwarteten Mitglieder müssen aktuell offen sein. [Befund und Grenzen](REVIEW-0.4.6.md).
 

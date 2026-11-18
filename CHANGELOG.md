@@ -1,6 +1,6 @@
 # Änderungen
 
-## 0.4.9 – Kreuzungsfix vorbereitet, nicht installiert
+## 0.4.9 – Kreuzungsfix installiert, Spielabnahme offen
 
 - Korrigiert die native Prefab-Graphsuche: nur gerichtete Nachfolgeverbindungen, keine Mischung mit Rückverbindungen. Gültige Alternativen bleiben erhalten; reale fehlerhafte Kreuzungsroute im Gegenlauf ausgeschlossen.
 - Interpolation, Richtungsprüfung und Ausgabefristen unverändert. Zusammengehöriges Komponentenpaket `0.4.9-host-1`; Routenberichte enthalten zusätzlich die native Kurvenrichtung.

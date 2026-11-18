@@ -1,6 +1,6 @@
 # 0.4.9 – gerichtete Kreuzungsrouten
 
-Stand: 18. November 2026. Offline vorbereiteter Kandidat; nicht installiert oder im Spiel abgenommen. Die laufende Installation bleibt 0.4.8. Der Gesamtauftrag ist offen.
+Stand: 18. November 2026. 0.4.9 ist um 13:45 MEZ mit vollständiger Sicherung installiert. Alle fünf ausgetauschten Dateien und ihre Sicherungen sind geprüft; Spiel- und Workerdateien blieben unverändert. Der Installer startete keine Anwendung. Die anschließend um 13:46:38 geöffnete App liefert um 13:48 einen frischen Status mit 0.4.9, manueller Fahrt und ohne Fehlerbremsung. Die erneute Stand-/Spielabnahme sowie der Gesamtauftrag bleiben offen.
 
 ## Belegter Auslöser
 
@@ -30,7 +30,7 @@ Kandidat-Plugin SHA-256: `00F6280BF75BB93F05A6D805E4A4BA5DBAA30F822F89FA8AE0840B
 Geprüfter Game-Kandidat SHA-256: `4276FE0CC041422FFCE0CD30561508FB78FA127B745B89EA06F6BC35010C029A`.
 Paketmanifest SHA-256: `29FBD1DF1D5A69C777F13B699E9807125E279FC33CEBCE13EDED129D6252B976`.
 
-Der unabhängig geprüfte Installer tauscht ausschließlich fünf Appdateien nach vollständiger Sicherung aus. 17 isolierte Installations-/Rollback-Simulationen bestehen, einschließlich aller fünf Abbruchpositionen, Prozessneustart, Fremdbytes und umgeleiteter Pfade. Der bestehende Szenenworker wird nur auf unveränderte Identität geprüft; Spieldateien bleiben außerhalb der Schreibmenge. Ein laufendes Spiel ist zulässig, ETS2LA samt Worker muss geschlossen sein. Installer SHA-256: `4F0480ED2D4CFC4D55B72F6E5EEE5D1EBC102FA4942A5A36278E2A5100AB4CCA`. Noch keine Installation durchgeführt.
+Der unabhängig geprüfte Installer tauscht ausschließlich fünf Appdateien nach vollständiger Sicherung aus. 17 isolierte Installations-/Rollback-Simulationen bestehen, einschließlich aller fünf Abbruchpositionen, Prozessneustart, Fremdbytes und umgeleiteter Pfade. Der bestehende Szenenworker wird nur auf unveränderte Identität geprüft; Spieldateien bleiben außerhalb der Schreibmenge. Ein laufendes Spiel ist zulässig, ETS2LA samt Worker muss geschlossen sein. Installer SHA-256: `4F0480ED2D4CFC4D55B72F6E5EEE5D1EBC102FA4942A5A36278E2A5100AB4CCA`. Installation nach beendeter App durchgeführt; noch keine Spielabnahme.
 
 ## Weitere Beobachtungen und Grenzen
 
@@ -40,4 +40,4 @@ Die vollständige Aufnahme 13:09:36–13:19:36 enthält den Kreuzungsfehler; die
 
 Der Nutzer übernahm anschließend wegen eines drohenden Pfostenkontakts des Aufliegers innen beim Abbiegen. Zwischen zwei Aufnahmefenstern fehlen rund 38 Sekunden; zeitgleiche Auflieger- und Pfostengeometrie des kritischen Moments liegt nicht vor. Die Standard-Hindernisprüfung bildet einen 3,4-m-Korridor um die Zugmaschinenroute ab, keine innere Nachlaufkurve des Aufliegers. Diese Grenze ist im Code bestätigt. 0.4.9 beansprucht deshalb keine Behebung dieses zweiten Problems. Eine beliebige Verbreiterung des Korridors oder bloß geringere Geschwindigkeit wäre kein belastbarer Ersatz.
 
-Offen bleiben Aufliegerführung beim Abbiegen, TruckersMP-Hintergrundpedale, die getrennt beobachteten nativen Lenkausfälle sowie vollständige reale Maut-/Zahlungs-/Bahnübergangsabnahme. Die neue Kreuzungskorrektur wird erst nach geschlossenem ETS2LA mit Sicherung eingebaut und danach im Spiel geprüft; während der aufgezeichneten Fahrt wurden keine Dateien oder Einstellungen verändert.
+Offen bleiben Aufliegerführung beim Abbiegen, TruckersMP-Hintergrundpedale, die getrennt beobachteten nativen Lenkausfälle sowie vollständige reale Maut-/Zahlungs-/Bahnübergangsabnahme. Die neue Kreuzungskorrektur wurde nach geschlossenem ETS2LA mit Sicherung eingebaut; ihre Spielprüfung steht noch aus. Während der aufgezeichneten Fahrt wurden keine Dateien oder Einstellungen verändert.
