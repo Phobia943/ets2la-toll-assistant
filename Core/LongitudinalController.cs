@@ -6,7 +6,10 @@ public sealed record LongitudinalInput(double Time,long Epoch,bool Enabled,bool 
     double Speed,double Acceleration,double TargetSpeed,double? AccelerationSafetyLimit=null,
     double? StopDistance=null,bool PlannedHold=false,bool Emergency=false,bool OutputAvailable=true,
     double Pitch=0,float? ActualThrottle=null,float? ActualBrake=null,bool CoastEligible=false,string? StopIdentity=null,
-    float? ReceivedThrottle=null,float? ReceivedBrake=null,bool ParkingBrake=false,bool ReverseGear=false,bool RollbackDetected=false,bool StationaryDisplacement=false);
+    float? ReceivedThrottle=null,float? ReceivedBrake=null,bool ParkingBrake=false,bool ReverseGear=false,bool RollbackDetected=false,bool StationaryDisplacement=false)
+{
+    public PedalFocusSample? Focus {get;init;}
+}
 
 public sealed record LongitudinalOutput(float Throttle,float Brake,double TargetAcceleration,string Reason,
     bool Holding=false,bool Fault=false)
@@ -19,6 +22,7 @@ public sealed record LongitudinalOutput(float Throttle,float Brake,double Target
     public bool BrakeEffectLimited {get;init;}
     public bool ParkingHold {get;init;}
     public bool ManualRequired {get;init;}
+    public bool FocusSuspended {get;init;}
 }
 
 // Own speed/acceleration-to-pedal controller. No game objects, native ACC/PID,
@@ -38,7 +42,10 @@ public sealed class LongitudinalController
     bool coastBlocked;
     string? stopOwner;
     int pedalMode;
+    PedalFocusRecovery focusRecovery=new();
     public bool ParkingHeld {get;private set;}
+    public bool FocusReturnPending=>focusRecovery.ReturnPending;
+    public bool FocusSuspended=>focusRecovery.Suspended;
 
     public void Reset()
     {
@@ -46,18 +53,39 @@ public sealed class LongitudinalController
         throttle=brake=0;holding=brakeDeliverySuspended=throttleDeliveryFault=throttleEffectLimited=brakeEffectLimited=wasStopping=false;stopOwner=null;pedalMode=0;
         coastSince=null;coastTarget=0;coastBlocked=false;
         ParkingHeld=false;
+        focusRecovery=new();
     }
     public void Pause()
     {
         bool gasSuspended=throttleDeliveryFault,brakeSuspended=brakeDeliverySuspended;
-        Reset();throttleDeliveryFault=gasSuspended;brakeDeliverySuspended=brakeSuspended;
+        var focus=focusRecovery;
+        Reset();focusRecovery=focus;focusRecovery.Interrupt();throttleDeliveryFault=gasSuspended;brakeDeliverySuspended=brakeSuspended;
     }
+    void DropPedalHistory()
+    {driveIntegral=brakeIntegral=accelerationCommand=0;throttle=brake=0;pedalMode=0;}
+    // Reduction-only reconciliation with the actual final command. This is
+    // not a logical receipt, reset or permit to clear any failure/provenance.
+    public void ReduceUnpublishedPedals(float publishedThrottle,float publishedBrake)
+    {
+        if(!float.IsFinite(publishedThrottle)||!float.IsFinite(publishedBrake)||publishedThrottle<0||publishedBrake<0)return;
+        if(publishedThrottle<throttle){focusRecovery.RetainPendingWindows();throttle=publishedThrottle;driveIntegral=0;}
+        if(publishedBrake<brake){focusRecovery.RetainPendingWindows();brake=publishedBrake;brakeIntegral=0;}
+    }
+    public bool FocusCommitAllowed(PedalFocusSample? evaluated,PedalFocusSample? latest)
+    {
+        bool allowed=focusRecovery.CanCommit(evaluated,latest);
+        if(!allowed&&focusRecovery.ReturnPending)focusRecovery.RejectReturn(latest);
+        return allowed;
+    }
+    public void AcceptFocusReturn(PedalFocusSample? evaluated,PedalFocusSample? latest)
+    {if(FocusCommitAllowed(evaluated,latest))focusRecovery.AcceptReturn(evaluated,latest);}
     LongitudinalOutput Neutral(string reason,bool fault=false)
     {Reset();return new(0,0,0,reason,Fault:fault);}
     public LongitudinalOutput Step(LongitudinalInput input)
     {
         var result=StepCore(input);
-        return result with {DeliveryMissing=result.DeliveryMissing||throttleDeliveryFault||brakeDeliverySuspended,
+        if(focusRecovery.Suspended&&result.Throttle>0){ReduceUnpublishedPedals(0,result.Brake);result=result with{Throttle=0,Reason="Expected focus interruption: propulsion suspended"};}
+        return result with {DeliveryMissing=result.DeliveryMissing||throttleDeliveryFault||brakeDeliverySuspended,FocusSuspended=focusRecovery.Suspended,
             ThrottleDeliveryMissing=throttleDeliveryFault,ThrottleEffectLimited=throttleEffectLimited,
             BrakeDeliveryMissing=brakeDeliverySuspended,BrakeEffectLimited=brakeEffectLimited};
     }
@@ -76,6 +104,8 @@ public sealed class LongitudinalController
             return new(0,input.Emergency?1:0,input.Emergency?-MaximumBrakeDeceleration:0,"Control clock did not advance within its bounded step",Fault:true);
         }
         bool first=!at.HasValue;at=input.Time;epoch=input.Epoch;dt=Math.Min(dt,.1);
+        focusRecovery.BeginStep(input.Focus);
+        if(focusRecovery.Transition)DropPedalHistory();
         if(input.Emergency) {
             ObserveDelivery(input,dt);
             driveIntegral=brakeIntegral=0;throttle=0;brake=1;accelerationCommand=-MaximumBrakeDeceleration;
@@ -91,6 +121,7 @@ public sealed class LongitudinalController
             // Never fight a confirmed stationary parking brake or integrate
             // absent acceleration against it. Preserve a latched propulsion
             // failure; releasing the parking brake is not acknowledgement.
+            focusRecovery.RetainPendingWindows();
             driveIntegral=brakeIntegral=deliveryMismatch=throttleMismatch=0;
             throttle=brake=0;accelerationCommand=0;filteredAcceleration=input.Acceleration;
             holding=wasStopping=false;stopOwner=null;pedalMode=0;
@@ -117,6 +148,7 @@ public sealed class LongitudinalController
         }
         holding=shouldHold;stopOwner=owner;wasStopping=stopping;
         bool mismatched=ObserveDelivery(input,dt);
+        if(focusRecovery.Suspended)DropPedalHistory();
         if(brakeDeliverySuspended||throttleDeliveryFault) {
             // A transport interruption is not an obstacle. Remove learned and
             // slew-limited pedal history before evaluating THIS frame's scene
@@ -220,14 +252,16 @@ public sealed class LongitudinalController
         // Do not infer transport loss from effective throttle alone.
         throttleEffectLimited=Pedal(input.ActualThrottle)&&throttle>.15f&&input.ActualThrottle!.Value<throttle-.15f;
         bool missingThrottle=Pedal(input.ReceivedThrottle)&&throttle>.15f&&input.ReceivedThrottle!.Value<throttle-.15f;
+        bool gasReceipt=Pedal(input.ReceivedThrottle)&&throttle>.15f&&input.ReceivedThrottle!.Value>=throttle-.15f;
+        if(focusRecovery.Observe(true,missingThrottle,gasReceipt,dt,input.Focus))throttleDeliveryFault=true;
         throttleMismatch=missingThrottle?throttleMismatch+dt:0;
-        if(throttleMismatch>=.35)throttleDeliveryFault=true;
         brakeEffectLimited=Pedal(input.ActualBrake)&&brake>.15f&&input.ActualBrake!.Value<brake-.15f;
         // Logical receipt and simulated effect are separate observations for
         // the brake too. Neither is, by itself, a physical emergency reason.
         bool missingBrake=Pedal(input.ReceivedBrake)&&brake>.15f&&input.ReceivedBrake!.Value<brake-.15f;
+        bool brakeReceipt=Pedal(input.ReceivedBrake)&&brake>.15f&&input.ReceivedBrake!.Value>=brake-.15f;
+        if(focusRecovery.Observe(false,missingBrake,brakeReceipt,dt,input.Focus))brakeDeliverySuspended=true;
         deliveryMismatch=missingBrake?deliveryMismatch+dt:0;
-        if(deliveryMismatch>=.35)brakeDeliverySuspended=true;
         // Freeze adaptation on either missing input or suppressed effective gas.
         return missingThrottle||throttleEffectLimited||missingBrake||brakeEffectLimited;
     }

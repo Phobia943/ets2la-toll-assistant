@@ -13,6 +13,8 @@
     <Compile Include="../Tests/SimulationDynamicsTests.cs" Link="SimulationDynamicsTests.cs" />
     <Compile Include="../Tests/ManualPaymentTests.cs" Link="ManualPaymentTests.cs" />
     <Compile Include="../Tests/LongitudinalControllerTests.cs" Link="LongitudinalControllerTests.cs" />
+    <Compile Include="../Tests/PedalFocusRecoveryTests.cs" Link="PedalFocusRecoveryTests.cs" />
+    <Compile Include="../Tests/RigRoadPredictionReviewTests.cs" Link="RigRoadPredictionReviewTests.cs" />
     <Compile Include="../Tests/DeliveryInterruptionReviewTests.cs" Link="DeliveryInterruptionReviewTests.cs" />
     <Compile Include="../Tests/TrafficSpeedTests.cs" Link="TrafficSpeedTests.cs" />
     <Compile Include="../Tests/OwnLongitudinalReviewTests.cs" Link="OwnLongitudinalReviewTests.cs" />
@@ -38,5 +40,6 @@
     <Compile Include="../Tests/RigModelMonitorTests.cs" Link="RigModelMonitorTests.cs" />
     <Compile Include="../Tests/RuntimeMotionAdversarialTests.cs" Link="RuntimeMotionAdversarialTests.cs" />
     <Compile Include="../Tests/CruisePolicyTests.cs" Link="CruisePolicyTests.cs" />
+    <Compile Include="../Tests/MapGateApproachReviewTests.cs" Link="MapGateApproachReviewTests.cs" />
   </ItemGroup>
 </Project>

@@ -17,6 +17,7 @@ public sealed partial class TollPlugin
         LongitudinalInput Input,LongitudinalOutput Output,SpeedBound[] Bounds,bool Published) {
             public object? TrafficEvidence{get;init;} public long? DynamicsOrigin{get;init;}
             public GameInputContextSnapshot? InputContext{get;init;}
+            public object? CommitRecheckEvidence{get;init;}
             public GameInputDiagnosisResult? InputDiagnosis{get;init;}
             public PedalDeliverySample? InputSample{get;init;}}
     LongitudinalSnapshot? longitudinalSnapshot;
@@ -24,6 +25,7 @@ public sealed partial class TollPlugin
     public string SpeedControlStatus {get {lock(sync) {
         if(!State.EnableAssists||longitudinalSnapshot is not { } sample)return "Eigene Geschwindigkeitsregelung ausgeschaltet. Start mit F8; Spieltempomat ausgeschaltet lassen.";
         if(sample.Output.DeliveryMissing)return "Pedalempfang unterbrochen: Gas gesperrt, aktuelle Bremsgrenzen bleiben aktiv. Ins Spiel wechseln, mit Bremse/F9 übernehmen und erst danach neu mit F8 starten.";
+        if(sample.Output.FocusSuspended)return "Fokusunterbrechung: Gas vorübergehend gesperrt; Rückkehr ins Spiel wird mit aktuellen Quellen geprüft.";
         string action=sample.Output.Holding?"Halten":sample.Output.Brake>0?"Bremsen":sample.Output.Throttle>0?"Beschleunigen":"Rollen";
         return $"Eigene Regelung: Ziel {sample.Input.TargetSpeed*3.6:F0} km/h · angefordert: {action}.";
     }}}
@@ -101,6 +103,7 @@ public sealed partial class TollPlugin
         }
         bool physicalHold=holdPedalFloor>0||scenePedalFloor>0||decision.TargetSpeed==0;
         double pitch=safetyTrace==null?0:Math.Asin(Math.Clamp(safetyTrace.DirectionAt(safetyTrace.ProjectForTracking(position).Along).Y,-1,1));
+        var focus=ReadPedalFocus(appliedTelemetry,routeKnown,epoch);
         var input=new LongitudinalInput(now,Math.Max(1,epoch),true,paused,routeKnown,speed,
             observedAcceleration,target,FiniteLimit(safetyLimit),stopDistance,physicalHold,
             Emergency:faultBrake.Latched,Pitch:pitch,ActualThrottle:physicsObservation?.GameThrottle,ActualBrake:physicsObservation?.GameBrake,
@@ -109,9 +112,9 @@ public sealed partial class TollPlugin
                 (cruise.MaximumSpeed==0||speed<=cruise.MaximumSpeed),StopIdentity:stopIdentity??sceneHold.OwnerKey??tracked,
             ReceivedThrottle:physicsObservation?.ReceivedThrottle,ReceivedBrake:physicsObservation?.ReceivedBrake,
             ParkingBrake:physicsObservation?.ParkingBrake==true,ReverseGear:physicsObservation?.Gear<0,RollbackDetected:rollback,
-            StationaryDisplacement:reverseMotion.StationaryDisplaced);
+            StationaryDisplacement:reverseMotion.StationaryDisplaced){Focus=focus};
         var result=longitudinal.Step(input);
-        bool published=false;
+        bool published=false;object? commitRecheckEvidence=null;SourceLease? commitRecheckLease=null;
         BeforeLongitudinalCommit?.Invoke(); // Isolated scheduling tests; unset in production.
             faultBrake.RunCurrent(()=> {
                 // Epoch may itself wait on the host output lock. Check age and
@@ -128,9 +131,43 @@ public sealed partial class TollPlugin
                 // already-unknown observation may still publish its no-gas
                 // braking plan; a revoked clear decision must be recomputed.
                 if(sourceLease!=null&&!SourceLeaseCurrent(sourceLease))return;
+                if(sourceLease!=null&&result.Throttle>0&&RecheckTrafficForCommit(sourceLease,surroundings,result.TargetAcceleration,out commitRecheckEvidence,out commitRecheckLease)) {
+                    // Do not advance the stateful controller a second time or
+                    // invent a brake amplitude from a different observation.
+                    // Keep any original braking; replan normally next Tick.
+                    result=result with{Throttle=0,Reason="Neue Verkehrsbegrenzung vor Pedalausgabe: Gas gesperrt"};
+                }
+                // The bounded re-observation itself may take time or observe
+                // a source reset. It never renews this command's original age.
+                long finalEpoch=CaptureLongitudinalEpoch();
+                long finalSourceEpoch=CaptureSourceEpoch();
+                bool originalSourcesCurrent=sourceLease==null||SourceLeaseAtEpoch(sourceLease,finalSourceEpoch);
+                // The worker identity check may invoke source providers. Finish
+                // it before the final focus/steering witness, then use only a
+                // lock-free local revocation check for this original result.
+                if(sourceLease?.MapGate is { } checkedGate&&!MapGateLeaseCurrent(checkedGate))return;
+                var finalFocus=ReadPedalFocus(Volatile.Read(ref latestDeliveredTelemetry),CurrentRouteUsable(clock.Elapsed.TotalSeconds),finalEpoch,finalSourceEpoch);
+                latest=Volatile.Read(ref latestDeliveredTelemetry);
+                if(!originalSourcesCurrent||finalEpoch!=epoch||sourceLease!=null&&finalSourceEpoch!=sourceLease.Epoch||
+                    NativeCommandTime.AgeSeconds(issuedAt,Stopwatch.GetTimestamp(),Stopwatch.Frequency)==null||
+                    !_IsRunning||!active||preview||!State.EnableAssists||State.DrivingMode==DrivingMode.LaneAssistOnly||
+                    faultBrake.Latched||brakeHeld||(latest?.Paused??paused)||
+                    (latest!=null&&(!latest.Active||clock.Elapsed.TotalSeconds-latest.Arrived>=.2||!double.IsFinite(latest.Speed)))||
+                    !SensorsFresh(clock.Elapsed.TotalSeconds))return;
+                if(finalFocus!=null)finalFocus=finalFocus with{Now=Stopwatch.GetTimestamp()};
+                if(sourceLease!=null&&!SourceLeaseAtEpoch(sourceLease,finalSourceEpoch)||
+                    NativeCommandTime.AgeSeconds(issuedAt,Stopwatch.GetTimestamp(),Stopwatch.Frequency)==null)return;
+                if(result.Throttle>0&&!longitudinal.FocusCommitAllowed(focus,finalFocus))
+                    result=result with{Throttle=0,FocusSuspended=longitudinal.FocusSuspended,Reason="Fokuskontext vor Pedalausgabe geändert: Gas gesperrt"};
+                if(result.Throttle>0&&sourceLease!=null&&!SourceFramesCurrent(commitRecheckLease??sourceLease))
+                    result=result with{Throttle=0,Reason="Weitere Quellenänderung während Pedal-Endprüfung: Gas gesperrt"};
                 if(result.Throttle>0&&needsDynamics&&
                     (dynamics==null||simulationDynamics.Read(clock.Elapsed.TotalSeconds,Stopwatch.GetTimestamp()) is not { } currentDynamics||
                     currentDynamics.Origin!=dynamics.Value.Origin))return;
+                if(sourceLease?.MapGate is { } finalGate&&(!MapGateLeaseLocalCurrent(finalGate)||
+                    !SourceLeaseAtEpoch(sourceLease,finalSourceEpoch)||faultBrake.ControlEpoch!=finalGate.Epoch||
+                    NativeCommandTime.AgeSeconds(issuedAt,Stopwatch.GetTimestamp(),Stopwatch.Frequency)==null||
+                    !_IsRunning||!active||preview||!State.EnableAssists||faultBrake.Latched||brakeHeld))return;
                 if(result.Fault) {
                     Disarm("Eigene Geschwindigkeitsregelung: "+result.Reason);
                     return;
@@ -151,6 +188,7 @@ public sealed partial class TollPlugin
                 outputSourceEpoch?.SetValue(definition,observationEpoch);
                 long sourceAt=sourceLease==null?0L:
                     Math.Min(Math.Min(sourceLease.Traffic,sourceLease.Parked),Math.Min(sourceLease.Signals,sourceLease.Gates));
+                if(sourceLease?.MapGate is { } mapGate)sourceAt=Math.Min(sourceAt,mapGate.Result.OriginalTimestamp);
                 if(result.Throttle>0&&needsDynamics&&dynamics!=null)sourceAt=Math.Min(sourceAt,dynamics.Value.Origin);
                 outputSourceAt?.SetValue(definition,sourceAt);
                 var command=new ControlEvent {ChannelDefinition=definition,Properties=new(){Weight=1},
@@ -158,7 +196,26 @@ public sealed partial class TollPlugin
                 publishOutput(command);published=true;
                 // Tests and event sinks need not feed events back to this plugin.
                 OnControlOutput(command);
+                if(longitudinal.FocusReturnPending&&Volatile.Read(ref lastAccCommand) is { } accepted&&
+                    accepted.IssuedTicks==issuedAt&&accepted.Epoch==epoch) {
+                    // Output/event callbacks can wait too. This authorizes a
+                    // current retry, never claims logical game receipt, and
+                    // must not finish return using a pre-callback witness.
+                    long returnEpoch=CaptureLongitudinalEpoch(),returnSourceEpoch=CaptureSourceEpoch();
+                    var returnFocus=ReadPedalFocus(Volatile.Read(ref latestDeliveredTelemetry),
+                        CurrentRouteUsable(clock.Elapsed.TotalSeconds),returnEpoch,returnSourceEpoch);
+                    if(returnFocus!=null)returnFocus=returnFocus with{Now=Stopwatch.GetTimestamp()};
+                    if(returnEpoch==epoch&&(sourceLease==null||SourceLeaseAtEpoch(sourceLease,returnSourceEpoch))&&
+                        NativeCommandTime.AgeSeconds(issuedAt,Stopwatch.GetTimestamp(),Stopwatch.Frequency) is double returnAge&&returnAge<=.15)
+                        longitudinal.AcceptFocusReturn(focus,returnFocus);
+                    else longitudinal.FocusCommitAllowed(focus,null); // A late/revoked attempt cannot finish the return transaction.
+                }
             });
+        // Neither a vetoed request nor a completely rejected publication was
+        // a physical command. Reconcile only downward; never manufacture an
+        // acknowledgement or clear existing receipt-window provenance/latches.
+        longitudinal.ReduceUnpublishedPedals(published?result.Throttle:0,published?result.Brake:0);
+        if(result.FocusSuspended!=longitudinal.FocusSuspended)result=result with{FocusSuspended=longitudinal.FocusSuspended};
         var inputContextSnapshot=ReadInputContext();
         // Compare a previously published command to a LATER telemetry frame,
         // never the just-computed command to its earlier input observation.
@@ -168,7 +225,7 @@ public sealed partial class TollPlugin
                 actual.Physics.ReceivedThrottle,actual.Physics.ReceivedBrake,actual.Physics.GameThrottle,actual.Physics.GameBrake,
                 actual.Physics.EffectiveClutch,actual.Physics.Gear,actual.Physics.DashboardGear,actual.Physics.EngineRpm);
         longitudinalSnapshot=new(DateTimeOffset.UtcNow,issuedAt,epoch,telemetryAt,input,result,speedBounds.ToArray(),published){
-            TrafficEvidence=longitudinalTrafficEvidence,DynamicsOrigin=dynamics?.Origin,InputContext=inputContextSnapshot,
+            TrafficEvidence=longitudinalTrafficEvidence,CommitRecheckEvidence=commitRecheckEvidence,DynamicsOrigin=dynamics?.Origin,InputContext=inputContextSnapshot,
             InputSample=deliverySample,InputDiagnosis=deliverySample==null?null:GameInputDiagnosis.Evaluate(deliverySample,inputContextSnapshot,Stopwatch.GetTimestamp(),Stopwatch.Frequency)};
         if(!result.DeliveryMissing)throttleDeliveryWarningShown=false;
         else if(published&&!throttleDeliveryWarningShown) {

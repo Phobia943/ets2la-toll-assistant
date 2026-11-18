@@ -30,6 +30,17 @@ public sealed partial class TollPlugin
     GateFrame? incomingGates;
     double pathReceivedAt=-100;
     double routeWorkMilliseconds,maxRouteWorkMilliseconds;
+    // Diagnostic only: Processing includes waiting for ProcessPath's lock;
+    // Completion means callback finally, not route acceptance. Overlapping
+    // events are aggregate observations, not an atomic per-event timeline.
+    long pathEventsArrived,pathEventsCompleted,pathEventArrivalTicks,pathEventProcessingTicks,pathEventCompletedTicks;
+    int pathEventsInFlight;
+    object RouteDeliveryDiagnostic()=>new {
+        observedAt=System.Diagnostics.Stopwatch.GetTimestamp(),frequency=System.Diagnostics.Stopwatch.Frequency,
+        arrivals=Interlocked.Read(ref pathEventsArrived),completed=Interlocked.Read(ref pathEventsCompleted),inFlight=Volatile.Read(ref pathEventsInFlight),
+        lastArrival=Interlocked.Read(ref pathEventArrivalTicks),lastProcessing=Interlocked.Read(ref pathEventProcessingTicks),
+        lastCompletion=Interlocked.Read(ref pathEventCompletedTicks),atomic=false
+    };
     PhysicsObservation? physicsObservation;
 
     void OnTelemetry(GameTelemetryData data)
@@ -108,10 +119,14 @@ public sealed partial class TollPlugin
 
     void OnPath(PathLib.PlannedPathData data)
     {
+        Interlocked.Exchange(ref pathEventArrivalTicks,System.Diagnostics.Stopwatch.GetTimestamp());
+        Interlocked.Increment(ref pathEventsArrived);
+        Interlocked.Increment(ref pathEventsInFlight);
         long paymentGeneration=Interlocked.Increment(ref paymentPathGeneration);
         using var operation=faultBrake.BeginOperation();
         double started=clock.Elapsed.TotalSeconds;
         try {
+            Interlocked.Exchange(ref pathEventProcessingTicks,System.Diagnostics.Stopwatch.GetTimestamp());
             // ProcessPath deliberately releases sync for native route probes.
             // Keep that boundary: an arriving route revokes payment, but must
             // never block driving output or cancellation while its probe runs.
@@ -123,6 +138,9 @@ public sealed partial class TollPlugin
         }
         finally
         {
+            Interlocked.Exchange(ref pathEventCompletedTicks,System.Diagnostics.Stopwatch.GetTimestamp());
+            Interlocked.Increment(ref pathEventsCompleted);
+            Interlocked.Decrement(ref pathEventsInFlight);
             double elapsed=(clock.Elapsed.TotalSeconds-started)*1000;
             Interlocked.Exchange(ref routeWorkMilliseconds,elapsed);
             if(elapsed>maxRouteWorkMilliseconds)Interlocked.Exchange(ref maxRouteWorkMilliseconds,elapsed);

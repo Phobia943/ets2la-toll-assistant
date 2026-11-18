@@ -5,7 +5,7 @@ using TruckLib.ScsMap;
 
 namespace MautAssistent;
 
-// Map.Model is stored in .aux with its own nodes. Avoid terrain/road .base and
+// Map.Model, ordinary Sign and standalone Gate instances use .aux with their own nodes. Avoid terrain/road .base and
 // .data deserialization before PostProcessItem could discard them. These are
 // the same pinned TruckLib parser methods used
 // by Map.Read, including the layer file and final node reference resolution.

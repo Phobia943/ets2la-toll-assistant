@@ -137,6 +137,164 @@ public static class RoutingContinuationIntegration
         var escort=Make();escort.Next.prefabPath!.Curves[0].TrafficRule="escort_only";
         assert(!ExitHandoff.Align(escort.Plan(),0,escort.Entry-escort.Heading*10,out _),"Escort-only following route remains excluded");
     }
+    public static void SlowExit(Action<bool,string> assert)
+    {
+        // Deliberately synthetic policy geometry. Native lane-change shape and
+        // telemetry-driven state transitions are exercised only by SlowExitNative
+        // in the hermetic HostCompatibility replay, never this default group.
+        RouteTrace PolicyTrace(Fixture f,PlannedItem? currentRoad=null) {
+            var entry=f.Toll.prefabPath!.Interpolate(1,0)!.Value.Position;
+            var origin=f.Toll.prefabPath.Interpolate(0,0)!.Value.Position;
+            bool reverse=f.RoadItem.direction==Direction.Backward;
+            var exit=f.Road.InterpolateLane(reverse?0:1,Side.Right,1).Position;
+            var after=f.Next.prefabPath!.Interpolate(1,0)!.Value.Position;
+            return new RouteTrace(new[]{origin,entry,exit,after},null,new[]{RouteMatcher.ItemIdentity(f.Toll),
+                RouteMatcher.ItemIdentity(currentRoad??f.RoadItem),RouteMatcher.ItemIdentity(f.Next)});
+        }
+        foreach(bool backward in new[]{false,true}) {
+            var f=Make(backward,118.76f);var plan=f.Plan();var truck=f.Entry-f.Heading*10;
+            assert(!ExitHandoff.Align(plan,0,truck,out _),"Unowned short exits keep the original conservative limit");
+            assert(ExitHandoff.Align(plan,0,truck,20/3.6,out var slow,out var error)&&error==null&&
+                slow.Length==1&&ReferenceEquals(slow[0],f.RoadItem)&&f.RoadItem.targetLaneIndex==2,
+                "A proven119m future adjacent exit returns the actual native road with a required slow-speed owner: "+error+" backwards="+backward+" factor="+f.RoadItem.GetFactorFor(truck));
+            var limits=new ExitSpeedLimits();limits.Remember(slow[0]);
+            var trace=PolicyTrace(f);
+            var free=new TollDecision("Frei",null,float.PositiveInfinity,null);
+            var first=limits.Limit(plan,trace,truck,20/3.6,free);
+            assert(first.TargetSpeed is >=TollEntry.ShortChangeSpeed and <20,"Short-exit cap anticipates its own future road entry");
+            assert(ExitHandoff.Align(plan,0,truck,20/3.6,out var repeated,out _)&&repeated.Length==1&&limits.Active,
+                "An existing short target without caller ownership must return its freshly reproven speed owner");
+            assert(ExitHandoff.Align(plan,0,truck,20/3.6,out var owned,out _,limits.Owns)&&owned.Length==0,
+                "A matching active speed owner retains the existing short target without creating another owner");
+            var refreshed=RouteSnapshot.Capture(plan);refreshed.PlannedPath.RemoveAt(0);
+            var road=refreshed.PlannedPath[0];
+            // Simulate host metadata completion before actual physical completion.
+            road.laneIndex=2;road.targetLaneIndex=0;
+            var middle=Vector3.Lerp(f.Entry,f.Road.InterpolateLane(backward?0:1,Side.Right,1).Position,.5f);
+            var ownedTrace=PolicyTrace(f,road);
+            var cap=limits.Limit(refreshed,ownedTrace,middle,8,free);
+            assert(limits.Active&&cap.TargetSpeed==TollEntry.ShortChangeSpeed&&cap.MaxAcceleration<0,
+                "Toll pruning, wrapper refresh and early target=0 cannot release an unfinished physical exit speed cap");
+            var connected=RouteSnapshot.Capture(plan);connected.PlannedPath.RemoveRange(0,2);
+            var finished=f.Next.prefabPath!.Interpolate(.5f,0)!.Value.Position;
+            var tail=new RouteTrace(new[]{f.Next.prefabPath!.Interpolate(0,0)!.Value.Position,
+                f.Next.prefabPath.Interpolate(1,0)!.Value.Position},null,new[]{RouteMatcher.ItemIdentity(f.Next)});
+            var neverEntered=new ExitSpeedLimits();neverEntered.Remember(f.RoadItem);
+            neverEntered.Limit(connected,tail,finished,5,free);
+            assert(neverEntered.Active,"A nearby pruned connector cannot retire a future road that was never actually entered");
+            var wrongConnector=RouteSnapshot.Capture(connected);wrongConnector.PlannedPath[0].startNode=new(){Uid=++uid};
+            limits.Limit(wrongConnector,tail,finished,5,free);
+            assert(limits.Active,"Geometrically nearby continuation with the wrong canonical start node cannot release the cap");
+            var done=limits.Limit(connected,tail,finished,5,free);
+            assert(!limits.Active&&done==free,"Actual directed continuation beyond the road end releases the exit speed cap");
+            var loopOwner=new ExitSpeedLimits();loopOwner.Remember(f.RoadItem);
+            var roadExit=f.Road.InterpolateLane(backward?0:1,Side.Right,1).Position;
+            var loopTrace=new RouteTrace(new[]{roadExit-f.Heading*10,roadExit+f.Heading*20,
+                f.Entry+Vector3.UnitX*100,f.Entry,roadExit,f.Next.prefabPath.Interpolate(1,0)!.Value.Position},null,
+                new[]{"earlier-unrelated-road","earlier-loop","return-connector",RouteMatcher.ItemIdentity(f.RoadItem),RouteMatcher.ItemIdentity(f.Next)});
+            loopOwner.Limit(plan,loopTrace,roadExit+f.Heading*10,5,free);
+            assert(loopOwner.Active,"An earlier loop passing the same world exit cannot retire the exact future road identity");
+            var tooShort=Make(backward,44);var denied=tooShort.Plan();
+            assert(!ExitHandoff.Align(denied,0,tooShort.Entry-tooShort.Heading*10,0,out var none,out _)&&none.Length==0&&tooShort.RoadItem.targetLaneIndex==0,
+                "Under45m never becomes a short exit through a lower speed");
+            var fast=Make(backward,118);var fastTruck=fast.Road.InterpolateLane(backward?.99f:.01f,Side.Right,0).Position;
+            assert(!ExitHandoff.Align(fast.Plan(),0,fastTruck,40/3.6,out _,out _),"Already on the short road above20kmh cannot start a late change");
+            var fastFuture=Make(backward,118);
+            assert(!ExitHandoff.Align(fastFuture.Plan(),0,fastFuture.Entry-fastFuture.Heading*10,80/3.6,out _,out _),
+                "Future short road without braking distance cannot be granted an optimistic speed owner");
+            var lateTarget=Make(backward,118.76f);var latePlan=lateTarget.Plan();
+            lateTarget.RoadItem.targetLaneIndex=2;
+            var lateTruck=lateTarget.Road.InterpolateLane(backward?.2f:.8f,Side.Right,0).Position;
+            assert(!ExitHandoff.Align(latePlan,0,lateTruck,5,out var unownedLate,out _)&&unownedLate.Length==0,
+                "A restart with under45m remaining cannot borrow an old short target as fresh lane-change permission");
+            var liveOwner=new ExitSpeedLimits();liveOwner.Remember(lateTarget.RoadItem);
+            assert(ExitHandoff.Align(latePlan,0,lateTruck,5,out var alreadyOwned,out _,liveOwner.Owns)&&alreadyOwned.Length==0,
+                "A matching currently owned native short change may finish without inventing a new45m start");
+            liveOwner.Reset();
+            assert(!ExitHandoff.Align(latePlan,0,lateTruck,5,out _,out _,liveOwner.Owns),
+                "Reset removes the old speed owner and restores strict restart reachability");
+            var reset=new ExitSpeedLimits();reset.Remember(f.RoadItem);reset.Reset();assert(!reset.Active,"Explicit reset clears every short-exit owner");
+        }
+    }
+
+    // Not registered in ordinary Tests: PathLib's real GenerateLaneChange
+    // reads GameTelemetry.Current even when its start factor is initialized.
+    // The dedicated HostCompatibility runner proves both getters are replaced
+    // by private DTO fields before invoking this method.
+    public static void SlowExitNative(Action<bool,string> assert,Action<Vector3,double> place,
+        ETS2LA.State.ApplicationState state)
+    {
+        if(typeof(ETS2LA.Game.Telemetry.GameTelemetry).GetField("ReplayData",BindingFlags.Public|BindingFlags.Static)==null)
+            throw new InvalidOperationException("Native short exit requires the audited hermetic telemetry host");
+        foreach(bool backward in new[]{false,true}) {
+            var f=Make(backward,118.76f);float first=backward?1:0,last=1-first;
+            var entry=f.Road.InterpolateLane(first,Side.Right,1).Position;
+            var shift=entry-f.Entry;
+            f.Toll.prefabPath!.Curves[0].StartPosition+=shift;f.Toll.prefabPath.Curves[0].EndPosition+=shift;
+            f.RoadItem.laneIndex=2;
+            var target=f.Road.InterpolateLane(last,Side.Right,0).Position;
+            var oldStart=f.Next.prefabPath!.Curves[0].StartPosition;
+            f.Next.prefabPath.Curves[0].StartPosition=target;
+            f.Next.prefabPath.Curves[0].EndPosition+=target-oldStart;
+            var plan=f.Plan();var before=entry-f.Heading*10;place(before,20/3.6);
+            assert(ExitHandoff.Align(plan,0,before,20/3.6,out var slow,out var error)&&slow.Length==1&&
+                f.RoadItem.laneIndex==2&&f.RoadItem.targetLaneIndex==1,
+                "Actual native119m road receives lane2-to1 as a slow owned future change: "+error);
+            place(entry,20/3.6);
+            var points=new List<Vector3>();bool finite=true;double largestStep=0;
+            for(int i=0;i<=500;i++) {
+                float factor=first+(last-first)*(i/500f);
+                var p=f.RoadItem.Interpolate(factor,0,false)?.Position;
+                if(p is not Vector3 v||!float.IsFinite(v.LengthSquared())){finite=false;break;}
+                if(points.Count>0)largestStep=Math.Max(largestStep,Vector3.Distance(points[^1],v));
+                points.Add(v);
+            }
+            assert(finite&&points.Count==501&&Vector3.Distance(points[0],entry)<.01&&Vector3.Distance(points[^1],target)<.01,
+                "Real native interpolation preserves the initial lane,501finite intermediate poses and exact target endpoint: "+backward);
+            assert(largestStep<.5&&Vector3.Distance(points[250],f.Road.InterpolateLane(.5f,Side.Right,1).Position)>1,
+                "The native short change actually crosses lanes continuously, rather than retaining the source lane or teleporting");
+            Console.WriteLine($"NATIVE_SHORT_EXIT authored=true backward={backward} length={f.RoadItem.GetLength():R} samples={points.Count} maxStep={largestStep:R} from=2 to=1");
+            foreach(int i in new[]{0,50,125,250,375,450,500})
+                Console.WriteLine($"NATIVE_SHORT_POSE progress={i/500d:R} x={points[i].X:R} y={points[i].Y:R} z={points[i].Z:R}");
+            assert(f.RoadItem.laneIndex==2&&f.RoadItem.targetLaneIndex==1,
+                "Read-only native preview never completes the live target metadata");
+            var trace=RouteMatcher.SampleForTracking(plan,before,20/3.6);
+            assert(!trace.EndsAtGap&&trace.IdentityKnown,
+                "The actual native lane-change route reaches its following prefab without a fabricated seam");
+            state.DrivingMode=ETS2LA.State.DrivingMode.FullSelfDriving;
+            var plugin=new TollPlugin(()=>state,(_,_)=>{},_=>{},readAcc:()=>null,readPlanner:()=>null,readLaneAssist:()=>null,
+                readPayments:_=>new Dictionary<int,TollPayment>{{12,TollPayment.Automatic}},readClearance:_=>true,
+                writeDiagnostic:(_,_)=>{});
+            var type=typeof(TollPlugin);const BindingFlags hidden=BindingFlags.Instance|BindingFlags.NonPublic;
+            type.GetMethod("StopDiagnostics",hidden)!.Invoke(plugin,null);
+            var router=(TollRouter)type.GetField("router",hidden)!.GetValue(plugin)!;
+            var pruned=RouteSnapshot.Capture(plan);pruned.PlannedPath.RemoveAt(0);
+            var early=f.Road.InterpolateLane(backward?.98f:.02f,Side.Right,1).Position;place(early,20/3.6);
+            assert(router.Apply(pruned,early,out error,30/3.6)&&!router.HasShortChange&&
+                pruned.PlannedPath[0].laneIndex==2&&pruned.PlannedPath[0].targetLaneIndex==1,
+                "A normal native target unknown to this router is left unchanged, without taking over its speed at30kmh");
+            object?[] admission=[plan,0,before,20/3.6,null];place(before,20/3.6);
+            assert((bool)typeof(TollRouter).GetMethod("AlignExit",hidden)!.Invoke(router,admission)!&&router.HasShortChange,
+                "Actual router exit admission records the proven short-exit identity and its active speed owner");
+            place(early,20/3.6);
+            assert(router.Apply(pruned,early,out error,20/3.6)&&router.HasShortChange,
+                "Actual road-first Apply adopts the existing native short target and owns its20kmh cap: "+error);
+            var capped=router.LimitShortChange(pruned,RouteMatcher.SampleForTracking(pruned,early,20/3.6),early,8,
+                new TollDecision("Frei",null,float.PositiveInfinity,null));
+            assert(capped.TargetSpeed==TollEntry.ShortChangeSpeed&&capped.MaxAcceleration<0,
+                "The real router enforces its short-exit speed limit without the previous toll prefab");
+            type.GetMethod("OnCancel",hidden)!.Invoke(plugin,[null,new ETS2LA.Controls.ControlChangeEventArgs(false,null!)]);
+            assert(!router.HasShortChange&&!state.EnableAssists,"Actual F9/ResetDriving removes the plugin's existing exit speed owner");
+            var late=f.Road.InterpolateLane(backward?.15f:.85f,Side.Right,1).Position;place(late,5);
+            assert(!router.Apply(pruned,late,out _,5)&&!router.HasShortChange,
+                "F9 then late road-first restart cannot reuse the native target with under45m remaining");
+            place(early,20/3.6);
+            assert(router.Apply(pruned,early,out error,20/3.6)&&router.HasShortChange,
+                "F9 then sufficiently early slow road-first restart reacquires current cap ownership: "+error);
+            type.GetMethod("OnCancel",hidden)!.Invoke(plugin,[null,new ETS2LA.Controls.ControlChangeEventArgs(false,null!)]);
+            assert(!router.HasShortChange,"The reacquired native exit cap is cleared by the next real cancel too");
+        }
+    }
     public static void AdvanceHold(Action<bool,string> assert)
     {
         var f=Make(false,332);var road=f.RoadItem;

@@ -73,7 +73,11 @@ public sealed class DriveSupervisor(DriveCheckpoint initialState = default)
         {
             if (!drove || !frame.CanRecover || !double.IsFinite(frame.RouteAge) ||
                 frame.RouteAge < 0 || frame.RouteAge >= .2)
-                return !drove && stationary ? DriveAction.RejectStart : DriveAction.EmergencyStop;
+                // Previous driving is not evidence of current motion. At a
+                // measured stand, stale pre-pause geometry rejects restart;
+                // it must not manufacture a latched emergency brake. Moving
+                // vehicles and unavailable telemetry retain the stop policy.
+                return stationary ? DriveAction.RejectStart : DriveAction.EmergencyStop;
             interrupted ??= frame.Time;
             stableSince = null;
             return frame.Time - interrupted.Value < .5 ? DriveAction.Recover : DriveAction.EmergencyStop;

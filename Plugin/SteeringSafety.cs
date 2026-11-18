@@ -12,6 +12,7 @@ public sealed partial class TollPlugin
     Timer? steeringTimer;
     bool steeringMonitoringLive;
     sealed record SteeringCommand(double At,float Value) {
+        public double? LeaseSeconds {get;init;}
         public double? ReceivedAt {get;init;}
         public long? IssuedTicks {get;init;}
         public long? ReceivedTicks {get;init;}
@@ -62,8 +63,10 @@ public sealed partial class TollPlugin
             issuedTicks=issued;issuedEpoch=epoch;
         }
         if(output.ChannelDefinition?.Id=="LaneAssist.SteeringCorrection" &&
+            float.IsFinite(output.ChannelDefinition.Timeout) && output.ChannelDefinition.Timeout>0 &&
             output.Variables?.steering is float command && float.IsFinite(command) && Math.Abs(command)<=1 && State.EnableAssists)
-            StoreSteering(new(observedAt,command){ReceivedAt=receivedAt,IssuedTicks=issuedTicks,ReceivedTicks=receivedTicks,Epoch=issuedEpoch});
+            StoreSteering(new(observedAt,command){ReceivedAt=receivedAt,IssuedTicks=issuedTicks,ReceivedTicks=receivedTicks,Epoch=issuedEpoch,
+                LeaseSeconds=output.ChannelDefinition.Timeout});
         if(output.ChannelDefinition?.Id==LongitudinalChannelId)
             StorePedals(new(observedAt,output.Variables?.aforward,output.Variables?.abackward){ReceivedAt=receivedAt,IssuedTicks=issuedTicks,ReceivedTicks=receivedTicks,Epoch=issuedEpoch,
                 SourceEpoch=outputSourceEpoch?.GetValue(output.ChannelDefinition) as long?,SourceAt=outputSourceAt?.GetValue(output.ChannelDefinition) as long?});

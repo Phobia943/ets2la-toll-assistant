@@ -10,6 +10,10 @@ internal enum GameInputContextStatus { Unknown, GameForeground, OtherForeground,
 internal sealed record GameInputContextSnapshot(long CapturedAt,int ForegroundPid,int GamePid,
     GameInputContextStatus Status,string Reason)
 {
+    // Opaque in-process identity only; never serialize the live handle owner
+    // or treat a reused Windows PID as the same verified game instance.
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal object? ProcessIdentity {get;init;}
     internal bool? GameForeground=>Status==GameInputContextStatus.GameForeground?true:
         Status==GameInputContextStatus.OtherForeground?false:null;
     internal bool IsFresh(long now,long frequency)=>frequency>0&&CapturedAt>0&&now>=CapturedAt&&now-CapturedAt<=frequency*.1;
@@ -106,8 +110,8 @@ internal sealed class GameInputContext:IDisposable
             if(!ReferenceEquals(Volatile.Read(ref identity),verified))
                 return Result(GameInputContextStatus.UnverifiedGameProcess,"Spielprozess während der Fensterprobe gewechselt.",pid);
             if(!verified.IsAlive())return Result(GameInputContextStatus.ProcessExited,"Der ursprünglich geprüfte Spielprozess ist während der Fensterprobe beendet.",pid);
-            return pid==gamePid?Result(GameInputContextStatus.GameForeground,"Bestätigtes Spielfenster im Vordergrund.",pid):
-                Result(GameInputContextStatus.OtherForeground,"Ein anderes Fenster ist im Vordergrund.",pid);
+            return (pid==gamePid?Result(GameInputContextStatus.GameForeground,"Bestätigtes Spielfenster im Vordergrund.",pid):
+                Result(GameInputContextStatus.OtherForeground,"Ein anderes Fenster ist im Vordergrund.",pid)) with {ProcessIdentity=verified};
         } catch(Exception e) when(e is not OutOfMemoryException) {
             return Result(GameInputContextStatus.NativeFailure,"Fensterkontext nicht verfügbar: "+e.GetType().Name);
         }

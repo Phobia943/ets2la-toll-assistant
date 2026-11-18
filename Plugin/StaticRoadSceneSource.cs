@@ -16,7 +16,8 @@ internal sealed class StaticRoadSceneSource
     internal sealed record Body(ulong Uid,RigStaticGeometry Geometry,Vector3 Minimum,Vector3 Maximum);
     internal sealed record Snapshot(long Generation,string MapName,Vector3 RegionCenter,float Radius,
         IReadOnlyList<Body> Bodies,int UnknownCount,string? Issue)
-    { internal MapSelection? Selection {get;init;} internal double BuildMilliseconds {get;init;} internal long AllocatedBytes {get;init;}
+    { internal IReadOnlyList<MapGateArea> Gates {get;init;}=Array.Empty<MapGateArea>();
+      internal MapSelection? Selection {get;init;} internal double BuildMilliseconds {get;init;} internal long AllocatedBytes {get;init;}
       internal IReadOnlyDictionary<string,long>? PhaseAllocations {get;init;} }
     internal sealed record Request(long Generation,IFileSystem Source,MapSelection Selection,Vector3 Center,string[] Archives);
     readonly Func<IFileSystem?> readFiles;
@@ -117,8 +118,9 @@ internal sealed class StaticRoadSceneSource
                 // The immutable geometry container is built before publication.
                 // Do not let a custom loader change the request's source stamp.
                 completed=result with {Generation=request.Generation,Selection=request.Selection,RegionCenter=request.Center,Radius=RegionRadius,
-                    Bodies=Array.AsReadOnly(result.Bodies.Take(257).ToArray())};
+                    Bodies=Array.AsReadOnly(result.Bodies.Take(257).ToArray()),Gates=Array.AsReadOnly(result.Gates.Take(65).ToArray())};
                 if(completed.Bodies.Count>256)completed=completed with {Bodies=Array.Empty<Body>(),Issue="Zu viele statische Straßenobjekte",UnknownCount=completed.UnknownCount+1};
+                if(completed.Gates.Count>64)completed=completed with {Gates=Array.Empty<MapGateArea>(),Issue="Zu viele eigenständige Schranken",UnknownCount=completed.UnknownCount+1};
                 if(failed)retryAt=seconds()+Math.Min(30,5*++failures);else {failures=0;retryAt=double.PositiveInfinity;}
                 status=completed.Issue??$"{completed.Bodies.Count} statische Kollisionsmodelle; keine vollständige Szenenfreigabe.";
             }
@@ -152,18 +154,36 @@ internal sealed class StaticRoadSceneSource
             return flags is FlagField f&&(f.Bits&~known)==0;
         }catch{return false;}
     }
+    internal static bool EligibleSign(TruckLib.ScsMap.Sign item)
+    {
+        if(item.Layer!=0||!item.Collision||item.FollowRoadDir||!string.IsNullOrEmpty(item.SignTemplate)||
+            item.SignOverrides is {Count:>0}||item.BoardOverrides is {Count:>0}||item.SignBoards is {Length:>0})return false;
+        try {
+            var metadata=kdop?.GetValue(item);
+            var flags=metadata?.GetType().GetField("Flags",BindingFlags.Instance|BindingFlags.NonPublic)?.GetValue(metadata);
+            // Pinned Sign: only bit26 is a render-only water-reflection toggle.
+            // No broad reuse of Model's unrelated flag layout.
+            return flags is FlagField f&&(f.Bits&~(1u<<26))==0;
+        }catch{return false;}
+    }
+    internal static StaticRoadSignGeometry.Result CaptureSign(TruckLib.ScsMap.Sign item,StaticRoadSignRegistry.Definition definition,Model model,byte[] collision)
+    {
+        if(!EligibleSign(item))return new(null,"Unsupported sign instance activity or composition");
+        string variant=item.Variant.ToString();if(variant=="")variant=definition.Variant;
+        return StaticRoadSignGeometry.Capture(model,collision,variant,item.Node.Position,item.Node.Rotation);
+    }
     sealed class ModelsOnlyMap:Map
     {
         internal bool Truncated;
         int count;
         protected override bool PostProcessItem(MapItem item)
         {
-            if(item is not MapModel)return false;
+            if(item is not (MapModel or TruckLib.ScsMap.Sign or TruckLib.ScsMap.Gate))return false;
             if(++count>12000){Truncated=true;return false;}
             return true;
         }
     }
-    internal static bool TryMapBounds(MapModel item,out Vector3 minimum,out Vector3 maximum)
+    internal static bool TryMapBounds(MapItem item,out Vector3 minimum,out Vector3 maximum)
     {
         minimum=maximum=default;
         try {
@@ -181,11 +201,15 @@ internal sealed class StaticRoadSceneSource
         string selected="unknown";
         readonly Dictionary<string,string> registry=new(StringComparer.Ordinal);
         readonly HashSet<string> ambiguous=new(StringComparer.Ordinal);
-        readonly Dictionary<SectorCoordinate,MapModel[]> sectors=[];
+        readonly Dictionary<string,StaticRoadSignRegistry.Definition?> signRegistry=new(StringComparer.Ordinal);
+        IReadOnlyDictionary<string,MapGateSource.Trigger?> gateProfiles=new Dictionary<string,MapGateSource.Trigger?>();
+        readonly Dictionary<SectorCoordinate,MapItem[]> sectors=[];
         readonly Dictionary<string,Model?> models=new(StringComparer.Ordinal);
+        readonly Dictionary<string,byte[]?> collisions=new(StringComparer.Ordinal);
+        int collisionBytes;
         int cachedVertices;
         bool truncated;
-        public void Dispose(){owned?.Dispose();owned=null;generation=-1;registry.Clear();ambiguous.Clear();sectors.Clear();models.Clear();cachedVertices=0;truncated=false;}
+        public void Dispose(){owned?.Dispose();owned=null;generation=-1;registry.Clear();ambiguous.Clear();signRegistry.Clear();gateProfiles=new Dictionary<string,MapGateSource.Trigger?>();sectors.Clear();models.Clear();collisions.Clear();collisionBytes=0;cachedVertices=0;truncated=false;}
         internal Snapshot Load(Request request)
         {
             var watch=System.Diagnostics.Stopwatch.StartNew();long allocation=GC.GetAllocatedBytesForCurrentThread();
@@ -201,6 +225,7 @@ internal sealed class StaticRoadSceneSource
                 }
                 if(!owned.Files.FileExists("/map/"+selected+".mbd"))throw new InvalidDataException("Selected map missing");
                 ReadRegistry(owned.Files);
+                gateProfiles=MapGateSource.ReadProfiles(owned);
                 Mark("registryAndMapSelection");
             }
             var files=owned.Files;
@@ -209,19 +234,33 @@ internal sealed class StaticRoadSceneSource
             foreach(var sector in wanted)if(!sectors.ContainsKey(sector)) {
                 var map=new ModelsOnlyMap();StaticRoadAuxMapReader.Read(map,files,selected,sector);truncated|=map.Truncated;
                 if(sectors.Count>=9)sectors.Remove(sectors.Keys.First(k=>!wanted.Contains(k)));
-                sectors.Add(sector,map.MapItems.Values.OfType<MapModel>().ToArray());
+                sectors.Add(sector,map.MapItems.Values.ToArray());
             }
             Mark("auxiliarySectors");
             int unknown=0;bool budget=truncated;var bodies=new List<Body>();int triangles=0,instances=0;
-            var candidates=new List<(MapModel Item,float Distance)>();
+            var gateAreas=new List<MapGateArea>();
+            var candidates=new List<(MapItem Item,float Distance)>();
             foreach(var item in wanted.SelectMany(s=>sectors[s]).DistinctBy(m=>m.Uid)) {
+                if(item is TruckLib.ScsMap.Gate gate) {
+                    if(Vector3.Distance(gate.Node.Position,request.Center)>RegionRadius+20)continue;
+                    var area=MapGateSource.Capture(gate,gateProfiles);
+                    if(area==null){unknown++;continue;}
+                    if(gateAreas.Count>=64){unknown++;budget=true;continue;}
+                    gateAreas.Add(area);continue;
+                }
                 if(!TryMapBounds(item,out var min,out var max)){unknown++;continue;}
                 float distance=Vector3.DistanceSquared(Vector3.Clamp(request.Center,min,max),request.Center);
                 if(distance<=(RegionRadius+1)*(RegionRadius+1))candidates.Add((item,distance));
             }
             foreach(var candidate in candidates.OrderBy(c=>c.Distance)) {
-                var item=candidate.Item;if(++instances>256){budget=true;break;}
-                if(!EligibleInstance(item)||ambiguous.Contains(item.Name.ToString())||!registry.TryGetValue(item.Name.ToString(),out var path)) {unknown++;continue;}
+                var item=candidate.Item;string path;StaticRoadSignRegistry.Definition? signDefinition=null;
+                if(item is MapModel ordinary) {
+                    if(!EligibleInstance(ordinary)||ambiguous.Contains(ordinary.Name.ToString())||!registry.TryGetValue(ordinary.Name.ToString(),out path!)){unknown++;continue;}
+                }else if(item is TruckLib.ScsMap.Sign sign) {
+                    if(!EligibleSign(sign)||!signRegistry.TryGetValue(sign.Model.ToString(),out signDefinition)||signDefinition==null){unknown++;continue;}
+                    path=signDefinition.Model;
+                }else {unknown++;continue;}
+                if(++instances>256){budget=true;break;}
                 if(!models.TryGetValue(path,out var model)) {
                     model=ReadModelAsset(files,path);
                     int vertices=model?.Parts.Sum(p=>p.Pieces.Sum(q=>q.Vertices.Count))??0;
@@ -233,12 +272,23 @@ internal sealed class StaticRoadSceneSource
                 }
                 if(model==null){unknown++;continue;}
                 // Preflight BEFORE constructing transformed triangles or a BVH.
-                int faces=model.Parts.Where(p=>p.Name.ToString()=="coll").Sum(p=>p.Pieces.Sum(q=>q.Triangles.Count));
+                int faces=signDefinition==null?model.Parts.Where(p=>p.Name.ToString()=="coll").Sum(p=>p.Pieces.Sum(q=>q.Triangles.Count)):20000;
                 if(faces>20000||triangles+faces>100000){unknown++;budget=true;continue;}
-                triangles+=faces;
-                var captured=StaticRoadModelGeometry.Capture(model,item.Variant.ToString(),item.AdditionalParts.Select(p=>p.ToString()).ToArray(),
-                    item.Collision,item.Node.Position,item.Node.Rotation,item.Scale);
-                if(captured.Geometry is not { } geometry){unknown++;continue;}
+                RigStaticGeometry? geometry;
+                if(item is MapModel mapModel)geometry=StaticRoadModelGeometry.Capture(model,mapModel.Variant.ToString(),mapModel.AdditionalParts.Select(p=>p.ToString()).ToArray(),
+                    mapModel.Collision,mapModel.Node.Position,mapModel.Node.Rotation,mapModel.Scale).Geometry;
+                else {
+                    string collisionPath=signDefinition!.Collision;
+                    if(!collisions.TryGetValue(collisionPath,out var bytes)) {
+                        bytes=ReadCollisionAsset(files,collisionPath);
+                        while(collisions.Count>=128||collisionBytes+(bytes?.Length??0)>32*1024*1024) {
+                            var old=collisions.First();collisionBytes-=old.Value?.Length??0;collisions.Remove(old.Key);
+                        }
+                        collisions.Add(collisionPath,bytes);collisionBytes+=bytes?.Length??0;
+                    }
+                    geometry=bytes==null?null:CaptureSign((TruckLib.ScsMap.Sign)item,signDefinition,model,bytes).Geometry;
+                }
+                if(geometry==null){unknown++;continue;}triangles+=geometry.Count;
                 var min=new Vector3(float.PositiveInfinity);var max=new Vector3(float.NegativeInfinity);
                 foreach(var t in geometry.Triangles){min=Vector3.Min(min,Vector3.Min(t.A,Vector3.Min(t.B,t.C)));max=Vector3.Max(max,Vector3.Max(t.A,Vector3.Max(t.B,t.C)));}
                 if(Vector3.DistanceSquared(Vector3.Clamp(request.Center,min,max),request.Center)>RegionRadius*RegionRadius)continue;
@@ -248,7 +298,7 @@ internal sealed class StaticRoadSceneSource
             return new(request.Generation,selected,request.Center,RegionRadius,Array.AsReadOnly(bodies.OrderBy(b=>
                 Vector3.DistanceSquared(Vector3.Clamp(request.Center,b.Minimum,b.Maximum),request.Center)).ToArray()),unknown,
                 budget?"Statische Straßenquelle nur teilweise gelesen (Arbeitsgrenze); keine Freiraumfreigabe.":null)
-                {BuildMilliseconds=watch.Elapsed.TotalMilliseconds,AllocatedBytes=GC.GetAllocatedBytesForCurrentThread()-allocation,
+                {Gates=Array.AsReadOnly(gateAreas.ToArray()),BuildMilliseconds=watch.Elapsed.TotalMilliseconds,AllocatedBytes=GC.GetAllocatedBytesForCurrentThread()-allocation,
                     PhaseAllocations=new System.Collections.ObjectModel.ReadOnlyDictionary<string,long>(phases.Append(
                         new KeyValuePair<string,long>("modelsAndGeometry",GC.GetAllocatedBytesForCurrentThread()-measured)).ToDictionary(p=>p.Key,p=>p.Value))};
         }
@@ -263,7 +313,18 @@ internal sealed class StaticRoadSceneSource
                 if(pmd==null){ambiguous.Add(key);continue;}
                 if(registry.TryGetValue(key,out var existing)&&existing!=pmd)ambiguous.Add(key);else registry[key]=pmd;
             }
+            foreach(var unit in StaticRoadSignRegistry.ReadCatalog(files)) {
+                if(++units>100000)throw new InvalidDataException("Static registry unit budget exceeded");
+                signRegistry.Add(unit.Key,unit.Value);
+            }
         }
+    }
+    internal static byte[]? ReadCollisionAsset(IFileSystem files,string path)
+    {
+        if(!files.FileExists(path))return null;
+        using var stream=files.Open(path);
+        if(stream.Length is <40 or >4*1024*1024)return null;
+        var bytes=new byte[checked((int)stream.Length)];stream.ReadExactly(bytes);return bytes;
     }
     internal static Model? ReadModelAsset(IFileSystem files,string path)
     {

@@ -1,8 +1,10 @@
 # ETS2LA Mautassistent
 
+**0.4.11 ist offline geprüft und mit verifizierter Sicherung installiert; Neustart und Fahrtprüfung stehen aus.** Der konkrete Stopp vor einer Mautstelle mit 119 m langer Ausfahrt ist offline reproduziert und korrigiert: Der notwendige spätere Spurwechsel wird mit einer fortbestehenden 20-km/h-Begrenzung geplant. Dazu kommen eigenständige Grenzschranken, geprüfte Rückkehr nach Fokusverlust und zusätzliche begrenzte Auflieger-/Hindernisprüfung. Installations- und Fahrnachweis sind getrennt; technische Ausgabepausen und ein weiterer nativer Planerabbruch bleiben offen. [Umfang und Nachweise](REVIEW-0.4.11.md).
+
 **Neuer Fahrbefund am 18. November, 14:39 MEZ:** Auch unter 0.4.10 trat erneut eine technische Pedalausgabepause mit Fehlerhalt auf. Die zugeordnete Ampel war bereits freigegeben, der Lkw fuhr wieder an. Katalogwiederverwendung allein behebt diese Ausfälle nicht; die genaue Verzögerungsursache bleibt offen.
 
-**0.4.10 ist installiert und geladen; 26 Sekunden Parkneutralisierung und das anschließende Anfahren sind aufgezeichnet.** Die erneute manuelle Übernahme und vollständige Fahrabnahme stehen aus. Vollständige Modell- und Hookup-Kataloge werden zwischen Arbeitsaufträgen wiederverwendet. Die Messung belegt erheblichen wiederholten Parsingaufwand. Zwei weitere Ausgabepausen sind gesichert, ihre genaue Ursache ist damit noch nicht bewiesen oder behoben. Quellenwechsel und unvollständige Definitionen wurden zusätzlich abgesichert. [Änderung, Gegenprüfungen und Grenzen](REVIEW-0.4.10.md).
+**Vorheriger Fahrstand 0.4.10:** 26 Sekunden Parkneutralisierung und das anschließende Anfahren sind aufgezeichnet. Die erneute manuelle Übernahme und vollständige Fahrabnahme stehen aus. Vollständige Modell- und Hookup-Kataloge werden zwischen Arbeitsaufträgen wiederverwendet. Die Messung belegt erheblichen wiederholten Parsingaufwand. Zwei weitere Ausgabepausen sind gesichert, ihre genaue Ursache ist damit noch nicht bewiesen oder behoben. Quellenwechsel und unvollständige Definitionen wurden zusätzlich abgesichert. [Änderung, Gegenprüfungen und Grenzen](REVIEW-0.4.10.md).
 
 **Vorheriger Arbeitsstand 0.4.9:** Die Fahrt mit 0.4.8 belegte einen Fehler der nativen Graphsuche: Eine falsche Alternativroute vermischte Vorwärts- und Rückwärtsverbindungen und löste bei grüner Ampel einen Gegenrichtungshalt aus. Der gerichtete Suchfix erhält die gültigen Wege und besteht den Gegenlauf mit der tatsächlichen Karte. Auflieger-Nachlauf an Pfosten, Hintergrundpedale und weitere reale Abnahme bleiben offen. [Befund, Prüfungen und Grenzen](REVIEW-0.4.9.md). Frühere Versionsnotizen sind keine aktuelle Installationsauskunft.
 
@@ -47,7 +49,7 @@ Die geprüfte lokale Grundlage ist ETS2LA `2026.11.5297`, ETS2/SDK `1.62`, Pathf
 
 Für die Fahrt werden **Pathfinding, Lane Assist und Mautassistent** sowie deren Bibliotheken benötigt. Der native Adaptive Cruise Control ist optional und darf ausgeschaltet bleiben; sein alter normaler Pedalkanal ist im neuen Host unabhängig davon gesperrt.
 
-Das 0.4.0-Update ersetzt vier ETS2LA-Dateien:
+Das zusammengehörige 0.4.11-Paket ersetzt fünf App-Komponenten und 13 Dateien des Kartenhelfers:
 
 | Datei | Aufgabe |
 | --- | --- |
@@ -55,8 +57,10 @@ Das 0.4.0-Update ersetzt vier ETS2LA-Dateien:
 | `ETS2LA.Game.dll` | Exklusive, zeit- und sitzungsgebundene Ausgabe und Quelldiagnose |
 | `ETS2LA.State.dll` | Zusammenpassende Zustands-/Ausgabeschnittstelle |
 | `Plugins/tumppi066.laneassist/LaneAssist.dll` | Geschützter Lenk- und Pausepfad |
+| `Plugins/tumppi066.adaptivecruisecontrol/AdaptiveCruiseControl.dll` | Kompatible Sperre des alten normalen Pedalkanals |
+| `Plugins/StaticRoadWorker/` (13 fest geprüfte Dateien) | Isolierte Karten-, Schranken- und Kollisionsquelle |
 
-Die vorhandene ACC-Datei wird bei diesem Update nicht ausgetauscht. Die bereits geprüften Spiel-DLLs `ets2la_plugin.dll` und `MautGeometry.dll` bleiben ebenfalls unverändert; sie müssen zur unterstützten Baseline passen. Das Host-Vorbereitungswerkzeug kann weitere Komponenten isoliert prüfen: daraus folgt keine pauschale Installationsanweisung.
+Die bereits geprüften Spiel-DLLs `ets2la_plugin.dll` und `MautGeometry.dll` bleiben unverändert; sie müssen zur unterstützten Baseline passen. Das Host-Vorbereitungswerkzeug kann weitere Komponenten isoliert prüfen: daraus folgt keine pauschale Installationsanweisung.
 
 Für den Austausch muss ETS2LA geschlossen sein. Der kontrollierte Installer prüft die konkrete Kombination, sichert die Ausgangsdateien und startet weder Apps noch Assistenz. Niemals gesamte Vorbereitungsordner oder `isolated-replay-*` installieren oder verteilen: diese enthalten absichtlich veränderte Testkopien. Ein installiertes Paket ist noch kein bestandener Stand- oder Fahrtest.
 

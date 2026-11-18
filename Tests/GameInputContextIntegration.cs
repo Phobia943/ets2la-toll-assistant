@@ -14,14 +14,19 @@ public static class GameInputContextIntegration
         assert(context.RefreshProcessIdentity(42),"Exact allowlisted game image and live original process are verified outside Capture");
         var first=context.Capture(42);
         assert(first.GameForeground==true&&first.GamePid==42&&first.ForegroundPid==42&&first.IsFreshGameForeground(now,frequency),"Current verified game PID in foreground produces a fresh immutable witness");
+        assert(first.ProcessIdentity!=null,"Successful focus capture carries the verified in-process game identity");
+        assert(!System.Text.Json.JsonSerializer.Serialize(first).Contains("ProcessIdentity",StringComparison.Ordinal),
+            "Opaque process identity and its live handle/delegates never enter diagnostic JSON");
         for(int i=0;i<30;i++)context.Capture(42);
         assert(reads==1&&nativeReads==31,"Repeated captures use cached identity and only cheap native foreground/alive observations");
         foreground=99;var other=context.Capture(42);
+        assert(ReferenceEquals(first.ProcessIdentity,other.ProcessIdentity),"AltTab retains the same verified process identity rather than inventing a new session");
         assert(other.GameForeground==false&&!other.IsFreshGameForeground(now,frequency)&&first.GameForeground==true,"Window switch is observed independently; earlier snapshot is not mutated or refreshed");
         now+=100001;
         assert(!first.IsFreshGameForeground(now,frequency)&&!first.IsFreshGameForeground(first.CapturedAt-1,frequency)&&!first.IsFreshGameForeground(now,0),"Old/future-origin/invalid-frequency snapshots cannot authorize input");
         foreground=42;alive=false;
         assert(context.Capture(42).Status==GameInputContextStatus.ProcessExited,"Original process exit revokes a cached identity even if a reused PID owns the foreground");
+        assert(context.Capture(42).ProcessIdentity==null,"An exited game cannot carry a focus recovery identity");
         context.Dispose();context.Dispose();
         assert(releases==1&&context.Capture(42).Status==GameInputContextStatus.Disposed,"Dispose releases original process handle once and makes later captures unknown");
         using(var wrong=new GameInputContext([path],pid=>new(pid,"eurotrucks2",path+".other",()=>true),()=>5,_=>42,()=>now))
@@ -47,6 +52,17 @@ public static class GameInputContextIntegration
             new(pid,"eurotrucks2",path,()=>originalAlive):new(pid,"eurotrucks2",path+".other",()=>true);},()=>5,_=>42,()=>now)) {
             reused.RefreshProcessIdentity(42);originalAlive=false;
             assert(!reused.RefreshProcessIdentity(42)&&reused.Capture(42).GameForeground==null,"PID reuse after original exit requires a new exact-path verification and rejects a different image");
+        }
+        int validReuseReads=0;bool oldSessionAlive=true;
+        using(var validReuse=new GameInputContext([path],pid=>++validReuseReads==1?
+            new(pid,"eurotrucks2",path,()=>oldSessionAlive):new(pid,"eurotrucks2",path,()=>true),()=>5,_=>42,()=>now)) {
+            assert(validReuse.RefreshProcessIdentity(42),"First verified process instance is available");
+            var original=validReuse.Capture(42);oldSessionAlive=false;
+            assert(validReuse.RefreshProcessIdentity(42),"A new instance at the allowed game path can be verified independently");
+            var replacement=validReuse.Capture(42);
+            assert(original.GamePid==replacement.GamePid&&replacement.ProcessIdentity!=null&&
+                !ReferenceEquals(original.ProcessIdentity,replacement.ProcessIdentity),
+                "Reused PID at the same valid executable path still has a different recovery identity");
         }
         bool aliveDuringRead=true;
         using(var exitsDuringRead=new GameInputContext([path],pid=>new(pid,"eurotrucks2",path,()=>aliveDuringRead),()=>5,

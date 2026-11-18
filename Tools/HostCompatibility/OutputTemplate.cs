@@ -34,7 +34,7 @@ internal sealed partial class OutputTemplate
     public static long MautEpoch;
     public static bool MautAssists;
     public static int MautMode;
-    public const string MautCompatibility="0.4.9-host-1";
+    public const string MautCompatibility="0.4.11-host-1";
     public const string MautLongitudinalChannel="local.mautassistent.longitudinal";
     static string? MautHoldKey;
     static long MautHoldEpoch,MautHoldUntil;
@@ -189,6 +189,9 @@ internal sealed partial class OutputTemplate
             channel.LastUpdate.Restart();channel.BoolsProcessed=false;
         }
     }
+    static bool MautPropulsionCurrent(ControlChannel? owner)=>owner!=null&&MautAccept(owner.Definition)&&
+        MautPedalSourceValid(owner.Definition,owner.Variables)&&owner.LastUpdate.Elapsed.TotalSeconds<=owner.Definition.Timeout&&
+        Stopwatch.GetTimestamp()-MautDefinitionIssuedAt(owner.Definition)<=Stopwatch.Frequency*.15;
     // One deterministic frame: no singleton, geometry, callbacks or sleeps
     // under the gate. The same method is exercised with isolated output sinks.
     public void MautFrame(bool modern)
@@ -197,6 +200,7 @@ internal sealed partial class OutputTemplate
             curFrameFloats.Clear();
             long now=Stopwatch.GetTimestamp();
             float longitudinal=0,faultBrake=0;
+            ControlChannel? propulsionOwner=null;
             bool holdActive=MautAssists&&MautMode is 0 or 1&&MautHoldKey!=null&&MautHoldEpoch==MautEpoch&&now<MautHoldUntil;
             if(MautPauseUntil!=0&&(now>=MautPauseUntil||MautPauseEpoch!=MautEpoch||!MautAssists||MautMode==0)) {
                 WriteBool(legacyAccessor,legacyShmOffsets["pause"],false);MautPauseUntil=0;
@@ -210,6 +214,7 @@ internal sealed partial class OutputTemplate
                 if(channel.Definition.Id==MautLongitudinalChannel) {
                     if(!MautPedalsValid(channel.Variables)||!MautPedalSourceValid(channel.Definition,channel.Variables)){Channels.Remove(channel.Definition.Id);continue;}
                     longitudinal=(channel.Variables.aforward??0)+(channel.Variables.abackward??0);
+                    propulsionOwner=channel;
                 } else if(channel.Definition.Id=="local.mautassistent.fault-brake") {
                     if(!MautFaultValid(channel.Variables))continue;
                     float requested=channel.Variables.abackward??0;
@@ -240,6 +245,12 @@ internal sealed partial class OutputTemplate
                 if(frame.Key=="steering") {
                     WriteFloat(modernAccessor,0,output);WriteBool(modernAccessor,4,output!=0);WriteDouble(modernAccessor,5,stamp);
                 } else if(frame.Key=="acceleration") {
+                    // The independent observer may itself be delayed. Remove
+                    // positive propulsion at its unchanged150ms deadline here,
+                    // using a NEW clock after all frame aggregation. Retain
+                    // the original command/source/epoch and channel leases;
+                    // never extend or synthesize a braking request.
+                    if(output>0&&!MautPropulsionCurrent(propulsionOwner))output=0;
                     // Apply the authorized planned hold AFTER owner selection,
                     // not as a competing zero/floor owner. It cannot raise or
                     // dilute an existing stronger safety brake.
@@ -248,6 +259,7 @@ internal sealed partial class OutputTemplate
                     // Clear the path that is no longer selected as well.
                     WriteFloat(modernAccessor,13,modern?output:0);WriteBool(modernAccessor,17,modern&&output!=0);
                     WriteDouble(modernAccessor,18,stamp);
+                    if(!modern&&output>0&&!MautPropulsionCurrent(propulsionOwner))output=0;
                     WriteFloat(legacyAccessor,legacyShmOffsets["aforward"],modern?0:Math.Max(0,output));
                     WriteFloat(legacyAccessor,legacyShmOffsets["abackward"],modern?0:Math.Max(0,-output));
                 } else WriteFloat(legacyAccessor,legacyShmOffsets[frame.Key],output);

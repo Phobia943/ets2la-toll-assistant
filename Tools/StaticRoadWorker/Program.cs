@@ -27,22 +27,47 @@ try {
         var position=new Vector3(q.X,q.Y,q.Z);
         var snapshot=source.Read(position);
         var corridor=StaticRoadCorridor.CreateFromSlice(points,q.CurrentAlong);
+        RigRoadPrediction? rig=null;string? rigIssue=null;
+        if(q.Rig is { } rigInput) {
+            var tail=W.RigTail(q);
+            if(tail!=null)rig=RigRoadPrediction.Build(rigInput.Observation,points,tail,DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),out rigIssue);
+            else rigIssue="Gespann-Straßenbezug fehlt";
+        }
         var hits=new List<W.Hit>();bool incomplete=true;
+        var gates=new List<MapGateCandidate>();
         string map=snapshot?.MapName??"unknown",issue=source.Status;
         if(snapshot!=null&&corridor!=null) {
+            foreach(var gate in snapshot.Gates)if(MapGateApproach.Bind(gate,points,q.CurrentAlong) is { } bound)gates.Add(bound);
             int remaining=60000;incomplete=snapshot.UnknownCount>0||snapshot.Issue!=null;
             foreach(var body in snapshot.Bodies.OrderBy(b=>Vector3.DistanceSquared(Vector3.Clamp(position,b.Minimum,b.Maximum),position))) {
-                if(!Overlap(corridor.Minimum,corridor.Maximum,body.Minimum,body.Maximum))continue;
+                bool nominalOverlap=Overlap(corridor.Minimum,corridor.Maximum,body.Minimum,body.Maximum);
+                bool rigOverlap=rig!=null&&Overlap(rig.Minimum,rig.Maximum,body.Minimum,body.Maximum);
+                if(!nominalOverlap&&!rigOverlap)continue;
                 if(remaining<=0){incomplete=true;break;}
-                var result=body.Geometry.CheckNominal(corridor,Math.Min(30000,remaining));remaining-=result.FaceChecks;
-                if(result.Issue!=null){incomplete=true;continue;}
-                if(!result.Clear&&result.ConflictAlong is double along&&double.IsFinite(along))hits.Add(new(body.Uid,along));
+                W.Hit? hit=null;
+                if(nominalOverlap) {
+                    var result=body.Geometry.CheckNominal(corridor,Math.Min(30000,remaining));remaining-=result.FaceChecks;
+                    if(result.Issue!=null)incomplete=true;
+                    else if(!result.Clear&&result.ConflictAlong is double along&&double.IsFinite(along))hit=new(body.Uid,along);
+                }
+                if(rigOverlap&&remaining>0) {
+                    var result=rig!.Check(body.Geometry,Math.Min(30000,remaining));remaining-=result.FaceChecks;
+                    if(result.Issue!=null)incomplete=true;
+                    else if(!result.Clear&&result.ConflictAlong is double along&&double.IsFinite(along)&&(hit==null||along<hit.Along))
+                        hit=new(body.Uid,along){Rig=true};
+                }else if(rigOverlap)incomplete=true;
+                if(hit!=null)hits.Add(hit);
             }
-            if(!source.IsCurrent(snapshot,position)){hits.Clear();incomplete=true;issue="Source changed during query";}
+            if(!source.IsCurrent(snapshot,position)){hits.Clear();gates.Clear();incomplete=true;issue="Source changed during query";}
             else issue=incomplete?"Partial static evidence only":"Static evidence only; no scene-clearance claim";
         }
+        if(rigIssue!=null){incomplete=true;issue+="; "+rigIssue;}
+        if(q.Rig!=null&&q.Rig.Observation?.Valid(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())!=true) {
+            hits.RemoveAll(h=>h.Rig);incomplete=true;issue+="; Gespannmessung während der Prüfung veraltet";
+        }
         var reply=new W.Reply(W.Version,session,q.Id,q.Generation,q.RouteId,q.Epoch,q.Timestamp,
-            map,hits.Take(64).ToArray(),incomplete,issue.Length>512?issue[..512]:issue);
+            map,hits.Take(32).ToArray(),incomplete||hits.Count>32||gates.Count>8,issue.Length>512?issue[..512]:issue)
+            {Gates=gates.OrderBy(g=>g.PlaneAlong).Take(8).ToArray()};
         await W.WriteFrame(output,W.Encode(reply,W.MaxResponseBytes),CancellationToken.None);
     }
     return 0;

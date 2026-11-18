@@ -15,6 +15,13 @@ public static class RouteSnapshot
     static readonly FieldInfo? laneChangeStart=typeof(PlannedItem).Module.ModuleVersionId==new Guid("8d0821da-1971-4caa-a8be-78ea1093e51d")?
         typeof(PlannedItem).GetField("laneChangeStartFactor",BindingFlags.Instance|BindingFlags.NonPublic):null;
 
+    internal static bool TryLaneChangeStart(PlannedItem item,out float start)
+    {
+        start=float.NaN;
+        if(laneChangeStart?.GetValue(item) is not float value)return false;
+        start=value;return true;
+    }
+
     // Describe a detached snapshot, never the live native steering containers.
     internal static object Describe(PlannedPathData snapshot)=>snapshot.PlannedPath.Select(i=> {
         var original=i.prefabPath!=null?PrefabRefinement.OriginalFor(i.prefabPath):null;

@@ -1,5 +1,16 @@
 # Änderungen
 
+## 0.4.11 – kurzer Mautanschluss, Grenzschranken und Fokus-Rückkehr
+
+- Nutzt für nachgewiesene kurze benachbarte Ausfahrtswechsel den bestehenden langsamen 45-m/20-km/h-Vertrag. Die Begrenzung überlebt Routenpruning und neue Wrapper bis zum tatsächlichen Ende; nach Bremse/F9 benötigt sie einen frischen Nachweis. Andere native Spurwechsel erhalten dadurch keine neue globale Beschränkung.
+- Erfasst eigenständige Grenzschranken über ihre gerichtete Aktivierungsfläche und den passenden aktuellen SDK-Pfosten. Fehlende oder widersprüchliche Öffnungsdaten halten normal; eine bereits beobachtete Zufahrt bleibt auch nach kurzem Quellenverlust überwacht. Automatische Grenzabfertigung wird nicht behauptet.
+- Trennt belegten Fokusverlust von echten Pedalfehlern, prüft frische Gefahren nochmals vor positiver Ausgabe und erhält die ursprünglichen Quellen-/Ausgabefristen. TruckersMP-Hintergrundpedale sind damit noch nicht behoben.
+- Ergänzt begrenzte Prüfung des nachlaufenden einzelnen Aufliegers bis 20 km/h sowie ausdrücklich statische Sign-Kollisionsmodelle. Keine allgemeine Hindernisumfahrung oder automatisch weiter ausholende Kurve.
+- Verhindert einen neuen Fehlerhalt allein aufgrund einer noch pausierten Planung bei frisch bestätigtem Stillstand. Reine Routenereignisdiagnose ergänzt; die technische 175-ms-Ausgabepause und eine separat protokollierte native Planerexception bleiben offen.
+- 109 Logikprüfungen, 280 Integrationsprüfungen und 36 Installationssimulationen bestehen. Die endgültigen Dateien bestehen außerdem 351 Hostprüfungen sowie einen teilweise überlappenden separaten Lauf mit 278 Hostprüfungen. Unabhängiger Gegenreview abgeschlossen; kein Ersatz für die noch offene Fahrtprüfung.
+- Am 18. November um 17:05 MEZ mit geprüfter Sicherung installiert; alle 18 Dateihashes bestätigt. Anwendungen nicht gestartet, keine Spielabnahme behauptet.
+- [Gegenprüfung, Installationsstand und offene Fahrabnahme](REVIEW-0.4.11.md).
+
 ## 0.4.10 – Katalogwiederverwendung geladen, Fahrabnahme offen
 
 - Behält vollständig geladene Modell- und Hookup-Kataloge über leere Arbeitswarteschlangen hinweg, gebunden an die jeweilige Dateisystemgeneration. Archive und Modellgeometrie bleiben getrennt verwaltet.

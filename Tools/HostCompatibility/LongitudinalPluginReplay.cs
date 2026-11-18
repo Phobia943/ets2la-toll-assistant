@@ -78,6 +78,11 @@ internal static class LongitudinalPluginReplay
             throw new InvalidDataException("Tick fixture must use the already sealed isolated host/plugin context");
         using(var audited=ModuleDefinition.ReadModule(sealedCandidate))if(audited.Mvid!=pluginAssembly.ManifestModule.ModuleVersionId)
             throw new InvalidDataException("Tick fixture candidate differs from the audited copied module");
+        if(Environment.GetEnvironmentVariable("MAUT_SLOW_EXIT_ONLY")=="1")
+            return SlowExitHostReplay.Run(Environment.GetEnvironmentVariable("MAUT_SLOW_EXIT_FIXTURE")??throw new InvalidDataException("Slow-exit fixture required"),
+                Path.GetDirectoryName(sealedCandidate)!,context,pluginAssembly,gameAssembly,state,assert);
+        if(Environment.GetEnvironmentVariable("MAUT_FRESH_HAZARD_ONLY")=="1")
+            return FreshHazardReplay.Run(sealedCandidate,root,pluginAssembly,gameAssembly,stateAssembly,context,host,state,frame,gas,brake,modernPedal,steering,enable,epoch,assert);
         // Explicit counterfactual runner: reuse all outer sealing/ALC guards,
         // but isolate the OnPath regression from unrelated new-observer tests.
         if(Environment.GetEnvironmentVariable("MAUT_TRANSITION_ONLY")=="1")
@@ -594,6 +599,7 @@ internal static class LongitudinalPluginReplay
             count+=CanonicalGateHostReplay.Run(canonical,Path.GetDirectoryName(sealedCandidate)!,context,pluginAssembly,gameAssembly,host,frame,gas,brake,modernPedal,assert);
         File.WriteAllText(Path.Combine(Path.GetDirectoryName(sealedCandidate)!,"parking-runtime-rows.json"),System.Text.Json.JsonSerializer.Serialize(parkingRows));
         File.WriteAllText(Path.Combine(Path.GetDirectoryName(sealedCandidate)!,"parking-release.json"),System.Text.Json.JsonSerializer.Serialize(parkingReleaseDiagnostic));
+        count+=FreshHazardReplay.Run(sealedCandidate,root,pluginAssembly,gameAssembly,stateAssembly,context,host,state,frame,gas,brake,modernPedal,steering,enable,epoch,assert);
         return count;
     }
 }

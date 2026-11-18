@@ -42,8 +42,8 @@ internal static class StaticRoadModelRegistry
         if(lex.Next()!=null)throw new InvalidDataException("Trailing registry data");
         return new ReadOnlyDictionary<string,string?>(result);
     }
-    readonly record struct Token(string Text,bool Quoted);
-    sealed class Lexer(string text)
+    internal readonly record struct Token(string Text,bool Quoted);
+    internal sealed class Lexer(string text)
     {
         int at,count;
         internal Token? Next()

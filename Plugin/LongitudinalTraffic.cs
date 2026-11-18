@@ -10,25 +10,36 @@ public sealed partial class TollPlugin
         ownSemaphoreFrame=typeof(ETS2LA.Game.Output.GameOutput).GetField("MautOwnSemaphoreFrame");
     static readonly System.Reflection.MethodInfo? readOwnSourceEpoch=typeof(ETS2LA.Game.Output.GameOutput).GetMethod("MautReadOwnSourceEpoch");
     static long CaptureSourceEpoch()=>readOwnSourceEpoch?.Invoke(null,null) is long epoch?epoch:-1;
-    sealed record SourceLease(long Epoch,long Traffic,long Parked,long Signals,long Gates,long GateEpoch);
+    sealed record SourceLease(long Epoch,long Traffic,long Parked,long Signals,long Gates,long GateEpoch,
+        object TrafficFrame,object ParkedFrame,object SignalFrame)
+    {internal MapGateLease? MapGate {get;init;}}
     SourceLease? longitudinalSourceLease;
     long longitudinalObservationEpoch;
     long longitudinalGateOrigin,longitudinalGateEpoch;
-    bool SourceLeaseCurrent(SourceLease lease)=>CaptureSourceEpoch() is long epoch&&epoch==lease.Epoch&&epoch==lease.GateEpoch&&
+    bool SourceLeaseCurrent(SourceLease lease)=>MapGateLeaseCurrent(lease.MapGate)&&SourceLeaseAtEpoch(lease,CaptureSourceEpoch());
+    static bool SourceLeaseAtEpoch(SourceLease lease,long epoch)=>epoch==lease.Epoch&&epoch==lease.GateEpoch&&
         FreshSource(lease.Traffic)&&FreshSource(lease.Parked)&&FreshSource(lease.Signals)&&FreshSource(lease.Gates)&&
+        (lease.MapGate==null||FreshSource(lease.MapGate.Result.OriginalTimestamp))&&
         ownTrafficFrame?.GetValue(null)!=null&&ownParkedFrame?.GetValue(null)!=null&&ownSemaphoreFrame?.GetValue(null)!=null;
+    static bool SourceFramesCurrent(SourceLease lease)=>ReferenceEquals(lease.TrafficFrame,ownTrafficFrame?.GetValue(null))&&
+        ReferenceEquals(lease.ParkedFrame,ownParkedFrame?.GetValue(null))&&ReferenceEquals(lease.SignalFrame,ownSemaphoreFrame?.GetValue(null));
     object? longitudinalTrafficEvidence;
     RailCrossingProfiles? railCrossingProfiles;
-    readonly List<object> longitudinalSignalEvidence=[];
     // Immutable copies keep the selected command, its reasons and observed
     // objects together. Host stamps attest successful provider reads, not the
     // time at which this consumer happened to inspect an old object.
     TrafficSpeedDecision ReadLongitudinalSurroundings()
     {
-        longitudinalTrafficEvidence=null;
-        longitudinalSourceLease=null;
+        var decision=ObserveLongitudinalSurroundings(out var lease,out var evidence,out long epoch);
+        longitudinalTrafficEvidence=evidence;longitudinalSourceLease=lease;longitudinalObservationEpoch=epoch;
+        return decision;
+    }
+    // Pure observation with respect to the original command's evidence. A
+    // final-commit recheck must not replace the sources logged for its Input.
+    TrafficSpeedDecision ObserveLongitudinalSurroundings(out SourceLease? resolvedLease,out object? evidence,out long sourceEpoch)
+    {
+        resolvedLease=null;evidence=null;sourceEpoch=CaptureSourceEpoch();
         if(path==null||safetyTrace==null)return new(-.35f,false,"Keine aktuelle Verkehrsroute");
-        long sourceEpoch=longitudinalObservationEpoch=CaptureSourceEpoch();
         var trafficFrame=ownTrafficFrame?.GetValue(null) as Tuple<long,TrafficData>;
         var parkedFrame=ownParkedFrame?.GetValue(null) as Tuple<long,ParkedVehicleData>;
         var liveTraffic=trafficFrame?.Item2;
@@ -55,19 +66,52 @@ public sealed partial class TollPlugin
         }
         if(!FreshSource(trafficStamp)||!FreshSource(parkedStamp))return new(-.35f,false,"Verkehrsabfrage abgelaufen");
         var decision=TrafficSpeedPolicy.Evaluate(safetyTrace,position,Math.Max(0,speed),bodies);
-        var light=ReadTrafficLights(out long signalStamp);
-        var lease=new SourceLease(sourceEpoch,trafficStamp,parkedStamp,signalStamp,longitudinalGateOrigin,longitudinalGateEpoch);
+        var signalEvidence=new List<object>();
+        var light=ReadTrafficLights(out long signalStamp,out var signalFrame,signalEvidence,out var mapGateLease);
+        var lease=new SourceLease(sourceEpoch,trafficStamp,parkedStamp,signalStamp,longitudinalGateOrigin,longitudinalGateEpoch,
+            trafficFrame!,parkedFrame!,signalFrame!){MapGate=mapGateLease};
         if(!SourceLeaseCurrent(lease))return new(-.35f,false,"Verkehrs- oder Signalabfrage abgelaufen");
-        longitudinalSourceLease=lease;
-        longitudinalTrafficEvidence=new {trafficStamp,parkedStamp,bodyCount=bodies.Count,decision.Gap,decision.ClosingSpeed,
+        resolvedLease=lease;
+        evidence=new {trafficStamp,parkedStamp,bodyCount=bodies.Count,decision.Gap,decision.ClosingSpeed,
             trafficLimit=FiniteLimit(decision.Acceleration),decision.Reason,
             limitingBody=decision.LimitingBody is { } body?new{x=body.Position.X,y=body.Position.Y,z=body.Position.Z,
                 width=body.Size.X,height=body.Size.Y,length=body.Size.Z,body.Speed}:null,
-            signalReason=light.Reason,light.StopIdentity,light.StopDistance,signals=longitudinalSignalEvidence.ToArray()};
+            signalReason=light.Reason,light.StopIdentity,light.StopDistance,signals=signalEvidence.ToArray()};
         return new(Minimum(decision.Acceleration,light.Acceleration),decision.Clear&&light.Clear,
             !light.Clear?light.Reason:decision.Reason,
             Math.Min(decision.StopDistance??double.PositiveInfinity,light.StopDistance??double.PositiveInfinity) is var stop&&double.IsFinite(stop)?stop:null,
             light.StopDistance<=decision.StopDistance||decision.StopDistance==null?light.StopIdentity:decision.StopIdentity);
+    }
+    bool RecheckTrafficForCommit(SourceLease original,TrafficSpeedDecision previous,double plannedAcceleration,out object? evidence,out SourceLease? recheckedLease)
+    {
+        evidence=null;recheckedLease=null;
+        if(SourceFramesCurrent(original))return false;
+        var current=ObserveLongitudinalSurroundings(out var currentLease,out var currentEvidence,out long epoch);
+        recheckedLease=currentLease;
+        bool valid=currentLease!=null&&epoch==original.Epoch&&SourceLeaseCurrent(currentLease)&&
+            SourceLeaseCurrent(original)&&SourceFramesCurrent(currentLease);
+        // NaN is the policy's explicit absence of an acceleration bound, not
+        // an unknown observation. Unknown policies carry Clear=false and no
+        // usable current lease, or their conservative finite limit.
+        bool lowerBound=float.IsFinite(current.Acceleration)&&
+            (!float.IsFinite(previous.Acceleration)||current.Acceleration<previous.Acceleration-1e-5f)&&
+            current.Acceleration<plannedAcceleration-1e-5;
+        bool nearerStop=current.StopDistance is double stop&&double.IsFinite(stop)&&
+            (previous.StopDistance is not double oldStop||!double.IsFinite(oldStop)||stop<oldStop-1e-6);
+        // Clear=false also means a perfectly known preceding vehicle or a
+        // distant stop. Neither alone invalidates a still-admissible command.
+        bool unknown=!current.Clear&&!float.IsFinite(current.Acceleration)&&
+            (current.StopDistance is not double distance||!double.IsFinite(distance));
+        // A negative hard limit always selects the controller's brake branch,
+        // even when its preceding jerk state had a more negative acceleration
+        // but still positive gas inside the small coasting deadband.
+        bool restricts=!valid||lowerBound||current.Acceleration<0||nearerStop||unknown||float.IsInfinity(current.Acceleration);
+        evidence=new {previous,current,plannedAcceleration,currentEvidence,valid,restricts,
+            action=restricts?"Positive Gasfreigabe entzogen; bestehende Bremse bleibt, neuer Bremsplan im nächsten Tick":
+                "Neue Quellen ohne strengere Verkehrsbegrenzung",
+            originalTraffic=original.Traffic,originalParked=original.Parked,originalSignals=original.Signals,
+            currentTraffic=currentLease?.Traffic,currentParked=currentLease?.Parked,currentSignals=currentLease?.Signals};
+        return restricts;
     }
     internal static TrafficBody CopyBody(BaseVehicle body,double speed)
     {
@@ -91,15 +135,23 @@ public sealed partial class TollPlugin
         (body.trailers??[]).Take(body.trailer_count).All(t=>t!=null&&!IsZeroBody(t));
     static bool FreshSource(long stamp)=>stamp>0&&Stopwatch.GetTimestamp()-stamp is var age&&age>=0&&age<=Stopwatch.Frequency*.2;
 
-    TrafficSpeedDecision ReadTrafficLights(out long signalStamp)
+    TrafficSpeedDecision ReadTrafficLights(out long signalStamp,out object? observedFrame,List<object> signalEvidence,out MapGateLease? mapGateLease)
     {
-        longitudinalSignalEvidence.Clear();
-        signalStamp=0;
-        if(path==null||safetyTrace==null)return new(-.35f,false,"Keine Ampelroute");
         var signalFrame=ownSemaphoreFrame?.GetValue(null) as Tuple<long,SemaphoreData>;
+        observedFrame=signalFrame;
+        return EvaluateTrafficLightsFrame(signalFrame,signalEvidence,out signalStamp,out mapGateLease);
+    }
+    TrafficSpeedDecision EvaluateTrafficLightsFrame(Tuple<long,SemaphoreData>? signalFrame,List<object> signalEvidence,out long signalStamp,out MapGateLease? mapGateLease)
+    {
+        signalStamp=0;mapGateLease=null;
+        if(path==null||safetyTrace==null)return new(-.35f,false,"Keine Ampelroute");
         if(signalFrame?.Item2?.semaphores==null||!FreshSource(signalFrame.Item1))return new(-.35f,false,"Signalzustände veraltet");
         signalStamp=signalFrame.Item1;
-        return EvaluateTrafficLights(path,safetyTrace,position,signalFrame.Item2.semaphores,router.SelectedBarrier,longitudinalSignalEvidence,railCrossingProfiles?.Read());
+        var light=EvaluateTrafficLights(path,safetyTrace,position,signalFrame.Item2.semaphores,router.SelectedBarrier,signalEvidence,railCrossingProfiles?.Read());
+        var gate=ReadStandaloneMapGates(signalFrame.Item2.semaphores,signalEvidence,out mapGateLease);
+        bool nearer=gate.StopDistance is { } gateDistance&&(light.StopDistance==null||gateDistance<light.StopDistance);
+        return new(Minimum(light.Acceleration,gate.Acceleration),light.Clear&&gate.Clear,
+            nearer||!gate.Clear&&light.Clear?gate.Reason:light.Reason,nearer?gate.StopDistance:light.StopDistance,nearer?gate.StopIdentity:light.StopIdentity);
     }
     internal static TrafficSpeedDecision EvaluateTrafficLights(PathLib.PlannedPathData path,RouteTrace safetyTrace,Vector3 position,
         ETS2LA.Game.SDK.Semaphore[] signals,TollBarrierPlan? selectedBarrier,List<object>? observations=null,

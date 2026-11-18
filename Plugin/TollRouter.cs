@@ -87,7 +87,9 @@ public sealed class TollRouter
     readonly Dictionary<int,(bool ShortChange,int Changes)> entryCosts = new();
     double lastSearch = double.NegativeInfinity;
     PlannedItem? shortChangeRoad;
-    public bool HasShortChange => shortChangeRoad != null;
+    readonly ExitSpeedLimits exitSpeeds=new();
+    internal void ResetExitSpeedLimits(){exitSpeeds.Reset();shortChangeRoad=null;}
+    public bool HasShortChange => shortChangeRoad != null||exitSpeeds.Active;
     readonly PreferenceStore preferences;
     public TollRouter(PreferenceStore preferences, Func<ParsedPrefab,IReadOnlyDictionary<int,TollPayment>>? readPayments=null,
         Func<PrefabPath,bool>? readClearance=null,Action<ParsedPrefab>? prefetch=null,
@@ -182,15 +184,14 @@ public sealed class TollRouter
     static readonly MethodInfo clone=typeof(object).GetMethod("MemberwiseClone",BindingFlags.Instance|BindingFlags.NonPublic)!;
 
     static string Key(PrefabPath path)=>$"{path.Prefab.Prefab.Uid}:{path.StartNode.Uid}:{path.EndNode.Uid}";
-
-    internal void ResetSelection()
+    internal void ResetSelection(bool keepExitSpeeds=false)
     {
         CurrentKey=null;SelectedGate=null;SelectedBarrier=null;Choices=[];Status="Warte auf Route";
         LaneAttempts=[];LaneDecisionContext=null;LaneAttemptContext=null;
         ClearanceHoldRequested=false;
         ClearanceHoldKey=null;PlanningDeferred=false;PlanningDeferredKey=null;
         plans.Clear();entryCosts.Clear();replacements.Clear();upgradeSources.Clear();
-        shortChangeRoad=null;CancelPlannedStop();
+        shortChangeRoad=null;if(!keepExitSpeeds)exitSpeeds.ResetAll();CancelPlannedStop();
     }
 
     public void Discover(PlannedPathData data,Vector3 truck,ETS2LA.Game.SDK.Semaphore[] sdkGates,double speed=0)
@@ -307,7 +308,7 @@ public sealed class TollRouter
             LaneAttemptContext=LaneDecisionContext;
             return;
         }
-        if(CurrentKey!=null&&!StopBoundary.HasValue&&!data.PlannedPath.Any(i=>i.prefabPath!=null&&Key(i.prefabPath)==CurrentKey))ResetSelection();
+        if(CurrentKey!=null&&!StopBoundary.HasValue&&!data.PlannedPath.Any(i=>i.prefabPath!=null&&Key(i.prefabPath)==CurrentKey))ResetSelection(keepExitSpeeds:true);
     }
     void RefreshSelectedBarrier(PlannedItem? applied=null)
     {
@@ -328,7 +329,7 @@ public sealed class TollRouter
     void TryUpgradeAutomatic(PlannedPathData data,int index,PrefabPath current,Vector3 truck,
         ETS2LA.Game.SDK.Semaphore[] sdkGates,double speed)
     {
-        if(shortChangeRoad!=null||data.PlannedPath.Any(i=>i.targetLaneIndex!=0))return;
+        if(HasShortChange||data.PlannedPath.Any(i=>i.targetLaneIndex!=0))return;
         try {
             upgradeSources.RemoveAll(s=>!CurrentUpgradeSource(s,current));
             var trace=RouteMatcher.SampleForTracking(data,truck,speed);
@@ -482,7 +483,7 @@ public sealed class TollRouter
             if(wasPreparing&&SelectedGate is int manual&&PaymentFor(manual)==TollPayment.Manual)Status=LaneStatus(manual);
         }
         if(SelectedGate is not int gate||modelPayments.GetValueOrDefault(gate)!=TollPayment.Manual||
-            findClearRoute==null||readClearance==null||shortChangeRoad!=null||data.PlannedPath.Any(i=>i.targetLaneIndex!=0)||
+            findClearRoute==null||readClearance==null||HasShortChange||data.PlannedPath.Any(i=>i.targetLaneIndex!=0)||
             !double.IsFinite(speed)||speed<=TollEntry.ShortChangeSpeed){NoPreparation();return;}
         try {
             upgradeSources.RemoveAll(s=>!CurrentUpgradeSource(s,current));
@@ -497,7 +498,7 @@ public sealed class TollRouter
                 if(slow?.SlowRoad==null||slow.Apply.Count==0||index<1||!ReferenceEquals(slow.SlowRoad,check.PlannedPath[index-1]))continue;
                 foreach(var change in slow.Apply)change();
                 check.PlannedPath[index].prefabPath=candidate;
-                if(!ExitHandoff.Align(check,index,truck,out _)||!readClearance(candidate))continue;
+                if(!ExitHandoff.Align(check,index,truck,speed,out _,out _)||!readClearance(candidate))continue;
                 var trace=RouteMatcher.SampleForTracking(data,truck,speed);
                 string owner="auto-prepare:"+CurrentKey+":"+ids[0];
                 bool existing=PlanningStopKey?.StartsWith(owner+"|approach:",StringComparison.Ordinal)==true;
@@ -583,6 +584,11 @@ public sealed class TollRouter
     {
         error=null;
         if(data.HasError)return false;
+        bool Owned(PlannedItem road)=>exitSpeeds.Owns(road)||shortChangeRoad is { } incoming&&
+            ReferenceEquals(road.item,incoming.item)&&road.startNode.Uid==incoming.startNode.Uid&&road.endNode.Uid==incoming.endNode.Uid&&
+            road.direction==incoming.direction&&road.laneIndex==incoming.laneIndex&&road.targetLaneIndex==incoming.targetLaneIndex&&road.allowedToLaneChange;
+        if(!ExitHandoff.AdoptSlowTargets(data,truck,speed,exitSpeeds.Known,Owned,out var existingSlow,out error))return false;
+        foreach(var road in existingSlow)exitSpeeds.Remember(road);
         CleanupAbsentHold(data);
         bool matched=false;
         for(int itemIndex=0;itemIndex<data.PlannedPath.Count;itemIndex++)
@@ -650,7 +656,7 @@ public sealed class TollRouter
                 {
                     var check = RouteSnapshot.Capture(data);
                     check.PlannedPath[itemIndex].prefabPath = replacement;
-                    if (!ExitHandoff.Align(check,itemIndex,truck,out error))
+                    if (!ExitHandoff.Align(check,itemIndex,truck,speed,out _,out error))
                     {
                         if (!TryHoldBeforeBranch(data,item,current,truck,speed)) return false;
                         error=null;
@@ -675,7 +681,7 @@ public sealed class TollRouter
                             RefreshSelectedBarrier(item);
                         } else if(CanRestoreApplied(data,itemIndex,current,replacement,truck,speed)) {
                             item.prefabPath=replacement;item.otherPrefabPaths=[replacement];item.allowedToLaneChange=false;
-                            if(ExitHandoff.Align(data,itemIndex,truck,out _))RefreshSelectedBarrier(item);
+                            if(AlignExit(data,itemIndex,truck,speed,out _))RefreshSelectedBarrier(item);
                             else SelectedBarrier=null;
                         } else {
                             // A known source-wrapper key is not proof that an
@@ -712,7 +718,7 @@ public sealed class TollRouter
                 foreach(var change in pendingChanges.Apply)change();
                 if(pendingChanges.SlowRoad!=null)shortChangeRoad=pendingChanges.SlowRoad;
             }
-            if(!ExitHandoff.Align(data,itemIndex,truck,out error))return false;
+            if(!AlignExit(data,itemIndex,truck,speed,out error))return false;
             if(replacements.Count>128)replacements.Clear();
             replacements[current]=replacement;replacements[replacement]=replacement;
             RefreshSelectedBarrier(item);
@@ -720,6 +726,13 @@ public sealed class TollRouter
             UpdateAutomaticPreparation(data,itemIndex,item.prefabPath!,truck,speed);
         }
         if(!matched&&CurrentKey!=null)Defer(CurrentKey);
+        return true;
+    }
+
+    bool AlignExit(PlannedPathData data,int index,Vector3 truck,double speed,out string? error)
+    {
+        if(!ExitHandoff.Align(data,index,truck,speed,out var slowRoads,out error,exitSpeeds.Owns))return false;
+        foreach(var road in slowRoads)exitSpeeds.Remember(road);
         return true;
     }
 
@@ -743,7 +756,7 @@ public sealed class TollRouter
         var newPoint=applied.Interpolate(applied.GetFactorForPoint(truck),0)?.Position;
         if(!oldPoint.HasValue||!newPoint.HasValue||Vector3.Distance(truck,oldPoint.Value)<5&&Vector3.Distance(oldPoint.Value,newPoint.Value)>2)return false;
         var check=RouteSnapshot.Capture(data);check.PlannedPath[index].prefabPath=applied;
-        return ExitHandoff.Align(check,index,truck,out _);
+        return ExitHandoff.Align(check,index,truck,speed,out _,out _);
     }
 
     // An upgrade is a NEW entry plan, not restoration of an already-applied
@@ -761,7 +774,7 @@ public sealed class TollRouter
         if(!oldPoint.HasValue||!newPoint.HasValue||Vector3.Distance(truck,oldPoint.Value)<5&&Vector3.Distance(oldPoint.Value,newPoint.Value)>2)return false;
         foreach(var change in changes.Apply)change();
         check.PlannedPath[index].prefabPath=candidate;
-        return ExitHandoff.Align(check,index,truck,out _);
+        return ExitHandoff.Align(check,index,truck,speed,out _,out _);
     }
 
     bool TryHoldBeforeBranch(PlannedPathData data, PlannedItem item, PrefabPath approach, Vector3 truck, double speed)
@@ -789,6 +802,7 @@ public sealed class TollRouter
 
     public TollDecision LimitShortChange(PlannedPathData data, RouteTrace trace, Vector3 truck, double speed, TollDecision decision)
     {
+        decision=exitSpeeds.Limit(data,trace,truck,speed,decision);
         if (shortChangeRoad == null) return decision;
         if (!data.PlannedPath.Contains(shortChangeRoad))
         {

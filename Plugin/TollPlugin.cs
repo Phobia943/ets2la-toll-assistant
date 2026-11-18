@@ -347,6 +347,7 @@ public sealed partial class TollPlugin : Plugin
     }
     void ResetDriving()
     {
+        router.ResetExitSpeedLimits();
         currentDriveSample=null;
         longitudinal.Reset();
         simulationDynamics.Reset();
@@ -879,7 +880,7 @@ public sealed partial class TollPlugin : Plugin
             steeringFailure=lastSteeringFailure is { } failure&&failure.Reason==reason?failure:null,
             pedalFailure=lastPedalFailure is { } pedalFailure&&pedalFailure.Reason==reason?pedalFailure:null,
             impact=reason==ImpactReason?lastImpact:null,
-            pedalWarning=brakeWarning,
+            pedalWarning=brakeWarning,routeDelivery=RouteDeliveryDiagnostic(),
             plannedHoldPedalFloor=holdPedalFloor,vehicleShape=shapeAtFault,vehicleEnvelope=VehicleEnvelopeStatus,
             laneProtection=LaneProtectionStatus,detailedRigProtection=options.DetailedRigProtection,
             envelopeIdentity=envelopeContext?.Identity,
@@ -1034,7 +1035,7 @@ public sealed partial class TollPlugin : Plugin
                         requiredLookahead=TrackingGuard.RequiredLookahead(speed),
                         phase=decision.Phase, targetSpeedKph=decision.TargetSpeed*3.6, gate=tracked, candidate, dataStatus=DataStatus,
                         telemetryAge=observedAt-telemetryAt, gatesAge=observedAt-gatesAt, pathAge=observedAt-pathAt, gameTimeAge=observedAt-gameTimeChangedAt,
-                        pathReceivedAge=observedAt-pathReceivedAt,routeWorkMilliseconds,maxRouteWorkMilliseconds,
+                        pathReceivedAge=observedAt-pathReceivedAt,routeWorkMilliseconds,maxRouteWorkMilliseconds,routeDelivery=RouteDeliveryDiagnostic(),
                         steeringFeed=steeringFeedState.ToString(),steeringAge=CommandAge(observedSteering?.IssuedTicks,observedSteering?.At,
                             Stopwatch.GetTimestamp(),observedAt),
                         steeringFault=lastSteeringFailure,

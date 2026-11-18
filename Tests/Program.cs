@@ -49,7 +49,20 @@ void Run()
     var results=new List<string>();
     void Check(string name, Action test) { if(args is ["--filter",var filter]&&!name.Contains(filter,StringComparison.OrdinalIgnoreCase))return;try {test(); results.Add("PASS "+name);} catch(Exception ex) {results.Add("FAIL "+name+": "+ex); } }
     void Assert(bool v,string message="Assertion failed") {if(!v)throw new Exception(message);}
+    Check("Standalone map gates bind only the actual directed approach",()=>MapGateApproachReviewTests.Run(Assert));
+    Check("Standard road rig predicts inner trailer pole contact on left and right turns",()=>RigRoadPredictionReviewTests.PositiveSweep(Assert));
+    Check("Standard road rig rejects unmeasured incompatible expired or ungrounded motion",()=>RigRoadPredictionReviewTests.StrictInputsAndGround(Assert));
 #if INTEGRATION
+    Check("Foreground return requires the actual current lane channel lease",()=>PedalFocusLeaseIntegration.Run(Assert));
+    Check("Static sign registry binds complete immovable collision definitions",()=>StaticRoadSignReviewTests.Registry(Assert));
+    Check("Static sign PMC preserves exact variant boxes convex meshes and world transforms",()=>StaticRoadSignReviewTests.Geometry(Assert));
+    Check("Static sign instances require unambiguous placement and completed layer reads",()=>StaticRoadSignReviewTests.InstanceAndLayer(Assert));
+    Check("Static sign collision reaches ordinary controller braking and final revocation",()=>StaticRoadSignControlReviewTests.Run(Assert));
+    Check("Standard road rig worker preserves bounded protocol and original origins",()=>RigRoadWorkerReviewTests.Protocol(Assert));
+    Check("Standard road rig worker revokes changed pose sources session and configuration",()=>RigRoadWorkerReviewTests.ClientRevocation(Assert));
+    Check("Standard road rig worker retains only an exactly bound rear road tail",()=>RigRoadWorkerReviewTests.TailPruning(Assert));
+    Check("Standard road rig actual control brakes on positive conflict and withdraws stale evidence",()=>RigRoadControlReviewTests.PositiveAndWithdrawal(Assert));
+    Check("Standard road rig actual commit rechecks current pose telemetry and original lifetime",()=>RigRoadControlReviewTests.CommitRaces(Assert));
     Check("Model catalogs survive actual worker idle teardown",()=>ModelCatalogReuseIntegration.IdleReuse(Assert));
     Check("Model catalogs remain isolated across concurrent source changes",()=>ModelCatalogReuseIntegration.SourceChange(Assert));
     Check("Model catalogs never retain failed or incomplete loads",()=>ModelCatalogReuseIntegration.IncompleteAndFailedLoads(Assert));
@@ -80,6 +93,7 @@ void Run()
     Check("Curve preview distinguishes clear road, finite curve and invalid evaluation",()=>CurveReadinessReviewTests.DistinctOutcomes(Assert));
     Check("Independent route review preserves recovery braking and takeover",()=>RouteDecisionReviewTests.RecoverAndTakeover(Assert));
     Check("Independent route review expires retained planner-pause geometry",()=>RouteDecisionReviewTests.BoundedPause(Assert));
+    Check("Stationary planner-pause transition does not invent or acknowledge a fault brake",()=>RouteDecisionReviewTests.StationaryPause(Assert));
     Check("Independent route review keeps newly completed curve constraints during recovery",()=>RouteDecisionReviewTests.RecoveryUsesCompletedCurve(Assert));
     Check("Accepted route age does not discard fresh open toll evidence",()=>BarrierDecisionAgeReviewTests.ActualTick(Assert));
     Check("Accepted route age preserves planned stationary hold and manual release",()=>BarrierDecisionAgeReviewTests.PlannedStationaryHold(Assert));
@@ -87,6 +101,7 @@ void Run()
     Check("Issued payment and revoked sessions never regain payment permission",()=>PaymentReservationReviewTests.IssuedAndSessionRevocation(Assert));
 #endif
     Check("Own longitudinal controller preserves safety, epochs and pedal ownership",()=>LongitudinalControllerTests.SafetyAndOwnership(Assert));
+    Check("Focus-only receipt suspension preserves genuine faults and resumes current plans",()=>PedalFocusRecoveryTests.Run(Assert));
     Check("Nominal static corridor detects positive surfaces without neighbour or ground phantoms",()=>NominalStaticCorridorReviewTests.Geometry(Assert));
     Check("Nominal static corridor preserves slopes and world transforms",()=>NominalStaticCorridorReviewTests.GradesAndWorldPose(Assert));
     Check("Nominal static corridor follows only selected directed route slices",()=>NominalStaticCorridorReviewTests.SelectedRoute(Assert));
@@ -393,6 +408,10 @@ void Run()
     Check("Connector starts distinguish passed signals from signals and restrictions ahead",()=>ConnectorSignalIntegration.Run(Assert));
     Check("Distant planning gaps do not trip current tracking; nearby gaps still brake",()=>FutureGapIntegration.Run(Assert));
     Check("Tracking faults brake independently of ACC; F9 releases and F8 cannot restart",()=>FaultBrakeIntegration.Run(Assert));
+    Check("Standalone gate source uses explicit activation-area profiles",()=>MapGateSourceReviewTests.Run(Assert));
+    Check("Standalone gate states and source leases remain strict",()=>MapGateControlReviewTests.StatesAndProtocol(Assert));
+    Check("Standalone closed gate reaches actual normal pedal control",()=>MapGateControlReviewTests.ActualControl(Assert));
+    Check("Short toll exits retain their20kmh constraint across continuation and pruning",()=>RoutingContinuationIntegration.SlowExit(Assert));
     Check("Toll exit hands over to the connected road lane, not merely a target lane",()=>ExitHandoffIntegration.Run(Assert));
     Check("Curved toll exit remains tracked by the native path projection",()=>ExitProjectionIntegration.Run(Assert));
     Check("Unprepared or faulted F8 cannot silently resume through tick, route, telemetry or ACC",()=>PreparationIntegration.Run(Assert));
@@ -694,6 +713,21 @@ void Run()
         Assert(longPause.Step(pause with {Time=60,RouteAge=60})==DriveAction.EmergencyStop);
         Assert(new DriveSupervisor().Step(pause with {Speed=0})==DriveAction.RejectStart);
         Assert(control.Step(pause with {Enabled=false})==DriveAction.Idle);
+    });
+    Check("Stationary planner-pause rejects stale restart after driving without new emergency braking",()=>{
+        var ready=new DriveFrame(0,16,true,false,true,RouteFeed.Valid,.01,true,true);
+        foreach(double speed in new[]{0d,.09452793896198274/3.6,-.1,.1}) {
+            var control=new DriveSupervisor();Assert(control.Step(ready)==DriveAction.Drive);
+            var stopped=ready with {Time=3,Speed=speed,Route=RouteFeed.PlannerPaused,RouteAge=2.9944345,DecisionReady=false,CanRecover=false};
+            var action=control.Step(stopped);
+            Assert(action==DriveAction.RejectStart);
+            Assert(!DriveSupervisor.RouteUsable(new(stopped,action),3));
+        }
+        foreach(var invalid in new[]{ready with {Speed=.10001},ready with {Speed=-.10001},
+            ready with {Speed=double.NaN},ready with {Speed=0,TelemetryFresh=false}}) {
+            var control=new DriveSupervisor();control.Step(ready);
+            Assert(control.Step(invalid with {Time=3,Route=RouteFeed.PlannerPaused,RouteAge=3,DecisionReady=false,CanRecover=false})==DriveAction.EmergencyStop);
+        }
     });
     Check("Brief input loss requires continuous recovery and resets after manual cancellation",()=>{
         var ready = new DriveFrame(0, 16, true, false, true, RouteFeed.Valid, .01, true, true);

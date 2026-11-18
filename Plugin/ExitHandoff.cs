@@ -37,18 +37,42 @@ public static class ExitHandoff
         for(int index=0;index+1<data.PlannedPath.Count;index++) {
             if(data.PlannedPath[index].item is not (ParsedRoad or ParsedRoadList)||data.PlannedPath[index+1].prefabPath==null)continue;
             var basis=CaptureBasis(data);var staged=RouteSnapshot.Capture(data);
-            if(EnsureContinuation(staged,index,truck,3,out _)&&TryCommit(data,staged,basis,out bool changed)&&changed)repairs++;
+            if(EnsureContinuation(staged,index,truck,3,double.NaN,null,null,out _)&&TryCommit(data,staged,basis,out bool changed)&&changed)repairs++;
         }
         return repairs;
     }
 
     public static bool Align(PlannedPathData data,int index,Vector3 truck,out string? error)
+        => Align(data,index,truck,double.NaN,out _,out error);
+    // F9 can leave a target on the current road after the toll was pruned.
+    // Reacquire its speed obligation without weakening legacy seam repair.
+    internal static bool AdoptSlowTargets(PlannedPathData data,Vector3 truck,double speed,
+        Func<PlannedItem,bool> knownExit,Func<PlannedItem,bool> ownsSlowRoad,out PlannedItem[] roads,out string? error)
     {
+        roads=[];error=null;
+        if(data.HasError||!double.IsFinite(speed)||speed<0){error="Kein aktueller langsamer Routenanschluss.";return false;}
+        var basis=CaptureBasis(data);var staged=RouteSnapshot.Capture(data);var slow=new List<int>();
+        for(int index=0;index<Math.Min(4,staged.PlannedPath.Count);index++) {
+            var item=staged.PlannedPath[index];
+            if(item.item is not (ParsedRoad or ParsedRoadList)||item.targetLaneIndex==0||item.targetLaneIndex==item.laneIndex||!knownExit(item))continue;
+            if(!ExistingSlowTarget(staged,index,truck,speed,slow,ownsSlowRoad,out error))return false;
+        }
+        if(!TryCommit(data,staged,basis,out _)){error="Routenbasis während der Tempoprüfung geändert.";return false;}
+        roads=slow.Distinct().Select(i=>data.PlannedPath[i]).ToArray();return true;
+    }
+
+    // Short exits require the caller to own a speed constraint for every
+    // returned native road item. NaN preserves the conservative legacy API.
+    public static bool Align(PlannedPathData data,int index,Vector3 truck,double speed,
+        out PlannedItem[] slowRoads,out string? error,Func<PlannedItem,bool>? ownsSlowRoad=null)
+    {
+        slowRoads=[];
         if(data.HasError||index<0||index>=data.PlannedPath.Count){error="Mautausfahrt besitzt keinen gültigen Routenabschnitt.";return false;}
-        var basis=CaptureBasis(data);var staged=RouteSnapshot.Capture(data);
+        var basis=CaptureBasis(data);var staged=RouteSnapshot.Capture(data);var slow=new List<int>();
         if(!AlignImmediate(staged,index,truck,out error)||
-            !EnsureContinuation(staged,index+1,truck,3,out error))return false;
+            !EnsureContinuation(staged,index+1,truck,3,speed,slow,ownsSlowRoad,out error))return false;
         if(!TryCommit(data,staged,basis,out _)){error="Routenbasis wurde während der Anschlussprüfung geändert.";return false;}
+        slowRoads=slow.Distinct().Select(i=>data.PlannedPath[i]).ToArray();
         return true;
     }
 
@@ -90,7 +114,7 @@ public static class ExitHandoff
         return true;
     }
 
-    static bool EnsureContinuation(PlannedPathData data,int index,Vector3 truck,int depth,out string? error)
+    static bool EnsureContinuation(PlannedPathData data,int index,Vector3 truck,int depth,double speed,List<int>? slow,Func<PlannedItem,bool>? ownsSlowRoad,out string? error)
     {
         error=null;if(index<0||index+1>=data.PlannedPath.Count)return true;
         var before=data.PlannedPath[index];var next=data.PlannedPath[index+1];
@@ -99,19 +123,56 @@ public static class ExitHandoff
             if(DirectConnection(before,next))return true;
             error="Begrenzte Anschlussprüfung erreicht den unveränderten Restpfad nicht eindeutig.";return false;
         }
+        if(double.IsFinite(speed)&&before.item is ParsedRoad or ParsedRoadList&&
+            before.targetLaneIndex!=0&&before.targetLaneIndex!=before.laneIndex&&
+            !ExistingSlowTarget(data,index,truck,speed,slow!,ownsSlowRoad,out error))return false;
         // Retaining an already connected host choice grants no new vehicle or
         // payment permission. In particular a separately proven Automatic path
         // may legitimately carry the AI SmallVehicles preference. Any changed
         // connector below still has to satisfy the strict candidate contract.
-        if(DirectConnection(before,next))return EnsureContinuation(data,index+1,truck,depth-1,out error);
+        if(DirectConnection(before,next))return EnsureContinuation(data,index+1,truck,depth-1,speed,slow,ownsSlowRoad,out error);
         if(before.item is ParsedRoad or ParsedRoadList && next.prefabPath!=null) {
-            if(!RoadToPrefab(data,index,truck,out error))return false;
+            if(!RoadToPrefab(data,index,truck,speed,slow,out error))return false;
         } else if(before.prefabPath!=null) {
             if(!AlignImmediate(data,index,truck,out error))return false;
         } else if(!DirectConnection(before,next)) {
             error="Unveränderter Folgeabschnitt besitzt keinen nachgewiesenen geometrischen Anschluss.";return false;
         }
-        return EnsureContinuation(data,index+1,truck,depth-1,out error);
+        return EnsureContinuation(data,index+1,truck,depth-1,speed,slow,ownsSlowRoad,out error);
+    }
+
+    static bool ExistingSlowTarget(PlannedPathData data,int index,Vector3 truck,double speed,List<int> slow,
+        Func<PlannedItem,bool>? ownsSlowRoad,out string? error)
+    {
+        error=null;var road=data.PlannedPath[index];bool reverse=road.direction==Direction.Backward;
+        double length=road.GetLength();float end=reverse?0:1,factor=road.GetFactorFor(truck);
+        if(!double.IsFinite(length)||length<=0||!float.IsFinite(factor)||
+            !RouteSnapshot.TryLaneChangeStart(road,out float began)) {error="Native Spurwechselphase ist nicht nachgewiesen.";return false;}
+        double nativeDistance=Math.Abs(end-(float.IsNaN(began)?factor:began))*length;
+        if(!double.IsFinite(nativeDistance)) {error="Native Spurwechselphase ist ungültig.";return false;}
+        if(nativeDistance>=TollEntry.FullChangeMetres)return true;
+        if(ownsSlowRoad?.Invoke(road)==true)return true;
+        var side=road.laneIndex<0?Side.Left:Side.Right;
+        int count=road.item is ParsedRoadList list?list.GetLaneCount(side):((ParsedRoad)road.item).GetLaneCount(side);
+        if(!road.allowedToLaneChange||road.laneIndex==0||Math.Sign(road.laneIndex)!=Math.Sign(road.targetLaneIndex)||
+            Math.Abs(road.targetLaneIndex-road.laneIndex)!=1||Math.Abs((long)road.laneIndex)>count||Math.Abs((long)road.targetLaneIndex)>count) {
+            error="Kurzer vorhandener Spurwechsel besitzt keine gültige Nachbarspur.";return false;
+        }
+        Vector3 Point(float t)=>road.item is ParsedRoadList group?group.InterpolateLane(t,side,Math.Abs(road.laneIndex)-1).Position:
+            ((ParsedRoad)road.item).InterpolateLane(t,side,Math.Abs(road.laneIndex)-1).Position;
+        bool onRoad=Vector3.Distance(Point(factor),truck)<=3;
+        double remaining=Math.Abs(end-factor)*length;
+        bool allowed=onRoad&&speed>=0&&speed<=TollEntry.ShortChangeSpeed&&remaining>=TollEntry.MinimumChangeMetres;
+        if(!onRoad&&Math.Abs((reverse?1:0)-factor)*length<3&&remaining>=TollEntry.MinimumChangeMetres&&speed>=0) {
+            var prefix=new PlannedPathData{HasError=false,PlannedPath=data.PlannedPath.Take(index).ToList()};
+            if(prefix.PlannedPath.Count>0) {
+                var trace=RouteMatcher.Sample(prefix);var projection=BarrierBinding.UniqueCurrent(trace,truck,trace.Length);
+                double braking=Math.Max(0,(speed*speed-TollEntry.ShortChangeSpeed*TollEntry.ShortChangeSpeed)/2.4)+speed*1.5;
+                allowed=trace.IdentityKnown&&projection!=null&&trace.Length-projection.Along>=Math.Max(5,braking);
+            }
+        }
+        if(!allowed){error="Kurzer vorhandener Spurwechsel ist noch nicht langsam und erreichbar genug.";return false;}
+        slow.Add(index);return true;
     }
 
     static bool DirectConnection(PlannedItem before,PlannedItem next)
@@ -140,7 +201,7 @@ public static class ExitHandoff
             Vector3.Distance(a,b)<=1.5&&Vector3.Dot(Vector3.Normalize(ah),Vector3.Normalize(bh))>=.8;
     }
 
-    static bool RoadToPrefab(PlannedPathData data,int index,Vector3 truck,out string? error)
+    static bool RoadToPrefab(PlannedPathData data,int index,Vector3 truck,double speed,List<int>? slow,out string? error)
     {
         error=null;var road=data.PlannedPath[index];var next=data.PlannedPath[index+1];var current=next.prefabPath!;
         var ends=road.item is ParsedRoadList list?(list.StartNode,list.EndNode):(((ParsedRoad)road.item).StartNode,((ParsedRoad)road.item).EndNode);
@@ -203,17 +264,25 @@ public static class ExitHandoff
         float factor=road.GetFactorFor(truck);
         if(!float.IsFinite(factor)){error="Aktuelle Position vor dem Folgewechsel ist unklar.";return false;}
         bool onRoad=Vector3.Distance(Point(factor,Math.Abs(road.laneIndex)-1),truck)<=3;
-        double remaining=Math.Abs(end-factor)*length;
+        double remaining=Math.Abs(end-factor)*length;double beforeRoad=0;
         if(!onRoad) {
             try {
                 var prefix=new PlannedPathData{HasError=false,PlannedPath=data.PlannedPath.Take(index).ToList()};
                 var trace=RouteMatcher.Sample(prefix);var projection=BarrierBinding.UniqueCurrent(trace,truck,trace.Length);
                 if(!trace.IdentityKnown||projection==null||trace.Length-projection.Along<5)throw new InvalidOperationException();
-                remaining=length;
+                beforeRoad=trace.Length-projection.Along;remaining=length;
             }catch(InvalidOperationException){error="Künftige Anschlussstraße ist nicht vor dem Lkw bewiesen.";return false;}
             catch(ArgumentException){error="Künftige Anschlussstraße ist nicht eindeutig verfolgbar.";return false;}
         }
-        if(remaining<TollEntry.FullChangeMetres){error="Zu wenig nachgewiesene Straßenlänge für den Folge-Spurwechsel; geplanter Halt erforderlich.";return false;}
+        if(remaining<TollEntry.FullChangeMetres) {
+            double braking=double.IsFinite(speed)&&speed>=0?
+                Math.Max(0,(speed*speed-TollEntry.ShortChangeSpeed*TollEntry.ShortChangeSpeed)/2.4)+speed*1.5:double.PositiveInfinity;
+            bool shortAllowed=slow!=null&&double.IsFinite(speed)&&speed>=0&&remaining>=TollEntry.MinimumChangeMetres&&
+                (onRoad?speed<=TollEntry.ShortChangeSpeed:
+                    Math.Abs((backward?1:0)-factor)*length<3&&beforeRoad>=Math.Max(5,braking));
+            if(!shortAllowed){error="Zu wenig nachgewiesene Straßenlänge für den Folge-Spurwechsel; geplanter Halt erforderlich.";return false;}
+            slow!.Add(index);
+        }
         road.targetLaneIndex=wanted;return true;
     }
 

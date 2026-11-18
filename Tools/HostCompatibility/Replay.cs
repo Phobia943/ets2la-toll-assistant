@@ -247,6 +247,38 @@ internal sealed class Replay
         var issuedReuse=Send(AccId,Epoch(),.6f);Set(issuedReuse,"MautIssuedAt",Stopwatch.GetTimestamp()+Stopwatch.Frequency);
         Thread.Sleep(230);Set(issuedReuse,"MautIssuedAt",Stopwatch.GetTimestamp());Frame();
         Assert(Gas()==0,"Reusing and refreshing a publisher definition cannot renew the stored origin timestamp; frame independently enforces 200 ms age");
+        foreach(bool modernMode in new[]{false,true}) {
+            Enable(false);Enable(true);((System.Collections.IDictionary)Get(host,"Channels")!).Clear();
+            Send(AccId,Epoch(),.4f,issuedAt:Stopwatch.GetTimestamp()-Stopwatch.Frequency*175/1000);Frame(modernMode);
+            Assert(Gas()==0&&Brake()==0&&modern.GetValueOrDefault(13)==0,
+                "Host removes175ms-old propulsion without waiting for the plugin watchdog in either pedal mode");
+            Send(AccId,Epoch(),-.4f,issuedAt:Stopwatch.GetTimestamp()-Stopwatch.Frequency*170/1000);Frame(modernMode);
+            Assert(modernMode?modern.GetValueOrDefault(13)<-.39:Brake()>.39,
+                "Propulsion cutoff preserves an already requested brake inside its original200ms lease");
+            Send(AccId,Epoch(),.4f);Frame(modernMode);
+            Assert(modernMode?modern.GetValueOrDefault(13)>.39:Gas()>.39,
+                "A genuinely new accepted decision still supplies normal gas after the independent cutoff");
+            Enable(false);Enable(true);((System.Collections.IDictionary)Get(host,"Channels")!).Clear();
+            Send(LaneId,Epoch(),steering:.2f);Send(AccId,Epoch(),.4f);
+            var writer=outputType.GetField("ReplayWriteFloat")!;
+            var originalWriter=(Action<MemoryMappedViewAccessor,int,float>)writer.GetValue(null)!;
+            writer.SetValue(null,(Action<MemoryMappedViewAccessor,int,float>)((target,offset,value)=>{
+                if(ReferenceEquals(target,modernMarker)&&offset==0)Thread.Sleep(170);
+                originalWriter(target,offset,value);
+            }));
+            try{Frame(modernMode);}finally{writer.SetValue(null,originalWriter);}
+            Assert(Gas()==0&&Brake()==0&&modern.GetValueOrDefault(13)==0,
+                "Final physical gas check uses a fresh clock after an earlier frame write was delayed170ms");
+        }
+        Enable(false);Enable(true);((System.Collections.IDictionary)Get(host,"Channels")!).Clear();Send(AccId,Epoch(),.4f);
+        var neutralWriterField=outputType.GetField("ReplayWriteFloat")!;
+        var neutralWriter=(Action<MemoryMappedViewAccessor,int,float>)neutralWriterField.GetValue(null)!;
+        neutralWriterField.SetValue(null,(Action<MemoryMappedViewAccessor,int,float>)((target,offset,value)=>{
+            if(ReferenceEquals(target,modernMarker)&&offset==13&&value==0)Thread.Sleep(170);
+            neutralWriter(target,offset,value);
+        }));
+        try{Frame(false);}finally{neutralWriterField.SetValue(null,neutralWriter);}
+        Assert(Gas()==0&&Brake()==0,"Legacy gas expiry is rechecked after delayed clearing of the unselected modern pedal path");
         Enable(false);Send(AccId,next,1);Send(LaneId,next,steering:1);Frame();
         Assert(Gas()==0&&Brake()==0&&modern[0]==0&&modern[4]==0,"Disabled assists reject late native gas and steering");
         Send("local.mautassistent.fault-brake",0,-1);Frame();

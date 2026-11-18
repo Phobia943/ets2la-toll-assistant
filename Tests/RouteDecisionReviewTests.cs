@@ -3,6 +3,27 @@ using PathLib;
 
 public static class RouteDecisionReviewTests
 {
+    public static void StationaryPause(Action<bool,string> assert)
+    {
+        foreach(bool existingFault in new[]{false,true}) {
+            var f=new RollingStartIntegration.Fixture(withoutAcc:true,writeDiagnostic:(_,_)=>{});
+            try {
+                f.Set("options",new TollOptions {CurvePreviewEnabled=false,BriskOpenRoads=false});
+                f.F8();f.Probe();f.State.DesiredSpeed=25;f.Fresh(20);f.Plugin.Tick();
+                assert(f.Get<DriveAction>("driveAction")==DriveAction.Drive,"Pause case starts with actual previously active driving");
+                if(existingFault)f.Call("Disarm","Existing unrelated failure");
+                int before=f.Outputs.Count;
+                f.Fresh(.09452793896198274/3.6);f.Set("lastAcceptedPlanAt",f.Now-2.9944345);
+                f.Call("OnPath",new PlannedPathData{HasError=true,ErrorMessage="Game is paused.",PlannedPath=[]});
+                f.Plugin.Tick();
+                assert(!f.State.EnableAssists&&f.Outputs.Skip(before).All(e=>e.Variables.aforward is null or 0),
+                    "A stale pre-pause route at standstill cannot supply gas or silently rearm");
+                assert(f.Plugin.FaultBraking==existingFault,existingFault?
+                    "Stationary pause rejection cannot acknowledge a previously latched independent fault":
+                    "The actual stationary pause transition does not invent a new latched emergency brake");
+            } finally {f.F9();f.Call("StopDiagnostics");}
+        }
+    }
     public static void RecoveryUsesCompletedCurve(Action<bool,string> assert)
     {
         using var release=new ManualResetEventSlim();

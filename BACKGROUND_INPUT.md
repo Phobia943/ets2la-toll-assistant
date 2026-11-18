@@ -2,6 +2,12 @@
 
 **Hintergrundfahrt ist weiterhin nicht gelöst. TruckersMP-Unterstützung bleibt eine Anforderung.** Die Einzelspieler-Lösung ersetzt sie nicht.
 
+## Rückkehr nach Alt+Tab – 0.4.11
+
+Der Fahrer meldet wiederkehrend ausbleibende Beschleunigung nach dem Heraustabben und anschließenden Zurückkehren. Die bisherige strikte Empfangssperre unterscheidet nicht zwischen einer vollständig belegten Hintergrundunterbrechung und einem echten Eingabedefekt. Der neue Kandidat trennt diese Fälle: Nur eine durch zusammenhängende frische Stichproben mit verifiziertem Hintergrundkontext belegte Unterbrechung darf nach stabiler Rückkehr einen neuen normalen Regelversuch aus neutralem Zustand erlauben. Der lebende Spielprozess, die Freigabesitzung, tatsächlich fortschreitende Spielmessungen, aktuelle Route und ursprüngliche Lenkausgabefrist müssen zusammenpassen. Eine bereits vorhandene oder im Vordergrund/unklaren Kontext begonnene echte Sperre wird dabei nicht gelöscht. Bremse/F9 bleibt eine endgültige manuelle Übernahme bis zum nächsten bewussten Start.
+
+Dies ist keine positive Empfangsbestätigung und keine Behebung der Hintergrundübertragung. Die getrennte dreiminütige Beobachtung vom 18. November, 14:32:27 bis 14:35:27 UTC, reproduzierte den gemeldeten Fehler nicht; ihre nicht atomaren Eingangswerte sind kein Abwesenheitsbeweis. Die Gegenfälle mit den tatsächlichen Hostkomponenten bestehen. 0.4.11 ist installiert; die zuletzt im Spiel beobachtete Fassung bleibt 0.4.10. Neustart und tatsächliche Rückkehrprüfung stehen aus. [Prüfstand und Grenzen](REVIEW-0.4.11.md).
+
 ## Prüfung für 0.4.4
 
 Die offizielle [SCS SDK 1.16](https://download.eurotrucksimulator2.com/scs_sdk_1_16.zip) enthält weiterhin die Input-API 1.00. Deren Initialisierung registriert ein Gerät; es gibt kein Background-/AlwaysActive-Flag und keinen Aufruf, der seine Aktivität erzwingt. Der Aktivitätscallback ist eine Benachrichtigung. Eingabeereignisse werden vom Spiel nur für aktive Geräte abgefragt.

@@ -113,7 +113,7 @@ public sealed class RigStaticGeometry
     // model's support-surface exclusion; low-curb avoidance is outside scope.
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public CheckResult Check(RigPredictionResult prediction,Matrix4x4 modelToWorld,Func<double,double?> roadHeight,int budget=1500000,
-        Func<RigSweptCell,VehicleBody,double?>? bodyRoadHeight=null,Func<RigSweptCell,VehicleBody,RigGroundPlane?>? bodyRoadPlane=null)
+        Func<RigSweptCell,VehicleBody,double?>? bodyRoadHeight=null,Func<RigSweptCell,VehicleBody,RigGroundPlane?>? bodyRoadPlane=null,bool countNodeWork=false)
     {
         if(prediction is not {Supported:true}||prediction.Cells.Count==0||prediction.Cells.Any(c=>!Valid(c))||budget is <1 or >5000000||!Finite(modelToWorld)||
             Math.Abs(modelToWorld.M14)>1e-6||Math.Abs(modelToWorld.M24)>1e-6||Math.Abs(modelToWorld.M34)>1e-6||Math.Abs(modelToWorld.M44-1)>1e-6||
@@ -135,6 +135,7 @@ public sealed class RigStaticGeometry
                 var min=local.Aggregate(Vector3.Min);var max=local.Aggregate(Vector3.Max);
                 [MethodImpl(MethodImplOptions.AggressiveOptimization)]
                 bool Visit(Node node) {
+                    if(countNodeWork&&++checkedFaces>budget)throw new WorkLimit();
                     if(!Overlap(min,max,node.Minimum,node.Maximum))return false;
                     if(node.Left!=null)return Visit(node.Left)||Visit(node.Right!);
                     // One bounded stack buffer per leaf invocation, reused for
@@ -145,6 +146,7 @@ public sealed class RigStaticGeometry
                         var face=faces[i];if(!Overlap(min,max,face.Minimum,face.Maximum))continue;
                         if(++checkedFaces>budget)throw new WorkLimit();
                         var t=face.Triangle;
+                        if(Vector3.Cross(t.B-t.A,t.C-t.A).LengthSquared()<=1e-12f)continue;
                         vertices[0]=Vector3.Transform(t.A,modelToWorld);vertices[1]=Vector3.Transform(t.B,modelToWorld);vertices[2]=Vector3.Transform(t.C,modelToWorld);
                         int count=AboveGround(vertices,plane,polygon);
                         for(int n=1;n+1<count;n++)

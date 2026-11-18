@@ -8,28 +8,33 @@ namespace MautAssistent;
 // A bounded, read-only process boundary. No gameplay command is representable.
 internal static class StaticRoadWorkerProtocol
 {
-    internal const int Version=1,MaxRequestBytes=131072,MaxResponseBytes=8192;
+    internal const int Version=3,MaxRequestBytes=131072,MaxResponseBytes=8192;
     internal const double AuthoritySeconds=.2;
     internal sealed record Point(float X,float Y,float Z,float Dx,float Dy,float Dz,double Along,int Segment,bool Connector);
     internal sealed record Query(int Version,string Session,long Id,long Generation,long RouteId,long Epoch,long Timestamp,
         StaticRoadSceneSource.MapSelection Selection,string[] Archives,float X,float Y,float Z,double CurrentAlong,
-        string[] Segments,Point[] Points);
-    internal sealed record Hit(ulong Uid,double Along);
+        string[] Segments,Point[] Points)
+    {public RigPayload? Rig {get;init;}}
+    internal sealed record RigPayload(RigRoadObservation Observation,Point[] Tail);
+    internal sealed record Hit(ulong Uid,double Along)
+    {public bool Rig {get;init;}}
     internal sealed record Reply(int Version,string Session,long Id,long Generation,long RouteId,long Epoch,long Timestamp,
-        string MapName,Hit[] Hits,bool Incomplete,string? Issue);
+        string MapName,Hit[] Hits,bool Incomplete,string? Issue)
+    {public MapGateCandidate[] Gates {get;init;}=Array.Empty<MapGateCandidate>();}
     internal static bool Fresh(long timestamp,long now)=>timestamp>0&&timestamp<=now&&
         (now-timestamp)/(double)Stopwatch.Frequency<=AuthoritySeconds;
     internal static byte[] Encode<T>(T value,int max)
     {
-        var bytes=JsonSerializer.SerializeToUtf8Bytes(value);
+        var bytes=JsonSerializer.SerializeToUtf8Bytes(value,JsonOptions);
         if(bytes.Length==0||bytes.Length>max)throw new InvalidDataException("Worker frame budget exceeded");
         return bytes;
     }
     internal static T Decode<T>(byte[] bytes,int max)
     {
         if(bytes.Length==0||bytes.Length>max)throw new InvalidDataException("Worker frame budget exceeded");
-        return JsonSerializer.Deserialize<T>(bytes)??throw new InvalidDataException("Empty worker frame");
+        return JsonSerializer.Deserialize<T>(bytes,JsonOptions)??throw new InvalidDataException("Empty worker frame");
     }
+    static readonly JsonSerializerOptions JsonOptions=new(){IncludeFields=true};
     // Unlike ReadLineAsync, allocation is bounded even for a malformed child.
     internal static async Task<byte[]?> ReadFrame(Stream stream,int max,CancellationToken token)
     {
@@ -79,12 +84,25 @@ internal static class StaticRoadWorkerProtocol
     {
         if(r.Version!=Version||r.Session!=q.Session||r.Id!=q.Id||r.Generation!=q.Generation||
             r.RouteId!=q.RouteId||r.Epoch!=q.Epoch||r.Timestamp!=q.Timestamp||!Fresh(q.Timestamp,now)||
-            !MapName(r.MapName)||r.Hits==null||r.Hits.Length>64||r.Issue?.Length>512)return false;
+            !MapName(r.MapName)||r.Hits==null||r.Hits.Length>64||r.Gates==null||r.Gates.Length>8||r.Issue?.Length>512)return false;
         string? expected=q.Selection.ExplicitMapName??(q.Selection.ForceBaseMapName?q.Selection.BaseMapName:null);
-        if(expected!=null&&r.MapName!=expected&&(r.MapName!="unknown"||r.Hits.Length!=0))return false;
+        if(expected!=null&&r.MapName!=expected&&(r.MapName!="unknown"||r.Hits.Length!=0||r.Gates.Length!=0))return false;
         var ids=new HashSet<ulong>();
-        return r.Hits.All(h=>h!=null&&h.Uid!=0&&ids.Add(h.Uid)&&double.IsFinite(h.Along)&&
+        return r.Gates.All(g=>g!=null&&g.Uid!=0&&ids.Add(g.Uid)&&Finite(g.Anchor)&&float.IsFinite(g.Rotation.LengthSquared())&&
+            Math.Abs(g.Rotation.LengthSquared()-1)<.001&&double.IsFinite(g.PlaneAlong)&&g.PlaneAlong>=q.CurrentAlong&&g.PlaneAlong<q.Points[^1].Along&&
+            double.IsFinite(g.StopAlong)&&Math.Abs(g.StopAlong-Math.Max(0,g.PlaneAlong-MapGateApproach.FrontReserve))<.00001)&&
+            r.Hits.All(h=>h!=null&&(!h.Rig||q.Rig!=null)&&h.Uid!=0&&ids.Add(h.Uid)&&double.IsFinite(h.Along)&&
             h.Along>=q.CurrentAlong&&h.Along<=q.Points[^1].Along);
+    }
+    internal static IReadOnlyList<TraceSlicePoint>? RigTail(Query q)
+    {
+        if(q.Rig is not{Observation:not null,Tail:not null} rig||rig.Tail.Length is <2 or >160)return null;
+        var result=new TraceSlicePoint[rig.Tail.Length];
+        for(int i=0;i<result.Length;i++) {
+            var p=rig.Tail[i];if(p==null||p.Segment<0||p.Segment>=q.Segments.Length)return null;
+            result[i]=new(new(p.X,p.Y,p.Z),new(p.Dx,p.Dy,p.Dz),p.Along,q.Segments[p.Segment],p.Connector);
+        }
+        return result;
     }
     internal static bool MapName(string? value)=>value is {Length:>0 and <=64}&&
         value.All(c=>char.IsAsciiLetterOrDigit(c)||c is '_' or '-');
